@@ -99,6 +99,44 @@ Next useful work:
 - Test a spatially sensitive task: bbox quadrant, object size bin, weak localization heatmap, or small segmentation.
 - If staying on classification, optimize `anchor_only_no_prefill` for speed with read-every-2 or cheaper anchor projection.
 
+## Spatial Probe Update
+
+Implemented `scripts/compare_bbox_probe_models.py` for DET-derived bbox probes. It supports:
+
+- `quadrant4`
+- `grid9`
+- `size3`
+- class-balanced train sampling
+- class-balanced eval subsets
+- raw accuracy
+- balanced accuracy
+- macro F1
+- per-class recall
+- confusion matrix
+- majority and balanced-random baselines
+
+Balanced `quadrant4` result at 64px, 1000 steps, 3 seeds:
+
+- `fpn_sum_lite`: balanced acc `0.275`, macro F1 `0.221`, about `354 img/s`.
+- `no_prefill_local_mix`: balanced acc `0.269`, macro F1 `0.200`, about `361 img/s`.
+- `stage_refresh_region_slots_2x2`: balanced acc `0.267`, macro F1 `0.207`, about `298 img/s`.
+- `anchor_only_no_prefill`: balanced acc `0.266`, macro F1 `0.188`, about `286 img/s`.
+- `xattnres_no_prefill`: balanced acc `0.266`, macro F1 `0.192`, about `300 img/s`.
+- `region_pool_mixer_no_history`: balanced acc `0.261`, macro F1 `0.185`, about `292 img/s`.
+
+Interpretation:
+
+- Unbalanced `quadrant4` is invalid as architecture evidence because it stays near the majority baseline.
+- Balanced `quadrant4` gives a weak signal above `0.25`, but the signal favors `fpn_sum_lite`, not region/memory routing.
+- This does not rescue memory-first or region-slot claims.
+- The next spatial task should be harder and less reducible to coarse layout bias: balanced `grid9`, bbox center regression, or weak localization heatmap.
+
+Next spatial P0:
+
+- Run balanced `grid9` with `no_prefill_local_mix`, `fpn_sum_lite`, `anchor_only_no_prefill`, `xattnres_no_prefill`, and `stage_refresh_region_slots_2x2`.
+- Add bbox center regression if grid9 remains near chance.
+- Keep `fpn_sum_lite` as an active spatial-probe reference.
+
 ## Historical P0: Prefill-AttnRes Baseline
 
 Goal: prove the smallest useful version of the idea.

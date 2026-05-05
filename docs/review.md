@@ -381,3 +381,26 @@ Interpretation: this matrix strengthens the local-state-first conclusion. The fi
 - Add at least one dense prediction or segmentation-style task.
 - Report negative results directly, not only successful toy runs.
 - Treat all current numbers as debugging evidence until tested on real images.
+
+## Balanced BBox Quadrant Probe
+
+Dataset: ILSVRC2013 DET validation images with the largest annotated object box per image.
+
+Task: predict the normalized bbox center quadrant (`quadrant4`). The first unbalanced version was inconclusive because all models stayed close to the majority-class baseline, about `0.335`. The balanced version uses class-balanced train sampling and a class-balanced eval subset, and reports raw accuracy, balanced accuracy, macro F1, per-class recall, and confusion matrices.
+
+Output CSV: `results/bbox_probe_quadrant4_balanced_1000step_3seeds.csv`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps.
+
+| Model | Balanced acc mean | Macro F1 mean | Best eval acc mean | Majority baseline | Images/sec mean |
+|---|---:|---:|---:|---:|---:|
+| `fpn_sum_lite` | 0.275 | 0.221 | 0.275 | 0.250 | 353.68 |
+| `no_prefill_local_mix` | 0.269 | 0.200 | 0.270 | 0.250 | 361.41 |
+| `stage_refresh_region_slots_2x2` | 0.267 | 0.207 | 0.267 | 0.250 | 298.15 |
+| `anchor_only_no_prefill` | 0.266 | 0.188 | 0.268 | 0.250 | 285.70 |
+| `xattnres_no_prefill` | 0.266 | 0.192 | 0.268 | 0.250 | 300.02 |
+| `region_pool_mixer_no_history` | 0.261 | 0.185 | 0.262 | 0.250 | 292.19 |
+
+Paired against `no_prefill_local_mix`, `fpn_sum_lite` improves balanced accuracy by about `+0.006` and wins `3/3` seeds. Region-pool and stage-refresh slot variants do not improve over local mix. This means balanced `quadrant4` does provide a weak spatial signal above random, but the signal favors fixed fusion rather than memory/region routing. The current result does not rescue memory-first or region-slot claims; it instead suggests that this coarse quadrant task may reward simple multi-state fusion and low-level layout bias.
+
+Next spatial probes should be stronger than quadrant classification: balanced `grid9`, bbox center regression, object size bin, or a weak localization heatmap. Any positive region/memory claim should require improvement in balanced accuracy or center-error metrics over both `no_prefill_local_mix` and `fpn_sum_lite`.
