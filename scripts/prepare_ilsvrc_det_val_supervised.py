@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import shutil
 import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -46,13 +47,23 @@ def parse_args() -> argparse.Namespace:
         "--top-classes",
         type=int,
         default=20,
-        help="number of most frequent single-label classes to link into ImageFolder",
+        help="number of most frequent single-label classes to link; <=0 keeps all classes",
     )
     parser.add_argument(
         "--max-per-class",
         type=int,
         default=200,
-        help="max symlinked images per class for the ImageFolder subset",
+        help="max symlinked images per class; <=0 keeps all matching images",
+    )
+    parser.add_argument(
+        "--imagefolder-name",
+        default="single_label_imagefolder",
+        help="subdirectory name for the symlinked ImageFolder dataset",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="remove the target ImageFolder directory before recreating symlinks",
     )
     return parser.parse_args()
 
@@ -69,17 +80,21 @@ def main() -> None:
         annotation for annotation in annotations if len({box.label for box in annotation.boxes}) == 1
     ]
     label_counts = Counter(annotation.boxes[0].label for annotation in single_label)
-    selected_labels = [label for label, _ in label_counts.most_common(args.top_classes)]
-    imagefolder_root = args.out_root / "single_label_imagefolder"
+    if args.top_classes <= 0:
+        selected_labels = sorted(label_counts)
+    else:
+        selected_labels = [label for label, _ in label_counts.most_common(args.top_classes)]
+    imagefolder_root = args.out_root / args.imagefolder_name
     linked = build_imagefolder_subset(
         imagefolder_root=imagefolder_root,
         image_root=args.image_root,
         annotations=single_label,
         selected_labels=set(selected_labels),
         max_per_class=args.max_per_class,
+        overwrite=args.overwrite,
     )
 
-    labels_path = args.out_root / "single_label_classes.csv"
+    labels_path = args.out_root / f"{args.imagefolder_name}_classes.csv"
     with labels_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["label", "single_label_images", "linked_images"])
@@ -182,7 +197,10 @@ def build_imagefolder_subset(
     annotations: list[Annotation],
     selected_labels: set[str],
     max_per_class: int,
+    overwrite: bool,
 ) -> Counter[str]:
+    if overwrite and imagefolder_root.exists():
+        shutil.rmtree(imagefolder_root)
     imagefolder_root.mkdir(parents=True, exist_ok=True)
     linked: Counter[str] = Counter()
 
@@ -190,7 +208,7 @@ def build_imagefolder_subset(
         label = annotation.boxes[0].label
         if label not in selected_labels:
             continue
-        if linked[label] >= max_per_class:
+        if max_per_class > 0 and linked[label] >= max_per_class:
             continue
 
         source = (image_root / f"{annotation.image_id}.JPEG").resolve()

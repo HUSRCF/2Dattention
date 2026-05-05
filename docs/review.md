@@ -1,5 +1,11 @@
 # Process Review and Evidence Boundary
 
+## Current Bottom Line
+
+The project has pivoted from a memory-first hypothesis to a local-state-first baseline. The strongest current result is `no_prefill_local_mix` on the larger all-single-label DET-derived ImageFolder run: final `0.249`, best `0.250`, about `442 img/s`. This is higher and faster than `xattnres_style`, `tiny_vit`, `anchor_no_prefill`, and `prefill_local_mix` in the same strict paired 1000-step setting.
+
+Current evidence does not support claiming that early spatial prefill, full prefill-lattice memory, or learned memory read is effective. The most defensible claim is narrower: lightweight online 2D local refinement is currently the strongest baseline; anchor/region memory remains an optional add-on to test against that baseline.
+
 ## What Has Been Implemented
 
 - A clean torch scaffold with `src/`, `scripts/`, `docs/`, and `tests/`.
@@ -237,6 +243,35 @@ Paired against `xattnres_style`:
 | `prefill_local_mix` | 0.004 | 0.034 | 2/5 | -0.006 | 0.023 | 1/5 |
 
 Interpretation: this strict paired run further weakens the full prefill-memory claim. `anchor_no_prefill` is the best final-accuracy mean in this set, but its advantage over `xattnres_style` is small, noisy, and disappears on best eval accuracy. Full `anchor_prefill_attnres` is essentially tied with `xattnres_style` on final accuracy and below it on best accuracy while being much slower. `prefill_local_mix` is close to the anchor variants and much faster, so local refinement explains a substantial part of the signal. The current evidence supports only a cautious claim: no-prefill anchor/local structures are worth studying, but spatial prefill and learned memory read are not established as the causal mechanism in this setting.
+
+## Larger Single-Label DET Run
+
+Dataset: `data/ILSVRC2013_DET_val_supervised/single_label_imagefolder_all`
+
+This ImageFolder uses all single-label ILSVRC2013 DET validation images available from the local annotations: 197 classes and 11,433 symlinked images.
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps. This uses stable model-name seed offsets and shared train-loader shuffle order per split.
+
+Output CSV: `results/imagefolder_all_197cls_1000step_3seeds_strict_paired.csv`
+
+| Model | Params | Final eval acc mean | Eval acc std | Best eval acc mean | Images/sec mean | Scaled read ratio mean |
+|---|---:|---:|---:|---:|---:|---:|
+| `no_prefill_local_mix` | 16,933 | 0.249 | 0.004 | 0.250 | 442.28 | n/a |
+| `anchor_no_prefill` | 25,735 | 0.246 | 0.006 | 0.246 | 182.74 | 0.01329 |
+| `tiny_vit` | 33,541 | 0.243 | 0.003 | 0.243 | 315.76 | n/a |
+| `xattnres_style` | 28,263 | 0.242 | 0.006 | 0.242 | 347.26 | 0.02023 |
+| `prefill_local_mix` | 26,085 | 0.239 | 0.002 | 0.239 | 443.25 | n/a |
+
+Paired against `xattnres_style`:
+
+| Model | Final delta mean | Final delta std | Final wins | Best delta mean | Best delta std | Best wins |
+|---|---:|---:|---:|---:|---:|---:|
+| `no_prefill_local_mix` | 0.008 | 0.006 | 2/3 | 0.009 | 0.005 | 3/3 |
+| `anchor_no_prefill` | 0.004 | 0.004 | 2/3 | 0.004 | 0.004 | 2/3 |
+| `tiny_vit` | 0.001 | 0.004 | 2/3 | 0.001 | 0.004 | 2/3 |
+| `prefill_local_mix` | -0.002 | 0.004 | 1/3 | -0.002 | 0.004 | 1/3 |
+
+Interpretation: the larger-data result shifts the current center of gravity again. `no_prefill_local_mix` is the best model in this setting and is also the fastest among the tested non-trivial models. `anchor_no_prefill` retains a small accuracy signal over `xattnres_style`, but it is much slower and is slightly below the no-prefill local-mix control. This weakens the argument that anchor interaction is currently the main causal factor. The strongest current conclusion is that removing early prefill and using a lightweight local refinement backbone is the most reliable direction under this DET-derived classification setup. Future anchor work should be treated as an optional add-on to this stronger local/no-prefill baseline, not the main claim.
 - Add at least one dense prediction or segmentation-style task.
 - Report negative results directly, not only successful toy runs.
 - Treat all current numbers as debugging evidence until tested on real images.

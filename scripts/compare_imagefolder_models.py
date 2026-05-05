@@ -42,10 +42,12 @@ MODEL_NAMES = (
     "tiny_vit",
     "multi_cls_vit",
     "xattnres_style",
+    "xattnres_no_prefill",
     "xattnres_equal_params",
     "prefill_local_mix",
     "no_prefill_local_mix",
     "anchor_read_only_no_lattice",
+    "anchor_only_no_prefill",
     "lattice_only_no_anchor",
     "prefill_lattice_attnres",
     "anchor_prefill_attnres",
@@ -59,16 +61,18 @@ MODEL_SEED_OFFSETS = {
     "tiny_vit": 10_000,
     "multi_cls_vit": 20_000,
     "xattnres_style": 30_000,
-    "xattnres_equal_params": 40_000,
-    "prefill_local_mix": 50_000,
-    "no_prefill_local_mix": 60_000,
-    "anchor_read_only_no_lattice": 70_000,
-    "lattice_only_no_anchor": 80_000,
-    "prefill_lattice_attnres": 90_000,
-    "anchor_prefill_attnres": 100_000,
-    "anchor_no_prefill": 110_000,
-    "anchor_fixed_gamma_0": 120_000,
-    "graph_prefill_attnres": 130_000,
+    "xattnres_no_prefill": 40_000,
+    "xattnres_equal_params": 50_000,
+    "prefill_local_mix": 60_000,
+    "no_prefill_local_mix": 70_000,
+    "anchor_read_only_no_lattice": 80_000,
+    "anchor_only_no_prefill": 90_000,
+    "lattice_only_no_anchor": 100_000,
+    "prefill_lattice_attnres": 110_000,
+    "anchor_prefill_attnres": 120_000,
+    "anchor_no_prefill": 130_000,
+    "anchor_fixed_gamma_0": 140_000,
+    "graph_prefill_attnres": 150_000,
 }
 
 
@@ -294,6 +298,10 @@ def build_model(
             embed_dim=embed_dim,
             num_classes=num_classes,
         ),
+        "xattnres_no_prefill": lambda: make_xattnres_no_prefill(
+            embed_dim=embed_dim,
+            num_classes=num_classes,
+        ),
         "xattnres_equal_params": lambda: TinyXAttnResClassifier(
             embed_dim=36,
             num_classes=num_classes,
@@ -307,6 +315,10 @@ def build_model(
             num_classes=num_classes,
         ),
         "anchor_read_only_no_lattice": lambda: TinyAnchorOnlyAttnResClassifier(
+            embed_dim=embed_dim,
+            num_classes=num_classes,
+        ),
+        "anchor_only_no_prefill": lambda: make_anchor_only_no_prefill(
             embed_dim=embed_dim,
             num_classes=num_classes,
         ),
@@ -354,8 +366,26 @@ def make_anchor_no_prefill(embed_dim: int, num_classes: int) -> nn.Module:
     return model
 
 
+def make_xattnres_no_prefill(embed_dim: int, num_classes: int) -> nn.Module:
+    model = TinyXAttnResClassifier(
+        embed_dim=embed_dim,
+        num_classes=num_classes,
+    )
+    model.prefill = IdentityPrefill()
+    return model
+
+
 def make_no_prefill_local_mix(embed_dim: int, num_classes: int) -> nn.Module:
     model = TinyPrefillLocalMixClassifier(
+        embed_dim=embed_dim,
+        num_classes=num_classes,
+    )
+    model.prefill = IdentityPrefill()
+    return model
+
+
+def make_anchor_only_no_prefill(embed_dim: int, num_classes: int) -> nn.Module:
+    model = TinyAnchorOnlyAttnResClassifier(
         embed_dim=embed_dim,
         num_classes=num_classes,
     )

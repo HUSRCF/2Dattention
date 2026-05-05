@@ -1,6 +1,24 @@
 # TODO: 2Dattention Research Roadmap
 
-## P0: Prefill-AttnRes Baseline
+## Current Pivot: Local-State-First
+
+The current strongest baseline is `no_prefill_local_mix`, not any prefill or memory-read variant. On the larger all-single-label DET-derived ImageFolder (`197` classes, `11,433` images), 1000-step strict paired MPS training gives `no_prefill_local_mix` the best final and best accuracy while also being the fastest non-trivial model.
+
+Working interpretation:
+
+- Early spatial prefill is not helping under the current classification setup.
+- Cross-stage memory read is not the main source of gains.
+- Lightweight online 2D local refinement is the most reliable signal so far.
+- Anchor/region ideas should now be treated as optional plugins on top of the stronger no-prefill local backbone.
+
+Immediate strong baselines:
+
+- `no_prefill_local_mix`: current Pareto reference.
+- `xattnres_style`: cross-stage residual-routing reference.
+- `tiny_vit`: sequence/ViT reference.
+- `anchor_no_prefill`: weak anchor-signal candidate, not the main baseline.
+
+## Historical P0: Prefill-AttnRes Baseline
 
 Goal: prove the smallest useful version of the idea.
 
@@ -87,11 +105,15 @@ Seeding correction: `scripts/compare_imagefolder_models.py` now uses stable mode
 
 Latest strict paired result: at 64px, 300 steps, 5 seeds, `anchor_no_prefill` is the best final-accuracy mean among the current controls at 0.117, but only by a small paired final delta over `xattnres_style` (+0.007) and it does not beat `xattnres_style` on best eval accuracy. Full `anchor_prefill_attnres` ties `xattnres_style` on final accuracy and is worse on best accuracy while much slower. `prefill_local_mix` remains close to the anchor variants and much faster. This means local refinement explains a substantial part of the signal; spatial prefill and learned memory read remain unproven.
 
+Larger-data update: on the all-single-label DET-derived ImageFolder (`197` classes, `11,433` images), 1000-step strict paired MPS training shows `no_prefill_local_mix` is currently strongest and fastest: final `0.249`, best `0.250`, about `442 img/s`. `anchor_no_prefill` reaches final/best `0.246` but runs at about `183 img/s`; `xattnres_style` reaches `0.242`; `tiny_vit` reaches `0.243`. This further downgrades the anchor-specific claim and makes lightweight no-prefill local refinement the strongest immediate baseline.
+
 Next priority:
 
-- Make `anchor_no_prefill` and `prefill_local_mix` the immediate controls for any future anchor-lite variant.
+- Make `no_prefill_local_mix`, `anchor_no_prefill`, and `xattnres_style` the immediate controls for any future anchor-lite or region-mixer variant.
 - Do not claim full `anchor_prefill_attnres` superiority under the current evidence.
-- Add anchor-lite variants based on `anchor_no_prefill`, not the full prefilled anchor model.
+- Add `xattnres_no_prefill` to test whether removing prefill improves XAttnRes-style too.
+- Add `anchor_only_no_prefill` to isolate the online axis-anchor path without lattice reads.
+- Treat anchor-lite as an optional add-on to the stronger no-prefill local backbone, not as the main claim.
 - Prefer longer/stronger runs only after the no-prefill/local-mix controls are clean.
 
 Why later: classification can hide spatial-routing weaknesses behind global pooling.
