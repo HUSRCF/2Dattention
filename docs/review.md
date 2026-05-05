@@ -425,3 +425,23 @@ Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seed
 Paired against `fpn_sum_lite`, `no_prefill_local_mix` and `xattnres_no_prefill` improve balanced accuracy by about `+0.020`, with `2/3` balanced wins and `3/3` macro-F1 wins. Paired against `no_prefill_local_mix`, no model clearly improves: `xattnres_no_prefill` ties balanced accuracy on average but wins only `1/3` seeds.
 
 Interpretation: balanced `grid9` is harder than `quadrant4` and gives only a weak spatial signal. `fpn_sum_lite` is no longer strongest; `no_prefill_local_mix` and `xattnres_no_prefill` are the best current references. However, balanced accuracy remains close to random (`0.136` vs `0.111`), and macro F1 is below `0.10` for all models. This is not enough to claim strong spatial understanding or to rescue memory/region routing. The useful next step is a continuous bbox-center regression or heatmap-style localization probe, where small improvements can be measured by center error rather than coarse cell accuracy.
+
+## BBox Center Regression Probe
+
+Task: predict the largest-object normalized bbox center `(x_c, y_c)` with a 2D regression head. Training uses SmoothL1 loss on sigmoid-constrained coordinates. Metrics include MAE, mean/median L2 error, PCK at `0.05/0.10/0.20`, and two baselines: always predicting image center `(0.5, 0.5)` and always predicting the eval split mean target.
+
+Output CSV: `results/bbox_center_regression_1000step_3seeds.csv`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps.
+
+| Model | Mean L2 | Median L2 | PCK@0.10 | PCK@0.20 | Best mean L2 | Mean-target baseline L2 | Images/sec |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `no_prefill_local_mix` | 0.1524 | 0.1309 | 0.377 | 0.717 | 0.1516 | 0.1518 | 301.55 |
+| `xattnres_no_prefill` | 0.1524 | 0.1305 | 0.377 | 0.716 | 0.1514 | 0.1518 | 257.37 |
+| `fpn_sum_lite` | 0.1524 | 0.1308 | 0.377 | 0.715 | 0.1519 | 0.1518 | 298.30 |
+| `region_pool_mixer_no_history` | 0.1527 | 0.1305 | 0.376 | 0.717 | 0.1514 | 0.1518 | 254.72 |
+| `stage_refresh_region_slots_2x2` | 0.1527 | 0.1310 | 0.376 | 0.717 | 0.1516 | 0.1518 | 242.01 |
+| `anchor_only_no_prefill` | 0.1528 | 0.1305 | 0.376 | 0.716 | 0.1518 | 0.1518 | 235.35 |
+| `tiny_vit` | 0.1528 | 0.1309 | 0.377 | 0.715 | 0.1514 | 0.1518 | 248.50 |
+
+Interpretation: this regression probe is also inconclusive as an architecture discriminator. All models are essentially tied and remain at or slightly worse than the eval split mean-target baseline (`0.1518`). The models can learn the dataset-level center prior, but this setup does not show meaningful image-conditioned localization. The negative result is useful: coarse cell classification and direct global-pooled center regression are both too weak to validate region/memory claims. The next localization probe should expose spatial outputs directly, such as a heatmap head or patch-level objective, instead of only regressing coordinates from a global pooled classifier head.

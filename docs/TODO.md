@@ -135,8 +135,10 @@ Next spatial P0:
 
 - Balanced `grid9` has been run. `no_prefill_local_mix` and `xattnres_no_prefill` are the best current references at balanced acc `0.136`; `fpn_sum_lite` drops to `0.116`.
 - The signal is still weak because the balanced random baseline is `0.111` and macro F1 stays below `0.10` for every model.
-- Add bbox center regression or heatmap-style localization next; coarse cell classification is not separating architectures strongly enough.
+- BBox center regression has been run. It also fails to separate architectures: all models sit around mean L2 `0.1524-0.1528`, while the eval split mean-target baseline is about `0.1518`.
 - Keep both `no_prefill_local_mix` and `xattnres_no_prefill` as spatial references for the next probe.
+- Do not spend more time on global-pooled coarse cell classification or global-pooled coordinate regression.
+- Next spatial task should expose a spatial output: heatmap localization, patch-level heatmap CE/MSE, or weak segmentation-style target.
 
 ## Historical P0: Prefill-AttnRes Baseline
 
