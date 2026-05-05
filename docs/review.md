@@ -333,15 +333,48 @@ local-state refinement first -> delayed/stage-wise memory build -> gated adaptiv
 Minimum controls needed before reviving memory as a claim:
 
 - `prefill_at_block_0`: current early prefill behavior.
-- `prefill_after_1_local_block`
-- `prefill_after_2_local_blocks`
-- `prefill_after_stage_end`
-- `refresh_every_stage`
-- `local_mix_fpn_control`: fixed stage fusion without content-adaptive reads.
-- `region_pool_no_history`: current region slots only, no cross-stage memory.
-- `region_slot_history`: delayed region slots with cross-stage adaptive read.
+- `delayed_xattnres_no_prefill`: local warmup before XAttnRes-style reads.
+- `stage_refresh_region_slots_2x2`: local warmup plus refreshed fixed-grid slots.
+- `fpn_sum_lite`: fixed sum fusion over block states.
+- `fpn_concat_lite`: fixed concat fusion over block states.
+- `region_pool_mixer_no_history`: current fixed-grid slots only, no cross-stage memory.
 
 The key comparison is not against `tiny_vit` alone. Any delayed-memory variant must first beat or improve the Pareto tradeoff against `no_prefill_local_mix`; otherwise the result is only a more complex local/FPN-like variant.
+
+Implementation status: these P0 controls have been added and passed a short 20-step MPS smoke on the 20-class ImageFolder subset. The smoke confirms the training paths and paired summaries work, but it is not evidence about architecture quality. The formal check should use the same 197-class, 1000-step, 3-seed strict paired protocol as the previous matrix.
+
+## Delayed / FPN / Region Control Matrix
+
+Dataset: `data/ILSVRC2013_DET_val_supervised/single_label_imagefolder_all`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps.
+
+Output CSV: `results/imagefolder_all_197cls_delayed_fpn_region_1000step_3seeds.csv`
+
+| Model | Params | Final eval acc mean | Eval acc std | Best eval acc mean | Images/sec mean | Scaled read ratio mean |
+|---|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 19,245 | 0.251 | 0.005 | 0.251 | 338.11 | 0.01944 |
+| `no_prefill_local_mix` | 16,933 | 0.250 | 0.006 | 0.250 | 462.28 | n/a |
+| `xattnres_no_prefill` | 19,111 | 0.249 | 0.010 | 0.249 | 377.28 | 0.01801 |
+| `delayed_xattnres_no_prefill` | 23,431 | 0.248 | 0.007 | 0.248 | 353.77 | 0.02769 |
+| `region_pool_mixer_no_history` | 25,511 | 0.246 | 0.008 | 0.247 | 370.83 | 0.01529 |
+| `stage_refresh_region_slots_2x2` | 29,831 | 0.245 | 0.005 | 0.245 | 360.39 | 0.01862 |
+| `fpn_sum_lite` | 20,101 | 0.244 | 0.004 | 0.244 | 447.40 | n/a |
+| `fpn_concat_lite` | 20,037 | 0.241 | 0.004 | 0.241 | 442.64 | n/a |
+
+Paired against `no_prefill_local_mix`:
+
+| Model | Final delta mean | Final delta std | Final wins | Best delta mean | Best delta std | Best wins |
+|---|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 0.002 | 0.001 | 2/3 | 0.002 | 0.001 | 2/3 |
+| `xattnres_no_prefill` | -0.001 | 0.006 | 1/3 | -0.001 | 0.005 | 1/3 |
+| `delayed_xattnres_no_prefill` | -0.002 | 0.003 | 1/3 | -0.002 | 0.003 | 1/3 |
+| `region_pool_mixer_no_history` | -0.004 | 0.003 | 0/3 | -0.003 | 0.003 | 0/3 |
+| `stage_refresh_region_slots_2x2` | -0.004 | 0.002 | 0/3 | -0.004 | 0.002 | 0/3 |
+| `fpn_sum_lite` | -0.006 | 0.002 | 0/3 | -0.006 | 0.002 | 0/3 |
+| `fpn_concat_lite` | -0.008 | 0.007 | 0/3 | -0.008 | 0.007 | 0/3 |
+
+Interpretation: this matrix strengthens the local-state-first conclusion. The fixed FPN-like controls underperform `no_prefill_local_mix`, so the current local-state baseline is not explained by simply fusing block states. The delayed XAttnRes variant increases memory-read contribution but does not improve accuracy over `xattnres_no_prefill` or `no_prefill_local_mix`. Fixed 2x2 region pooling and stage-refresh slots also do not beat local mix, so grid-region memory is not a useful next mainline in this classification setting. `anchor_only_no_prefill` remains the best plugin candidate, but its margin over `no_prefill_local_mix` is tiny and comes with a clear speed cost.
 
 ## General Evidence Hygiene
 

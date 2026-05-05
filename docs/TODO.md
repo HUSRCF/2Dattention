@@ -53,15 +53,51 @@ Current result:
 
 Delayed-memory experiments should come after this control matrix:
 
-- `prefill_after_1_local_block`
-- `prefill_after_2_local_blocks`
-- `prefill_after_stage_end`
-- `refresh_every_stage`
-- `region_pool_no_history`
-- `region_slot_history`
-- `local_mix_fpn_control`
+- `delayed_xattnres_no_prefill`: implemented, smoke-tested; local warmup before XAttnRes-style reads.
+- `stage_refresh_region_slots_2x2`: implemented, smoke-tested; local warmup plus refreshed fixed-grid slots.
+- `region_pool_mixer_no_history`: implemented, smoke-tested; current-state fixed-grid slots without cross-stage history.
+- `fpn_sum_lite`: implemented, smoke-tested; fixed state fusion control.
+- `fpn_concat_lite`: implemented, smoke-tested; fixed concat fusion control.
 
 The FPN/ViTDet boundary is important: fixed stage fusion or fixed pyramid read is a control, not the claim. A new claim requires delayed or refreshed region memory plus content-adaptive read/write whose contribution is measured against `no_prefill_local_mix`.
+
+Next formal matrix:
+
+- `no_prefill_local_mix`
+- `anchor_only_no_prefill`
+- `xattnres_no_prefill`
+- `delayed_xattnres_no_prefill`
+- `fpn_sum_lite`
+- `fpn_concat_lite`
+- `region_pool_mixer_no_history`
+- `stage_refresh_region_slots_2x2`
+
+Use the same 197-class, 1000-step, 3-seed strict paired setting with `no_prefill_local_mix` and `anchor_only_no_prefill` as paired references.
+
+Formal result:
+
+- `anchor_only_no_prefill`: final/best `0.251/0.251`, about `338 img/s`.
+- `no_prefill_local_mix`: final/best `0.250/0.250`, about `462 img/s`.
+- `xattnres_no_prefill`: final/best `0.249/0.249`, about `377 img/s`.
+- `delayed_xattnres_no_prefill`: final/best `0.248/0.248`, about `354 img/s`.
+- `region_pool_mixer_no_history`: final/best `0.246/0.247`, about `371 img/s`.
+- `stage_refresh_region_slots_2x2`: final/best `0.245/0.245`, about `360 img/s`.
+- `fpn_sum_lite`: final/best `0.244/0.244`, about `447 img/s`.
+- `fpn_concat_lite`: final/best `0.241/0.241`, about `443 img/s`.
+
+Current decisions:
+
+- Keep `no_prefill_local_mix` as the main Pareto baseline.
+- Keep `anchor_only_no_prefill` as the strongest plugin candidate.
+- Keep `xattnres_no_prefill` as a strong reference, but not the mainline.
+- Do not promote delayed XAttnRes, fixed 2x2 region pooling, or stage-refresh grid slots under this classification evidence.
+- FPN-like fixed fusion does not explain the local-mix result, because both `fpn_sum_lite` and `fpn_concat_lite` underperform `no_prefill_local_mix`.
+
+Next useful work:
+
+- Add equal-depth/equal-parameter local-mix controls before testing larger delayed or slot models.
+- Test a spatially sensitive task: bbox quadrant, object size bin, weak localization heatmap, or small segmentation.
+- If staying on classification, optimize `anchor_only_no_prefill` for speed with read-every-2 or cheaper anchor projection.
 
 ## Historical P0: Prefill-AttnRes Baseline
 

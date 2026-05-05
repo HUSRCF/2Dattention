@@ -17,9 +17,13 @@ from .modules import (
 from .model import (
     TinyAnchorOnlyAttnResClassifier,
     TinyAnchorPrefillLatticeAttnRes,
+    TinyDelayedXAttnResClassifier,
+    TinyFPNLiteClassifier,
     TinyGraphPrefillLatticeAttnRes,
     TinyPrefillLocalMixClassifier,
     TinyPrefillLatticeAttnRes,
+    TinyRegionPoolMixerClassifier,
+    TinyStageRefreshRegionSlotsClassifier,
     TinyXAttnResClassifier,
 )
 from .device import get_best_device
@@ -45,9 +49,13 @@ __all__ = [
     "SpatialPrefill2D",
     "TinyAnchorOnlyAttnResClassifier",
     "TinyAnchorPrefillLatticeAttnRes",
+    "TinyDelayedXAttnResClassifier",
+    "TinyFPNLiteClassifier",
     "TinyGraphPrefillLatticeAttnRes",
     "TinyPrefillLocalMixClassifier",
     "TinyPrefillLatticeAttnRes",
+    "TinyRegionPoolMixerClassifier",
+    "TinyStageRefreshRegionSlotsClassifier",
     "TinyViTClassifier",
     "TinyXAttnResClassifier",
 ]
