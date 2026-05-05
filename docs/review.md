@@ -404,3 +404,24 @@ Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seed
 Paired against `no_prefill_local_mix`, `fpn_sum_lite` improves balanced accuracy by about `+0.006` and wins `3/3` seeds. Region-pool and stage-refresh slot variants do not improve over local mix. This means balanced `quadrant4` does provide a weak spatial signal above random, but the signal favors fixed fusion rather than memory/region routing. The current result does not rescue memory-first or region-slot claims; it instead suggests that this coarse quadrant task may reward simple multi-state fusion and low-level layout bias.
 
 Next spatial probes should be stronger than quadrant classification: balanced `grid9`, bbox center regression, object size bin, or a weak localization heatmap. Any positive region/memory claim should require improvement in balanced accuracy or center-error metrics over both `no_prefill_local_mix` and `fpn_sum_lite`.
+
+## Balanced BBox Grid9 Probe
+
+Task: predict the normalized bbox center cell in a 3x3 grid (`grid9`). The raw label distribution is extremely center-biased: center cell has `12054 / 18680 = 0.645` of all examples, so balanced train sampling and balanced eval are required. Balanced random baseline is `1/9 = 0.111`.
+
+Output CSV: `results/bbox_probe_grid9_balanced_1000step_3seeds.csv`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps.
+
+| Model | Balanced acc mean | Macro F1 mean | Best eval acc mean | Corner recall | Edge recall | Center recall | Images/sec mean |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `no_prefill_local_mix` | 0.136 | 0.093 | 0.141 | 0.158 | 0.122 | 0.099 | 523.47 |
+| `xattnres_no_prefill` | 0.136 | 0.090 | 0.155 | 0.105 | 0.143 | 0.229 | 377.44 |
+| `region_pool_mixer_no_history` | 0.129 | 0.085 | 0.155 | 0.142 | 0.136 | 0.050 | 407.58 |
+| `anchor_only_no_prefill` | 0.126 | 0.091 | 0.140 | 0.144 | 0.115 | 0.100 | 333.71 |
+| `stage_refresh_region_slots_2x2` | 0.124 | 0.081 | 0.142 | 0.130 | 0.103 | 0.180 | 433.52 |
+| `fpn_sum_lite` | 0.116 | 0.063 | 0.133 | 0.140 | 0.099 | 0.083 | 550.93 |
+
+Paired against `fpn_sum_lite`, `no_prefill_local_mix` and `xattnres_no_prefill` improve balanced accuracy by about `+0.020`, with `2/3` balanced wins and `3/3` macro-F1 wins. Paired against `no_prefill_local_mix`, no model clearly improves: `xattnres_no_prefill` ties balanced accuracy on average but wins only `1/3` seeds.
+
+Interpretation: balanced `grid9` is harder than `quadrant4` and gives only a weak spatial signal. `fpn_sum_lite` is no longer strongest; `no_prefill_local_mix` and `xattnres_no_prefill` are the best current references. However, balanced accuracy remains close to random (`0.136` vs `0.111`), and macro F1 is below `0.10` for all models. This is not enough to claim strong spatial understanding or to rescue memory/region routing. The useful next step is a continuous bbox-center regression or heatmap-style localization probe, where small improvements can be measured by center error rather than coarse cell accuracy.

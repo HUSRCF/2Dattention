@@ -78,6 +78,10 @@ class ProbeResultRow:
     state_norm_mean: float
     scaled_read_ratio_mean: float
     per_class_recall_json: str
+    per_class_precision_json: str
+    corner_recall: float
+    edge_recall: float
+    center_recall: float
     confusion_json: str
     block_stats_json: str
 
@@ -253,6 +257,10 @@ def main() -> None:
                 state_norm_mean=mechanism_stats["state_norm_mean"],
                 scaled_read_ratio_mean=mechanism_stats["scaled_read_ratio_mean"],
                 per_class_recall_json=eval_metrics["per_class_recall_json"],
+                per_class_precision_json=eval_metrics["per_class_precision_json"],
+                corner_recall=eval_metrics["corner_recall"],
+                edge_recall=eval_metrics["edge_recall"],
+                center_recall=eval_metrics["center_recall"],
                 confusion_json=eval_metrics["confusion_json"],
                 block_stats_json=mechanism_stats["block_stats_json"],
             )
@@ -438,6 +446,10 @@ def evaluate_probe(
         "balanced_acc": balanced_acc,
         "macro_f1": macro_f1,
         "per_class_recall_json": json_dumps_float_list(recall.tolist()),
+        "per_class_precision_json": json_dumps_float_list(precision.tolist()),
+        "corner_recall": group_recall(recall, [0, 2, 6, 8], num_classes),
+        "edge_recall": group_recall(recall, [1, 3, 5, 7], num_classes),
+        "center_recall": group_recall(recall, [4], num_classes),
         "confusion_json": str(confusion.tolist()).replace(" ", ""),
     }
 
@@ -465,6 +477,7 @@ def print_probe_summary(rows: list[ProbeResultRow]) -> None:
     print(
         "summary_model,params_mean,raw_acc_mean,raw_acc_std,"
         "balanced_acc_mean,macro_f1_mean,best_eval_acc_mean,"
+        "corner_recall_mean,edge_recall_mean,center_recall_mean,"
         "majority_baseline_mean,images_per_sec_mean,gate_mean,scaled_read_ratio_mean"
     )
     for model in models:
@@ -473,6 +486,9 @@ def print_probe_summary(rows: list[ProbeResultRow]) -> None:
         balanced_accs = [row.balanced_acc for row in model_rows]
         macro_f1s = [row.macro_f1 for row in model_rows]
         best_accs = [row.best_eval_acc for row in model_rows]
+        corner_recalls = [row.corner_recall for row in model_rows if not torch.isnan(torch.tensor(row.corner_recall))]
+        edge_recalls = [row.edge_recall for row in model_rows if not torch.isnan(torch.tensor(row.edge_recall))]
+        center_recalls = [row.center_recall for row in model_rows if not torch.isnan(torch.tensor(row.center_recall))]
         params = [row.params for row in model_rows]
         majorities = [row.majority_baseline for row in model_rows]
         speeds = [row.images_per_sec for row in model_rows]
@@ -488,7 +504,9 @@ def print_probe_summary(rows: list[ProbeResultRow]) -> None:
             f"{model},{sum(params) / len(params):.0f},"
             f"{mean(raw_accs):.3f},{pstdev(raw_accs):.3f},"
             f"{mean(balanced_accs):.3f},{mean(macro_f1s):.3f},"
-            f"{mean(best_accs):.3f},{mean(majorities):.3f},"
+            f"{mean(best_accs):.3f},"
+            f"{mean_or_nan(corner_recalls):.3f},{mean_or_nan(edge_recalls):.3f},"
+            f"{mean_or_nan(center_recalls):.3f},{mean(majorities):.3f},"
             f"{mean(speeds):.2f},{gate_mean:.5f},{ratio_mean:.5f}"
         )
 
@@ -559,6 +577,13 @@ def pstdev_or_zero(values: list[float]) -> float:
 
 def wins(values: list[float]) -> str:
     return f"{sum(value > 0 for value in values)}/{len(values)}"
+
+
+def group_recall(recall: Tensor, indices: list[int], num_classes: int) -> float:
+    valid = [index for index in indices if index < num_classes]
+    if not valid:
+        return float("nan")
+    return float(recall[valid].mean().item())
 
 
 def json_dumps_float_list(values: list[float]) -> str:

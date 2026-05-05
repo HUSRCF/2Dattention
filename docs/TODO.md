@@ -133,9 +133,10 @@ Interpretation:
 
 Next spatial P0:
 
-- Run balanced `grid9` with `no_prefill_local_mix`, `fpn_sum_lite`, `anchor_only_no_prefill`, `xattnres_no_prefill`, and `stage_refresh_region_slots_2x2`.
-- Add bbox center regression if grid9 remains near chance.
-- Keep `fpn_sum_lite` as an active spatial-probe reference.
+- Balanced `grid9` has been run. `no_prefill_local_mix` and `xattnres_no_prefill` are the best current references at balanced acc `0.136`; `fpn_sum_lite` drops to `0.116`.
+- The signal is still weak because the balanced random baseline is `0.111` and macro F1 stays below `0.10` for every model.
+- Add bbox center regression or heatmap-style localization next; coarse cell classification is not separating architectures strongly enough.
+- Keep both `no_prefill_local_mix` and `xattnres_no_prefill` as spatial references for the next probe.
 
 ## Historical P0: Prefill-AttnRes Baseline
 
