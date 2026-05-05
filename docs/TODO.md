@@ -1,0 +1,97 @@
+# TODO: 2Dattention Research Roadmap
+
+## P0: Prefill-AttnRes Baseline
+
+Goal: prove the smallest useful version of the idea.
+
+- Keep image features as `[B, C, H, W]` throughout the model.
+- Use `SpatialPrefill2D` to build a complete 2D memory list before read blocks.
+- Use `LatticeMemoryRead` to route over `memory depth x 2D offsets`.
+- Confirm routing weights are normalized per spatial location.
+- Use `scripts/run_toy_task.py` as the first tiny synthetic training task.
+- Use `scripts/compare_toy_models.py` to compare against conv-only and flattened Transformer baselines.
+- Use `--seeds N` and the generated `results/toy_compare.csv` for less noisy comparisons.
+
+Why first: this directly tests the central hypothesis with minimal machinery.
+
+Current toy tasks:
+
+- `oriented_pair`: classify whether the green marker is right of or below the red marker. This is the default early smoke task.
+- `aligned_pair`: classify whether two markers share the same row or column. This is harder and should be used after the local offset task is stable.
+- `distractor_aligned_pair`: same target row/column relation with blue/gray distractors. This is the current hard synthetic stress test.
+
+Current short-run observations:
+
+- On `oriented_pair` with 40 CPU steps, `conv_only` and `prefill_lattice_attnres` solve the task, while the small flattened Transformer baseline lags.
+- On `aligned_pair` with 100 CPU steps and 3 seeds, `conv_only` and `prefill_lattice_attnres` are both around 0.62 eval accuracy, while the small flattened Transformer is near chance. This is a useful harder task, but not yet evidence of a clear advantage.
+
+Current comparison set includes `conv_only`, `seq_transformer`, `tiny_vit`, `xattnres_style`, `prefill_lattice_attnres`, `anchor_prefill_attnres`, and `graph_prefill_attnres`.
+
+Latest smoke observation: on `aligned_pair` with 60 CPU steps and 2 seeds, `anchor_prefill_attnres` is above the ViT/XAttnRes-style baselines but still comparable to `conv_only`. Treat this as direction-finding only.
+
+Latest hard-task smoke observation: on `distractor_aligned_pair` with 80 CPU steps and 2 seeds, `conv_only` is strongest at about 0.65 eval accuracy; proposed variants and XAttnRes-style are around 0.54-0.56; ViT/sequence baselines stay near chance. This is a negative result for the current graph/anchor implementation and should prevent overclaiming.
+
+Next implementation priority: add true-image support through a local `ImageFolder` runner or a small dataset supplied by the user. Do not make broad claims from synthetic tasks alone.
+
+## P1: Graph-Augmented Memory
+
+Goal: let each patch read semantic neighbors, not only fixed lattice offsets.
+
+- Add optional kNN edges from prefilled feature similarity.
+- Compare fixed lattice offsets against lattice plus semantic graph neighbors.
+- Keep local grid edges as the default to avoid losing image priors.
+- Watch for oversmoothing by tracking feature diversity across blocks.
+
+Why second: Vision GNN suggests graph topology is useful for irregular objects, but dynamic graph construction adds cost and implementation complexity.
+
+## P2: V2M / 2D-SSM Prefill
+
+Goal: replace the current convolutional prefill with a more principled 2D state update.
+
+- Prototype four-corner or synchronous 2D state updates.
+- Compare against bidirectional and four-direction scan baselines.
+- Keep AttnRes-style memory read unchanged so the prefill mechanism is isolated.
+
+Why third: V2M is closest to true 2D state modeling, but a faithful implementation is heavier than the current v1 demo.
+
+## P3: Real Task Evaluation
+
+Goal: move beyond shape validation.
+
+- Start with small dense-prediction tasks, not ImageNet classification.
+- Candidate tasks: synthetic segmentation, boundary detection, toy depth/order prediction.
+- Track boundary quality, small-object behavior, and routing visualizations.
+- Only consider ImageNet after the toy and dense-prediction checks show a real signal.
+
+Current MPS smoke result on the DET-derived 20-class ImageFolder subset: at 64px and 300 steps, `anchor_prefill_attnres` is the best of the 6-model short run, while `graph_prefill_attnres` does not help. Repeat with more seeds and a stronger train/eval protocol before making any claim.
+
+Implementation note: memory-read residuals now use a small learnable gate initialized to `1e-3`.
+
+Gated 5-seed MPS core result initially suggested `anchor_prefill_attnres` was highest. A stricter paired anchor-vs-XAttnRes mechanism check shows anchor is not yet a stable win: final delta vs `xattnres_style` is about -0.002, with anchor winning 3/5 seeds but running about 2.4x slower. Treat anchor as a promising branch, not a confirmed advantage.
+
+Next priority: anchor ablations against XAttnRes-style and CLS/global-token baselines. Do not claim anchor-prefill superiority until paired deltas are positive and stable.
+
+Current anchor ablation note: a 3-seed, 300-step MPS run shows `multi_cls_vit` is much weaker than the anchor variants, so the anchor signal is not simply explained by adding multiple global Transformer tokens. However, `anchor_no_prefill` slightly outperforms full `anchor_prefill_attnres`, and `anchor_fixed_gamma_0` remains competitive. This means the current evidence does not prove that spatial prefill or learned memory read is the causal source of the gain.
+
+Immediate next ablations:
+
+- Treat `anchor_no_prefill` as the current best P0 branch, not full `anchor_prefill_attnres`.
+- Use the implemented `prefill_local_mix` baseline as a strong local-backbone control; it is close to full anchor while much faster.
+- Treat `anchor_read_only_no_lattice` and `lattice_only_no_anchor` as negative/weak source-isolation results under the current 300-step setting.
+- Log step-wise mechanism stats at eval checkpoints, not only final block stats.
+- Use `python -u` or flushed prints for long MPS experiments so runs are observable.
+
+Historical P0 source ablation: an older non-strict run at 64px, 300 steps, 5 seeds had `anchor_no_prefill` at 0.135 mean eval acc and full `anchor_prefill_attnres` at 0.123. This should now be treated as provisional only because it predates the stable model-name seed offsets and shared train-loader shuffle order.
+
+Seeding correction: `scripts/compare_imagefolder_models.py` now uses stable model-name-based seed offsets and shared train-loader shuffle order per split. Older comparison runs used model-list position to choose the initialization seed, and did not strictly pair training minibatch order, so treat older cross-run comparisons as provisional.
+
+Latest strict paired result: at 64px, 300 steps, 5 seeds, `anchor_no_prefill` is the best final-accuracy mean among the current controls at 0.117, but only by a small paired final delta over `xattnres_style` (+0.007) and it does not beat `xattnres_style` on best eval accuracy. Full `anchor_prefill_attnres` ties `xattnres_style` on final accuracy and is worse on best accuracy while much slower. `prefill_local_mix` remains close to the anchor variants and much faster. This means local refinement explains a substantial part of the signal; spatial prefill and learned memory read remain unproven.
+
+Next priority:
+
+- Make `anchor_no_prefill` and `prefill_local_mix` the immediate controls for any future anchor-lite variant.
+- Do not claim full `anchor_prefill_attnres` superiority under the current evidence.
+- Add anchor-lite variants based on `anchor_no_prefill`, not the full prefilled anchor model.
+- Prefer longer/stronger runs only after the no-prefill/local-mix controls are clean.
+
+Why later: classification can hide spatial-routing weaknesses behind global pooling.

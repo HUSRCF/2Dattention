@@ -1,0 +1,317 @@
+"""Core building blocks for the 2D prefill + lattice AttnRes demo."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable, Sequence
+
+import torch
+from torch import Tensor, nn
+import torch.nn.functional as F
+
+
+@dataclass(frozen=True)
+class Offset2D:
+    """A 2D memory displacement in patch-grid coordinates."""
+
+    dy: int
+    dx: int
+
+
+def default_offsets(include_dilated: bool = True) -> tuple[Offset2D, ...]:
+    """Return a compact 2D support set for lattice memory reads."""
+
+    local = [Offset2D(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    if not include_dilated:
+        return tuple(local)
+    dilated = [
+        Offset2D(-2, -2),
+        Offset2D(-2, 2),
+        Offset2D(2, -2),
+        Offset2D(2, 2),
+    ]
+    return tuple(local + dilated)
+
+
+def shift_2d(x: Tensor, offset: Offset2D) -> Tensor:
+    """Shift without wraparound so each location reads a displaced 2D neighbor."""
+
+    if x.ndim != 4:
+        raise ValueError(f"expected [B, C, H, W], got shape {tuple(x.shape)}")
+
+    dy, dx = offset.dy, offset.dx
+    if dy == 0 and dx == 0:
+        return x
+
+    batch, channels, height, width = x.shape
+    out = x.new_zeros(batch, channels, height, width)
+
+    src_y0 = max(0, dy)
+    src_y1 = height + min(0, dy)
+    src_x0 = max(0, dx)
+    src_x1 = width + min(0, dx)
+
+    dst_y0 = max(0, -dy)
+    dst_y1 = height - max(0, dy)
+    dst_x0 = max(0, -dx)
+    dst_x1 = width - max(0, dx)
+
+    out[:, :, dst_y0:dst_y1, dst_x0:dst_x1] = x[
+        :, :, src_y0:src_y1, src_x0:src_x1
+    ]
+    return out
+
+
+class PatchEmbed2D(nn.Module):
+    """Patchify an image while preserving a 2D feature lattice."""
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        embed_dim: int = 48,
+        patch_size: int = 4,
+    ) -> None:
+        super().__init__()
+        self.proj = nn.Conv2d(
+            in_channels,
+            embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
+        )
+        self.norm = nn.GroupNorm(1, embed_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.norm(self.proj(x))
+
+
+class Coordinate2DEncoding(nn.Module):
+    """Project normalized 2D coordinates into the feature lattice."""
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.proj = nn.Conv2d(2, dim, kernel_size=1)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if x.ndim != 4:
+            raise ValueError(f"expected [B, C, H, W], got shape {tuple(x.shape)}")
+        batch, _, height, width = x.shape
+        ys = torch.linspace(-1.0, 1.0, height, device=x.device, dtype=x.dtype)
+        xs = torch.linspace(-1.0, 1.0, width, device=x.device, dtype=x.dtype)
+        yy, xx = torch.meshgrid(ys, xs, indexing="ij")
+        coords = torch.stack((yy, xx), dim=0).expand(batch, -1, -1, -1)
+        return x + self.proj(coords)
+
+
+class Local2DUpdate(nn.Module):
+    """Lightweight local message-passing block used during prefill."""
+
+    def __init__(self, dim: int, expansion: int = 2) -> None:
+        super().__init__()
+        hidden_dim = dim * expansion
+        self.norm = nn.GroupNorm(1, dim)
+        self.depthwise = nn.Conv2d(dim, dim, kernel_size=3, padding=1, groups=dim)
+        self.pointwise = nn.Sequential(
+            nn.Conv2d(dim, hidden_dim, kernel_size=1),
+            nn.GELU(),
+            nn.Conv2d(hidden_dim, dim, kernel_size=1),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        y = self.depthwise(self.norm(x))
+        y = self.pointwise(y)
+        return x + y
+
+
+class SpatialPrefill2D(nn.Module):
+    """Build a full-image 2D memory list before later selective reads."""
+
+    def __init__(self, dim: int, rounds: int = 2) -> None:
+        super().__init__()
+        if rounds < 1:
+            raise ValueError("rounds must be >= 1")
+        self.rounds = rounds
+        self.updates = nn.ModuleList(Local2DUpdate(dim) for _ in range(rounds))
+
+    def forward(self, x: Tensor) -> list[Tensor]:
+        memories = [x]
+        state = x
+        for update in self.updates:
+            state = update(state)
+            memories.append(state)
+        return memories
+
+
+class LatticeMemoryRead(nn.Module):
+    """AttnRes-style read over previous 2D memories and spatial offsets."""
+
+    def __init__(
+        self,
+        dim: int,
+        offsets: Iterable[Offset2D] | None = None,
+    ) -> None:
+        super().__init__()
+        self.dim = dim
+        self.offsets = tuple(offsets or default_offsets())
+        if not self.offsets:
+            raise ValueError("at least one offset is required")
+
+        self.key_norm = nn.GroupNorm(1, dim)
+        self.query = nn.Parameter(torch.zeros(dim))
+        self.offset_bias = nn.Parameter(torch.zeros(len(self.offsets)))
+        self.value_proj = nn.Conv2d(dim, dim, kernel_size=1)
+
+    def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor]:
+        if not memories:
+            raise ValueError("memories must contain at least one feature map")
+
+        reference_shape = memories[0].shape
+        if len(reference_shape) != 4:
+            raise ValueError("memory tensors must have shape [B, C, H, W]")
+        for idx, memory in enumerate(memories):
+            if memory.shape != reference_shape:
+                raise ValueError(
+                    "all memory tensors must share shape "
+                    f"{tuple(reference_shape)}, got {tuple(memory.shape)} at {idx}"
+                )
+
+        candidates: list[Tensor] = []
+        logits: list[Tensor] = []
+        query = self.query.view(1, self.dim, 1, 1)
+
+        for memory in memories:
+            for offset_idx, offset in enumerate(self.offsets):
+                shifted = shift_2d(memory, offset)
+                key = self.key_norm(shifted)
+                logit = (key * query).sum(dim=1)
+                logit = logit + self.offset_bias[offset_idx]
+                candidates.append(shifted)
+                logits.append(logit)
+
+        candidate_tensor = torch.stack(candidates, dim=1)
+        logit_tensor = torch.stack(logits, dim=1)
+        routing = F.softmax(logit_tensor, dim=1)
+        fused = (candidate_tensor * routing.unsqueeze(2)).sum(dim=1)
+        return self.value_proj(fused), routing
+
+
+class AxisAnchorMemoryRead(nn.Module):
+    """Read row, column, and global anchor summaries from the memory pool."""
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.dim = dim
+        self.key_norm = nn.GroupNorm(1, dim)
+        self.query = nn.Parameter(torch.zeros(dim))
+        self.source_bias = nn.Parameter(torch.zeros(3))
+        self.value_proj = nn.Conv2d(dim, dim, kernel_size=1)
+
+    def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor]:
+        if not memories:
+            raise ValueError("memories must contain at least one feature map")
+
+        reference_shape = memories[0].shape
+        if len(reference_shape) != 4:
+            raise ValueError("memory tensors must have shape [B, C, H, W]")
+        for idx, memory in enumerate(memories):
+            if memory.shape != reference_shape:
+                raise ValueError(
+                    "all memory tensors must share shape "
+                    f"{tuple(reference_shape)}, got {tuple(memory.shape)} at {idx}"
+                )
+
+        _, _, height, width = reference_shape
+        candidates: list[Tensor] = []
+        logits: list[Tensor] = []
+        query = self.query.view(1, self.dim, 1, 1)
+
+        for memory in memories:
+            row_anchor = memory.mean(dim=3, keepdim=True).expand(-1, -1, -1, width)
+            col_anchor = memory.mean(dim=2, keepdim=True).expand(-1, -1, height, -1)
+            global_anchor = memory.mean(dim=(2, 3), keepdim=True).expand(
+                -1,
+                -1,
+                height,
+                width,
+            )
+
+            for source_idx, candidate in enumerate(
+                (row_anchor, col_anchor, global_anchor)
+            ):
+                key = self.key_norm(candidate)
+                logit = (key * query).sum(dim=1)
+                logit = logit + self.source_bias[source_idx]
+                candidates.append(candidate)
+                logits.append(logit)
+
+        candidate_tensor = torch.stack(candidates, dim=1)
+        logit_tensor = torch.stack(logits, dim=1)
+        routing = F.softmax(logit_tensor, dim=1)
+        fused = (candidate_tensor * routing.unsqueeze(2)).sum(dim=1)
+        return self.value_proj(fused), routing
+
+
+class SemanticGraphMemoryRead(nn.Module):
+    """Read feature-similar nonlocal neighbors through a dense top-k graph."""
+
+    def __init__(self, dim: int, k: int = 4) -> None:
+        super().__init__()
+        if k < 1:
+            raise ValueError("k must be >= 1")
+        self.dim = dim
+        self.k = k
+        self.key_norm = nn.GroupNorm(1, dim)
+        self.query = nn.Parameter(torch.zeros(dim))
+        self.value_proj = nn.Conv2d(dim, dim, kernel_size=1)
+
+    def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor]:
+        if not memories:
+            raise ValueError("memories must contain at least one feature map")
+
+        reference_shape = memories[0].shape
+        if len(reference_shape) != 4:
+            raise ValueError("memory tensors must have shape [B, C, H, W]")
+        for idx, memory in enumerate(memories):
+            if memory.shape != reference_shape:
+                raise ValueError(
+                    "all memory tensors must share shape "
+                    f"{tuple(reference_shape)}, got {tuple(memory.shape)} at {idx}"
+                )
+
+        batch, channels, height, width = reference_shape
+        num_nodes = height * width
+        k = min(self.k, max(1, num_nodes - 1))
+        candidates: list[Tensor] = []
+        logits: list[Tensor] = []
+        query = self.query.view(1, channels, 1, 1)
+
+        for memory in memories:
+            normalized = self.key_norm(memory).flatten(2).transpose(1, 2)
+            normalized = F.normalize(normalized, dim=-1)
+            values = memory.flatten(2).transpose(1, 2)
+
+            similarity = normalized @ normalized.transpose(1, 2)
+            eye = torch.eye(num_nodes, device=memory.device, dtype=torch.bool)
+            similarity = similarity.masked_fill(eye.unsqueeze(0), -torch.inf)
+            top_values, top_indices = similarity.topk(k=k, dim=-1)
+
+            gather_indices = top_indices.unsqueeze(-1).expand(-1, -1, -1, channels)
+            expanded_values = values.unsqueeze(1).expand(-1, num_nodes, -1, -1)
+            neighbors = torch.gather(expanded_values, dim=2, index=gather_indices)
+            neighbor_weights = F.softmax(top_values, dim=-1).unsqueeze(-1)
+            graph_feature = (neighbors * neighbor_weights).sum(dim=2)
+            graph_feature = graph_feature.transpose(1, 2).reshape(
+                batch,
+                channels,
+                height,
+                width,
+            )
+
+            key = self.key_norm(graph_feature)
+            logits.append((key * query).sum(dim=1))
+            candidates.append(graph_feature)
+
+        candidate_tensor = torch.stack(candidates, dim=1)
+        logit_tensor = torch.stack(logits, dim=1)
+        routing = F.softmax(logit_tensor, dim=1)
+        fused = (candidate_tensor * routing.unsqueeze(2)).sum(dim=1)
+        return self.value_proj(fused), routing
