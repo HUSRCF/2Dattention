@@ -2,9 +2,13 @@
 
 ## Current Bottom Line
 
-The project has pivoted from a memory-first hypothesis to a local-state-first baseline. The strongest current result is `no_prefill_local_mix` on the larger all-single-label DET-derived ImageFolder run: final `0.249`, best `0.250`, about `442 img/s`. This is higher and faster than `xattnres_style`, `tiny_vit`, `anchor_no_prefill`, and `prefill_local_mix` in the same strict paired 1000-step setting.
+The project has pivoted from a memory-first hypothesis to a local-state-first baseline. The strongest current Pareto result is `no_prefill_local_mix` on the larger all-single-label DET-derived ImageFolder run: final `0.250`, best `0.250`, about `470 img/s`. `anchor_only_no_prefill` is the highest-accuracy current variant by a very small margin: final/best `0.251`, about `341 img/s`. The difference is too small to move the main claim away from local-state-first, but it makes anchor-only interaction the best plugin candidate.
 
 Current evidence does not support claiming that early spatial prefill, full prefill-lattice memory, or learned memory read is effective. The most defensible claim is narrower: lightweight online 2D local refinement is currently the strongest baseline; anchor/region memory remains an optional add-on to test against that baseline.
+
+This should not be overread as evidence that visual memory is useless. A more precise diagnosis is that memory built from very early features is likely too shallow, stale, or distribution-mismatched for later queries. The next memory hypothesis is therefore delayed and stage-wise: first refine the 2D state locally, then build or refresh region memory from denser features, and only then use gated content-adaptive reads.
+
+The boundary with FPN/ViTDet-style designs must stay explicit. If a future model only performs fixed local refinement plus fixed multi-scale fusion, it is an FPN-like or local-ViT-like baseline. The distinct research claim requires state persistence, delayed or refreshed region memory, and content-adaptive read/write paths whose contribution can be measured.
 
 ## What Has Been Implemented
 
@@ -272,6 +276,75 @@ Paired against `xattnres_style`:
 | `prefill_local_mix` | -0.002 | 0.004 | 1/3 | -0.002 | 0.004 | 1/3 |
 
 Interpretation: the larger-data result shifts the current center of gravity again. `no_prefill_local_mix` is the best model in this setting and is also the fastest among the tested non-trivial models. `anchor_no_prefill` retains a small accuracy signal over `xattnres_style`, but it is much slower and is slightly below the no-prefill local-mix control. This weakens the argument that anchor interaction is currently the main causal factor. The strongest current conclusion is that removing early prefill and using a lightweight local refinement backbone is the most reliable direction under this DET-derived classification setup. Future anchor work should be treated as an optional add-on to this stronger local/no-prefill baseline, not the main claim.
+
+## P0 No-Prefill Control Matrix
+
+Dataset: `data/ILSVRC2013_DET_val_supervised/single_label_imagefolder_all`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps. This run uses stable model-name seed offsets, shared train-loader shuffle order per split, and two paired references.
+
+Output CSV: `results/imagefolder_all_197cls_p0_controls_1000step_3seeds_dual_ref.csv`
+
+| Model | Params | Final eval acc mean | Eval acc std | Best eval acc mean | Images/sec mean | Scaled read ratio mean |
+|---|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 19,245 | 0.251 | 0.005 | 0.251 | 341.33 | 0.01944 |
+| `no_prefill_local_mix` | 16,933 | 0.250 | 0.006 | 0.250 | 470.29 | n/a |
+| `xattnres_no_prefill` | 19,111 | 0.249 | 0.010 | 0.249 | 374.00 | 0.01801 |
+| `anchor_no_prefill` | 25,735 | 0.246 | 0.006 | 0.248 | 178.77 | 0.00871 |
+| `tiny_vit` | 33,541 | 0.243 | 0.003 | 0.243 | 363.53 | n/a |
+| `xattnres_style` | 28,263 | 0.242 | 0.006 | 0.242 | 353.23 | 0.02023 |
+
+Paired against `no_prefill_local_mix`:
+
+| Model | Final delta mean | Final delta std | Final wins | Best delta mean | Best delta std | Best wins |
+|---|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 0.002 | 0.001 | 2/3 | 0.002 | 0.001 | 2/3 |
+| `xattnres_no_prefill` | -0.001 | 0.006 | 1/3 | -0.001 | 0.005 | 1/3 |
+| `anchor_no_prefill` | -0.003 | 0.000 | 0/3 | -0.002 | 0.002 | 0/3 |
+| `tiny_vit` | -0.007 | 0.003 | 0/3 | -0.007 | 0.003 | 0/3 |
+| `xattnres_style` | -0.008 | 0.002 | 0/3 | -0.008 | 0.002 | 0/3 |
+
+Paired against `xattnres_style`:
+
+| Model | Final delta mean | Final delta std | Final wins | Best delta mean | Best delta std | Best wins |
+|---|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 0.010 | 0.003 | 3/3 | 0.010 | 0.003 | 3/3 |
+| `no_prefill_local_mix` | 0.008 | 0.002 | 3/3 | 0.008 | 0.002 | 3/3 |
+| `xattnres_no_prefill` | 0.007 | 0.008 | 3/3 | 0.008 | 0.007 | 3/3 |
+| `anchor_no_prefill` | 0.005 | 0.002 | 3/3 | 0.006 | 0.002 | 3/3 |
+| `tiny_vit` | 0.001 | 0.004 | 2/3 | 0.001 | 0.004 | 2/3 |
+
+Interpretation: this control matrix clarifies the no-prefill route. `xattnres_no_prefill` substantially improves over `xattnres_style`, so the old XAttnRes-style result was likely harmed by the early prefill/history protocol. However, `xattnres_no_prefill` still does not beat `no_prefill_local_mix` on the paired mean. `anchor_only_no_prefill` is the highest-accuracy variant, but its advantage over `no_prefill_local_mix` is only about 0.002 while running about 27% slower. `anchor_no_prefill` is worse and much slower than `anchor_only_no_prefill`, so the prior anchor+lattice mixture should be downgraded. Current mainline remains local-state-first; anchor-only and no-prefill XAttnRes are the best plugin/reference branches to carry forward.
+
+## Delayed Memory Hypothesis
+
+The negative prefill results should be interpreted as a failure of the current early-cache protocol, not as a final rejection of memory. The likely failure mode is:
+
+```text
+early shallow feature -> fixed memory cache -> later semantic query reads stale/noisy memory
+```
+
+The next testable hypothesis is:
+
+```text
+local-state refinement first -> delayed/stage-wise memory build -> gated adaptive read
+```
+
+Minimum controls needed before reviving memory as a claim:
+
+- `prefill_at_block_0`: current early prefill behavior.
+- `prefill_after_1_local_block`
+- `prefill_after_2_local_blocks`
+- `prefill_after_stage_end`
+- `refresh_every_stage`
+- `local_mix_fpn_control`: fixed stage fusion without content-adaptive reads.
+- `region_pool_no_history`: current region slots only, no cross-stage memory.
+- `region_slot_history`: delayed region slots with cross-stage adaptive read.
+
+The key comparison is not against `tiny_vit` alone. Any delayed-memory variant must first beat or improve the Pareto tradeoff against `no_prefill_local_mix`; otherwise the result is only a more complex local/FPN-like variant.
+
+## General Evidence Hygiene
+
 - Add at least one dense prediction or segmentation-style task.
 - Report negative results directly, not only successful toy runs.
 - Treat all current numbers as debugging evidence until tested on real images.

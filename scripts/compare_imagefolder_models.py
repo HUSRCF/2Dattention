@@ -119,6 +119,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--reference-model", choices=MODEL_NAMES, default="xattnres_style")
+    parser.add_argument(
+        "--reference-models",
+        nargs="+",
+        choices=MODEL_NAMES,
+        default=None,
+        help="optional additional paired references; defaults to --reference-model",
+    )
     parser.add_argument("--train-frac", type=float, default=0.8)
     parser.add_argument(
         "--eval-every",
@@ -226,7 +233,9 @@ def main() -> None:
     write_csv(args.out, rows)
     print("saved_csv:", args.out)
     print_summary(rows)
-    print_paired_summary(rows, reference_model=args.reference_model)
+    reference_models = args.reference_models or [args.reference_model]
+    for reference_model in dict.fromkeys(reference_models):
+        print_paired_summary(rows, reference_model=reference_model)
 
 
 def build_dataset(data_root: Path, image_size: int) -> datasets.ImageFolder:

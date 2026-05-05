@@ -2,7 +2,7 @@
 
 ## Current Pivot: Local-State-First
 
-The current strongest baseline is `no_prefill_local_mix`, not any prefill or memory-read variant. On the larger all-single-label DET-derived ImageFolder (`197` classes, `11,433` images), 1000-step strict paired MPS training gives `no_prefill_local_mix` the best final and best accuracy while also being the fastest non-trivial model.
+The current strongest Pareto baseline is `no_prefill_local_mix`, not any early prefill or full memory-read variant. On the larger all-single-label DET-derived ImageFolder (`197` classes, `11,433` images), 1000-step strict paired MPS training gives `no_prefill_local_mix` final/best `0.250/0.250` at about `470 img/s`. `anchor_only_no_prefill` is slightly higher at `0.251/0.251`, but slower at about `341 img/s`; treat it as the best plugin candidate, not a replacement mainline.
 
 Working interpretation:
 
@@ -10,13 +10,58 @@ Working interpretation:
 - Cross-stage memory read is not the main source of gains.
 - Lightweight online 2D local refinement is the most reliable signal so far.
 - Anchor/region ideas should now be treated as optional plugins on top of the stronger no-prefill local backbone.
+- The current negative prefill result may specifically be an "early memory" failure: memory built before features become semantic can be stale or noisy.
+- The next memory version should be local-state-first, then delayed or stage-wise memory refresh with content-adaptive read.
 
 Immediate strong baselines:
 
 - `no_prefill_local_mix`: current Pareto reference.
-- `xattnres_style`: cross-stage residual-routing reference.
+- `anchor_only_no_prefill`: best current anchor/plugin candidate.
+- `xattnres_no_prefill`: no-prefill cross-layer routing reference.
+- `xattnres_style`: historical cross-stage residual-routing reference; weaker than its no-prefill control.
 - `tiny_vit`: sequence/ViT reference.
 - `anchor_no_prefill`: weak anchor-signal candidate, not the main baseline.
+
+## Current P0: No-Prefill Controls and Delayed Memory Boundary
+
+Run the strict paired control matrix before adding new memory modules:
+
+- `no_prefill_local_mix`
+- `xattnres_style`
+- `xattnres_no_prefill`
+- `anchor_no_prefill`
+- `anchor_only_no_prefill`
+- `tiny_vit`
+
+Use two paired references:
+
+- primary: `no_prefill_local_mix`
+- secondary: `xattnres_style`
+
+Decision rules:
+
+- If `xattnres_no_prefill` improves over `xattnres_style`, then the issue is partly the prefill protocol, not XAttnRes-style routing itself.
+- If `anchor_only_no_prefill` is much weaker than `anchor_no_prefill`, the anchor signal comes from the mixed local/anchor/lattice backbone, not anchor read alone.
+- If neither beats `no_prefill_local_mix` on accuracy-speed tradeoff, keep local-state refinement as the mainline and treat memory as an optional plugin.
+
+Current result:
+
+- `xattnres_no_prefill` improves over `xattnres_style` by about `+0.007` final accuracy and wins `3/3` split seeds against it.
+- `anchor_only_no_prefill` beats `anchor_no_prefill` while using fewer parameters and running much faster.
+- `anchor_only_no_prefill` is only about `+0.002` over `no_prefill_local_mix` and runs slower, so it is not yet a new mainline.
+- `no_prefill_local_mix` remains the cleanest accuracy-speed reference.
+
+Delayed-memory experiments should come after this control matrix:
+
+- `prefill_after_1_local_block`
+- `prefill_after_2_local_blocks`
+- `prefill_after_stage_end`
+- `refresh_every_stage`
+- `region_pool_no_history`
+- `region_slot_history`
+- `local_mix_fpn_control`
+
+The FPN/ViTDet boundary is important: fixed stage fusion or fixed pyramid read is a control, not the claim. A new claim requires delayed or refreshed region memory plus content-adaptive read/write whose contribution is measured against `no_prefill_local_mix`.
 
 ## Historical P0: Prefill-AttnRes Baseline
 
@@ -115,5 +160,7 @@ Next priority:
 - Add `anchor_only_no_prefill` to isolate the online axis-anchor path without lattice reads.
 - Treat anchor-lite as an optional add-on to the stronger no-prefill local backbone, not as the main claim.
 - Prefer longer/stronger runs only after the no-prefill/local-mix controls are clean.
+
+P0 control update: the dual-reference 197-class run confirms that `xattnres_no_prefill` is a stronger reference than `xattnres_style`, and that `anchor_only_no_prefill` is cleaner than `anchor_no_prefill`. Future work should use `no_prefill_local_mix`, `xattnres_no_prefill`, and `anchor_only_no_prefill` as the active controls.
 
 Why later: classification can hide spatial-routing weaknesses behind global pooling.
