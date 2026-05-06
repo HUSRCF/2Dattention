@@ -1,5 +1,112 @@
 # TODO: 2Dattention Research Roadmap
 
+## Current P0: RF-DETR Push Roadmap
+
+Goal: move from classification/probe models toward a real detection model family that can eventually be compared against RF-DETR-style detectors. The current repo is not yet a detector; the immediate task is to build the detection stack and test whether our verified dense-mask signal, `anchor_only_no_prefill`, can improve query initialization or region reasoning.
+
+Boundary:
+
+- Current supported signal: clean no-prefill online anchor/region interaction improves dense bbox-mask localization.
+- Current unsupported claims: early prefill, stale history pools, full prefill-lattice memory, and old memory-first routing.
+- RF-DETR-level performance requires a real detector, not just classification or bbox-mask probes.
+
+### Step 1: Detection Scaffold
+
+Implement minimal DETR-style components under `src/attention2d/detection/`:
+
+- `matcher.py`: Hungarian matcher with class, L1 box, and GIoU costs.
+- `losses.py`: set criterion with classification, L1 box, GIoU, cardinality, and optional mask auxiliary.
+- `heads.py`: MLP box head, classification head, object query utilities.
+- `anchor_region_detr.py`: small end-to-end model using existing 2D backbones and DETR-style query decoding.
+- `scripts/train_det_toy.py`: small synthetic detection task for shape/gradient sanity.
+
+Success criterion:
+
+- Forward pass returns `pred_logits` and `pred_boxes`.
+- Matcher/loss run on variable target counts.
+- One dummy backward pass passes tests.
+
+### Step 2: AnchorQueryInit
+
+Turn the current spatial signal into a detector-specific mechanism:
+
+```text
+image feature map
+  -> online anchor/region interaction
+  -> region tokens / anchor summaries
+  -> initialize or bias DETR object queries
+  -> decoder predicts boxes/classes
+```
+
+Controls:
+
+- random learned queries,
+- FPN/local feature queries,
+- `anchor_only_no_prefill` query initialization,
+- region-pool query initialization.
+
+Success criterion:
+
+- Anchor-initialized queries improve convergence or detection quality over random queries on a synthetic/local detection task.
+
+### Step 3: DenseMaskAux
+
+Keep the positive bbox-mask signal as an auxiliary loss:
+
+- add a spatial mask head to detection backbones,
+- train with `L_det + lambda * L_mask`,
+- reuse bbox rectangle masks as weak dense supervision.
+
+Success criterion:
+
+- Mask auxiliary improves detector box AP or convergence without hurting classification/detection loss stability.
+
+### Step 4: Real Detection Dataset Path
+
+Use existing DET annotations before COCO:
+
+- parse `ILSVRC2013_DET_bbox_val` into detection samples,
+- support image, boxes, labels, image size,
+- add a small train/eval split for smoke,
+- report AP50, AP50:95-style approximation, recall, and speed.
+
+Success criterion:
+
+- A tiny detector overfits a small DET subset.
+- A 197-class DET subset can train without target-shape or matching issues.
+
+### Step 5: RF-DETR Distillation Track
+
+Use RF-DETR as a teacher rather than trying to beat it from scratch:
+
+- teacher boxes/classes on local images,
+- distill class logits and boxes,
+- optionally distill object-query embeddings or dense masks,
+- compare student with and without AnchorQueryInit.
+
+Success criterion:
+
+- Distilled anchor-region student improves over non-distilled/random-query student on the same data.
+
+### Step 6: Engineering Innovation Backlog
+
+Prioritized engineering points:
+
+- Anchor-lite routing: slots `1/2/4`, read-every-2, lowres-only, shared projections.
+- Spatial-head interface standardization: every spatial model returns `logits`, `spatial_features`, `memories`, optional `routing_maps`.
+- TinyViT spatial adapter: reshape ViT patch tokens back to `[B, C, H, W]` for dense heads.
+- Overlay figure composer: same samples across models, one row per image, columns for GT/local/FPN/anchor.
+- Result registry: parse CSVs, emit markdown tables, paired deltas, and config metadata.
+
+Immediate implementation order:
+
+1. Detection scaffold and tests.
+2. Synthetic detection sanity.
+3. AnchorQueryInit prototype.
+4. DET annotation dataset loader.
+5. DenseMaskAux in detection training.
+6. RF-DETR teacher/distillation after the student detector is stable.
+
 ## Current Pivot: Local-State-First
 
 The current strongest Pareto baseline is `no_prefill_local_mix`, not any early prefill or full memory-read variant. On the larger all-single-label DET-derived ImageFolder (`197` classes, `11,433` images), 1000-step strict paired MPS training gives `no_prefill_local_mix` final/best `0.250/0.250` at about `470 img/s`. `anchor_only_no_prefill` is slightly higher at `0.251/0.251`, but slower at about `341 img/s`; treat it as the best plugin candidate, not a replacement mainline.
