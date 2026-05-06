@@ -138,10 +138,12 @@ Next spatial P0:
 - BBox center regression has been run. It also fails to separate architectures: all models sit around mean L2 `0.1524-0.1528`, while the eval split mean-target baseline is about `0.1518`.
 - Explicit `16x16` bbox-center heatmap localization has been run with a spatial `1x1` heatmap head. It is a better probe design than global-pooled regression, but the result still does not support a memory/region claim: argmax mean L2 stays around `0.1588-0.1592`, worse than the eval split mean-target baseline `0.1518`, and all paired deltas are tiny.
 - Dense `16x16` bbox-mask heatmap has been run and is the first spatial probe with a useful positive signal. All models beat the mean-mask prior IoU `0.364` and center-box prior IoU `0.407`; `anchor_only_no_prefill` is strongest at IoU `0.436`, Dice `0.577`, with 3/3 paired IoU wins over both `no_prefill_local_mix` and `fpn_sum_lite`.
+- Dense `32x32` bbox-mask heatmap confirms the signal. `anchor_only_no_prefill` remains strongest at IoU `0.434`, with 3/3 paired wins over both `no_prefill_local_mix` and `fpn_sum_lite`, and it has the highest small/medium/large area-stratified IoU means.
+- Overlay visualizations for the `16x16` seed-41 run are under `results/bbox_mask_overlays_16x16_seed41/`.
 - Keep both `no_prefill_local_mix` and `xattnres_no_prefill` as spatial references for the next probe.
 - Do not spend more time on global-pooled coarse cell classification or global-pooled coordinate regression.
 - Do not continue tuning Gaussian center heatmap alone unless there is a clear change in supervision or target construction.
-- Next spatial task should build on dense supervision: repeat bbox mask at `32x32`, add `TinyViTHeatmapAdapter`, add target overlays, and then consider weak segmentation-style masks. Treat the positive signal as anchor/region-style online interaction, not as a revival of early prefill.
+- Next spatial task should build on dense supervision: add `TinyViTHeatmapAdapter`, inspect overlays, run anchor-only lite/slot sweep, and then consider weak segmentation-style masks. Treat the positive signal as anchor/region-style online interaction, not as a revival of early prefill.
 
 ## Historical P0: Prefill-AttnRes Baseline
 

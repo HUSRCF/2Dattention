@@ -54,6 +54,9 @@ class MaskResultRow:
     train_loss: float
     eval_loss: float
     iou: float
+    small_iou: float
+    medium_iou: float
+    large_iou: float
     dice: float
     cell_balanced_acc: float
     pos_recall: float
@@ -177,7 +180,8 @@ def main() -> None:
     print("eval_on_train:", args.eval_on_train)
     print(
         "model,seed,params,train_loss,eval_loss,iou,dice,cell_balanced_acc,"
-        "pos_recall,neg_recall,center_l2,pck_010,area_abs_error,best_iou,best_step,images_per_sec"
+        "small_iou,medium_iou,large_iou,pos_recall,neg_recall,center_l2,"
+        "pck_010,area_abs_error,best_iou,best_step,images_per_sec"
     )
 
     rows: list[MaskResultRow] = []
@@ -238,6 +242,9 @@ def main() -> None:
                 train_loss=train_result["train_loss"],
                 eval_loss=eval_metrics["loss"],
                 iou=eval_metrics["iou"],
+                small_iou=eval_metrics["small_iou"],
+                medium_iou=eval_metrics["medium_iou"],
+                large_iou=eval_metrics["large_iou"],
                 dice=eval_metrics["dice"],
                 cell_balanced_acc=eval_metrics["cell_balanced_acc"],
                 pos_recall=eval_metrics["pos_recall"],
@@ -269,6 +276,9 @@ def main() -> None:
                 f"{train_result['train_loss']:.4f},{eval_metrics['loss']:.4f},"
                 f"{eval_metrics['iou']:.3f},{eval_metrics['dice']:.3f},"
                 f"{eval_metrics['cell_balanced_acc']:.3f},"
+                f"{eval_metrics['small_iou']:.3f},"
+                f"{eval_metrics['medium_iou']:.3f},"
+                f"{eval_metrics['large_iou']:.3f},"
                 f"{eval_metrics['pos_recall']:.3f},{eval_metrics['neg_recall']:.3f},"
                 f"{eval_metrics['center_mean_l2']:.4f},"
                 f"{eval_metrics['pck_010']:.3f},"
@@ -439,7 +449,8 @@ def mask_metrics_from_probs(
     pred_area = pred.sum(dim=dims)
     target_area = target.sum(dim=dims)
     union = pred_area + target_area - intersection
-    iou = ((intersection + 1e-6) / (union + 1e-6)).mean()
+    sample_iou = (intersection + 1e-6) / (union + 1e-6)
+    iou = sample_iou.mean()
     dice = ((2.0 * intersection + 1e-6) / (pred_area + target_area + 1e-6)).mean()
 
     tp = float((pred * target).sum().item())
@@ -453,8 +464,15 @@ def mask_metrics_from_probs(
     pred_centers = mask_centroid_from_probs(probs, mask_size)
     center_l2 = (pred_centers - centers).norm(dim=1)
     area_abs_error = (probs.flatten(1).mean(dim=1) - targets.flatten(1).mean(dim=1)).abs().mean()
+    target_area_fraction = target.flatten(1).mean(dim=1)
     return {
         "iou": float(iou.item()),
+        "small_iou": mean_masked(sample_iou, target_area_fraction < 0.10),
+        "medium_iou": mean_masked(
+            sample_iou,
+            (target_area_fraction >= 0.10) & (target_area_fraction < 0.30),
+        ),
+        "large_iou": mean_masked(sample_iou, target_area_fraction >= 0.30),
         "dice": float(dice.item()),
         "cell_balanced_acc": float(balanced_acc),
         "pos_recall": float(pos_recall),
@@ -465,6 +483,12 @@ def mask_metrics_from_probs(
         "pck_020": float((center_l2 < 0.20).float().mean().item()),
         "area_abs_error": float(area_abs_error.item()),
     }
+
+
+def mean_masked(values: Tensor, mask: Tensor) -> float:
+    if not bool(mask.any()):
+        return float("nan")
+    return float(values[mask].mean().item())
 
 
 def mask_centroid_from_probs(probs: Tensor, size: int) -> Tensor:
@@ -535,6 +559,7 @@ def write_mask_csv(path: Path, rows: list[MaskResultRow]) -> None:
 def print_mask_summary(rows: list[MaskResultRow]) -> None:
     print(
         "summary_model,params_mean,iou_mean,dice_mean,cell_balanced_acc_mean,"
+        "small_iou_mean,medium_iou_mean,large_iou_mean,"
         "pos_recall_mean,neg_recall_mean,center_l2_mean,pck010_mean,pck020_mean,"
         "area_abs_error_mean,best_iou_mean,mean_prior_iou_mean,center_box_prior_iou_mean,"
         "images_per_sec_mean,gate_mean,scaled_read_ratio_mean"
@@ -546,6 +571,9 @@ def print_mask_summary(rows: list[MaskResultRow]) -> None:
             f"{mean([row.iou for row in model_rows]):.3f},"
             f"{mean([row.dice for row in model_rows]):.3f},"
             f"{mean([row.cell_balanced_acc for row in model_rows]):.3f},"
+            f"{mean_or_nan([row.small_iou for row in model_rows if not is_nan(row.small_iou)]):.3f},"
+            f"{mean_or_nan([row.medium_iou for row in model_rows if not is_nan(row.medium_iou)]):.3f},"
+            f"{mean_or_nan([row.large_iou for row in model_rows if not is_nan(row.large_iou)]):.3f},"
             f"{mean([row.pos_recall for row in model_rows]):.3f},"
             f"{mean([row.neg_recall for row in model_rows]):.3f},"
             f"{mean([row.center_mean_l2 for row in model_rows]):.4f},"

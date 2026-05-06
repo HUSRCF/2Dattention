@@ -497,3 +497,22 @@ Paired against `no_prefill_local_mix`:
 | `xattnres_no_prefill` | -0.002 | 1/3 | -0.001 | 1/3 | +0.0004 | 1/3 |
 
 Interpretation: this is the first spatial probe in the project that gives a meaningful positive signal beyond priors. All trained models beat both the mean-mask prior and the centered-box prior on IoU, so the task is not collapsing to a center prior in the same way as center-only probes. The clean `anchor_only_no_prefill` branch is the strongest mask model, with stable 3/3 paired wins over both `no_prefill_local_mix` and `fpn_sum_lite`. However, the result should not be interpreted as support for early prefill or full memory-first routing: `xattnres_no_prefill` remains weak, and the stronger signal comes from the clean online anchor/region interaction. The tradeoff is also real: `anchor_only_no_prefill` is about 22% slower than `no_prefill_local_mix` and `fpn_sum_lite`. Current best wording is that dense bbox-mask supervision reveals a useful anchor/region-style spatial bias, while classification still favors the faster local-state baseline.
+
+### 32x32 Mask Check
+
+The `32x32` bbox-mask run repeats the same protocol at a finer output resolution and adds area-stratified IoU. Output CSV: `results/bbox_mask_32x32_1000step_3seeds.csv`.
+
+| Model | IoU | Small IoU | Medium IoU | Large IoU | Dice | Center L2 | PCK@0.10 | Best IoU | Mean-mask prior IoU | Center-box prior IoU | Images/sec |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 0.434 | 0.145 | 0.402 | 0.525 | 0.576 | 0.1492 | 0.393 | 0.437 | 0.363 | 0.386 | 238.81 |
+| `region_pool_mixer_no_history` | 0.430 | 0.135 | 0.397 | 0.523 | 0.573 | 0.1494 | 0.396 | 0.434 | 0.363 | 0.386 | 259.16 |
+| `stage_refresh_region_slots_2x2` | 0.425 | 0.139 | 0.398 | 0.512 | 0.568 | 0.1492 | 0.394 | 0.428 | 0.363 | 0.386 | 254.58 |
+| `fpn_sum_lite` | 0.424 | 0.131 | 0.392 | 0.516 | 0.567 | 0.1510 | 0.389 | 0.428 | 0.363 | 0.386 | 296.25 |
+| `no_prefill_local_mix` | 0.424 | 0.131 | 0.390 | 0.517 | 0.567 | 0.1512 | 0.383 | 0.429 | 0.363 | 0.386 | 306.53 |
+| `xattnres_no_prefill` | 0.422 | 0.131 | 0.390 | 0.513 | 0.565 | 0.1509 | 0.384 | 0.427 | 0.363 | 0.386 | 255.46 |
+
+Paired against `no_prefill_local_mix`, `anchor_only_no_prefill` improves IoU by `+0.010` and Dice by `+0.009`, with `3/3` wins on both metrics and `3/3` wins on center L2. Paired against `fpn_sum_lite`, it also improves IoU by `+0.010` with `3/3` wins. The advantage is smaller than the `16x16` run but remains stable at higher mask resolution. Area-stratified IoU shows that the gain is not isolated to one object-size bin: `anchor_only_no_prefill` has the highest small, medium, and large IoU means.
+
+Interpretation: the dense-mask positive signal survives the `32x32` check. This strengthens the dual-mainline view: `no_prefill_local_mix` remains the practical classification reference, while `anchor_only_no_prefill` is the current dense spatial localization candidate. The result still does not revive early prefill or old memory-first routing; the supported mechanism remains clean no-prefill online anchor/region interaction.
+
+Overlay visualizations for the `16x16` seed-41 run were generated at `results/bbox_mask_overlays_16x16_seed41/`. They use the same eval samples across `anchor_only_no_prefill`, `no_prefill_local_mix`, and `fpn_sum_lite`, with panels for input, GT mask, predicted mask, FP/FN error map, and probability map.
