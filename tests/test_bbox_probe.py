@@ -9,6 +9,11 @@ from scripts.compare_bbox_heatmap_models import (
     gaussian_heatmap,
     softargmax_coords,
 )
+from scripts.compare_bbox_mask_models import (
+    bbox_mask_target,
+    mask_centroid_from_probs,
+    mask_metrics_from_probs,
+)
 from scripts.compare_bbox_probe_models import BBoxSample, bbox_probe_label, num_probe_classes
 
 
@@ -63,3 +68,22 @@ def test_heatmap_helpers() -> None:
     assert torch.allclose(argmax, torch.tensor([[0.5, 0.5]]))
     assert torch.allclose(softargmax, torch.tensor([[0.5, 0.5]]), atol=1e-4)
     assert int(center_to_cell_index(center.unsqueeze(0), size=5)[0]) == 12
+
+
+def test_bbox_mask_helpers() -> None:
+    sample = make_sample(25, 25, 75, 75)
+    mask = bbox_mask_target(sample, size=4)
+    assert torch.isclose(mask.sum(), torch.tensor(4.0))
+    probs = mask.unsqueeze(0)
+    centroid = mask_centroid_from_probs(probs, size=4)
+    assert torch.allclose(centroid, torch.tensor([[0.5, 0.5]]))
+    metrics = mask_metrics_from_probs(
+        probs=probs,
+        centers=torch.tensor([[0.5, 0.5]]),
+        targets=probs,
+        threshold=0.5,
+        mask_size=4,
+    )
+    assert metrics["iou"] > 0.99
+    assert metrics["dice"] > 0.99
+    assert metrics["cell_balanced_acc"] > 0.99

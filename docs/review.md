@@ -466,3 +466,34 @@ Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seed
 Paired against `no_prefill_local_mix`, all argmax-L2 deltas are within about `0.0003` mean. `region_pool_mixer_no_history` and `stage_refresh_region_slots_2x2` have slightly lower mean argmax L2, but the effect is tiny and not aligned with clearly better PCK or top-1 cell accuracy. `anchor_only_no_prefill` does not improve heatmap localization, and it remains slower than the local/FPN controls.
 
 Interpretation: the explicit heatmap head is a better probe design than global-pooled coordinate regression, but this DET-derived largest-box center target still does not provide strong architecture discrimination. The main warning sign is that argmax mean L2 (`0.1588-0.1592`) is still worse than the eval split mean-target baseline (`0.1518`). Softargmax mean L2 can fall near or below that baseline, but this is likely because smooth heatmaps collapse toward the dataset center prior. Therefore, the current heatmap result does not support a memory/region claim. The next spatial probe should provide denser supervision, such as a bbox mask heatmap or weak segmentation-style target, and should report IoU/Dice in addition to center PCK.
+
+## BBox Mask Heatmap Probe
+
+Task: predict a dense `16x16` rectangle mask for the largest annotated bbox. A cell is positive when its center falls inside the bbox. Training uses BCE plus Dice loss, and evaluation reports IoU, Dice, cell-balanced accuracy, positive/negative recall, area error, and center-from-mask PCK. The same spatial `1x1` head protocol is used as the center heatmap probe, with FPN controls reading their fused spatial feature.
+
+Sanity check: `no_prefill_local_mix` can overfit a 32-sample train/eval subset in 200 steps, reaching IoU `0.739`, Dice `0.838`, cell-balanced accuracy `0.922`, and PCK@0.10 `0.840`. This verifies that the mask target, spatial head, and loss are learnable in principle.
+
+Output CSV: `results/bbox_mask_16x16_1000step_3seeds.csv`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps, mask size `16`.
+
+| Model | IoU | Dice | Cell balanced acc | Pos recall | Neg recall | Center L2 | PCK@0.10 | Best IoU | Mean-mask prior IoU | Center-box prior IoU | Images/sec |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | 0.436 | 0.577 | 0.705 | 0.627 | 0.782 | 0.1494 | 0.391 | 0.438 | 0.364 | 0.407 | 244.94 |
+| `region_pool_mixer_no_history` | 0.426 | 0.569 | 0.697 | 0.618 | 0.775 | 0.1502 | 0.391 | 0.431 | 0.364 | 0.407 | 257.50 |
+| `stage_refresh_region_slots_2x2` | 0.425 | 0.568 | 0.696 | 0.612 | 0.780 | 0.1496 | 0.395 | 0.428 | 0.364 | 0.407 | 254.82 |
+| `fpn_sum_lite` | 0.422 | 0.565 | 0.693 | 0.609 | 0.778 | 0.1510 | 0.385 | 0.427 | 0.364 | 0.407 | 317.29 |
+| `no_prefill_local_mix` | 0.422 | 0.565 | 0.694 | 0.614 | 0.773 | 0.1511 | 0.382 | 0.427 | 0.364 | 0.407 | 313.08 |
+| `xattnres_no_prefill` | 0.421 | 0.563 | 0.693 | 0.609 | 0.777 | 0.1515 | 0.383 | 0.426 | 0.364 | 0.407 | 270.22 |
+
+Paired against `no_prefill_local_mix`:
+
+| Model | IoU delta mean | IoU wins | Dice delta mean | Dice wins | Center L2 delta mean | Center L2 wins |
+|---|---:|---:|---:|---:|---:|---:|
+| `anchor_only_no_prefill` | +0.014 | 3/3 | +0.012 | 3/3 | -0.0018 | 3/3 |
+| `region_pool_mixer_no_history` | +0.004 | 2/3 | +0.004 | 2/3 | -0.0010 | 3/3 |
+| `stage_refresh_region_slots_2x2` | +0.003 | 1/3 | +0.003 | 1/3 | -0.0015 | 2/3 |
+| `fpn_sum_lite` | -0.000 | 2/3 | -0.000 | 2/3 | -0.0001 | 2/3 |
+| `xattnres_no_prefill` | -0.002 | 1/3 | -0.001 | 1/3 | +0.0004 | 1/3 |
+
+Interpretation: this is the first spatial probe in the project that gives a meaningful positive signal beyond priors. All trained models beat both the mean-mask prior and the centered-box prior on IoU, so the task is not collapsing to a center prior in the same way as center-only probes. The clean `anchor_only_no_prefill` branch is the strongest mask model, with stable 3/3 paired wins over both `no_prefill_local_mix` and `fpn_sum_lite`. However, the result should not be interpreted as support for early prefill or full memory-first routing: `xattnres_no_prefill` remains weak, and the stronger signal comes from the clean online anchor/region interaction. The tradeoff is also real: `anchor_only_no_prefill` is about 22% slower than `no_prefill_local_mix` and `fpn_sum_lite`. Current best wording is that dense bbox-mask supervision reveals a useful anchor/region-style spatial bias, while classification still favors the faster local-state baseline.
