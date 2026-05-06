@@ -374,3 +374,49 @@ Do not prioritize:
 - more quadrant/grid classification,
 - reviving full prefill-lattice before anchor-lite is understood,
 - graph extensions before anchor-only is made efficient.
+
+## 9. Detection Scaffold and AnchorQueryInit Toy
+
+The RF-DETR push begins by turning the probe backbone into a minimal DETR-style detector.
+
+Implemented components:
+
+- `src/attention2d/detection/matcher.py`: tiny Hungarian-style matcher with class/L1/GIoU cost.
+- `src/attention2d/detection/losses.py`: DETR-style criterion.
+- `src/attention2d/detection/heads.py`: class and box heads.
+- `src/attention2d/detection/anchor_region_detr.py`: `TinyAnchorRegionDETR` with learned or anchor query initialization.
+- `scripts/train_det_toy.py`: synthetic square-detection runner.
+
+Important engineering correction:
+
+- The first toy smoke was not formal evidence because it used GIoU as the evaluation IoU, changed initialization between learned/anchor, and did not fully pair torch noise.
+- The strict run now uses true IoU evaluation, shared initialization seed, and deterministic train/eval noise.
+
+Strict toy result:
+
+Output CSV: `results/det_toy_anchor_query_300step_5seeds_strict.csv`.
+
+Setting: one square per image, 64px images, `embed_dim=16`, `num_queries=4`, 300 steps, 5 seeds.
+
+| Query init | Final IoU | Best IoU | Recall@0.50 |
+|---|---:|---:|---:|
+| learned | 0.090 | 0.095 | 0.048 |
+| anchor | 0.110 | 0.123 | 0.047 |
+
+Paired result:
+
+- Final IoU delta: `+0.020`, `5/5` wins for anchor.
+- Best IoU delta: `+0.028`, `5/5` wins for anchor.
+
+Interpretation:
+
+- AnchorQueryInit has a real positive signal on the strict single-object toy.
+- This supports using online anchor/region summaries as detector query seeds.
+- The result is not yet a real detector claim: both query modes share the same anchor-region feature backbone, and the square toy can be solved partly by row/column projections.
+
+Next detector controls:
+
+1. `local_state + learned_queries` without anchor-region feature backbone.
+2. multi-object toy with distractors.
+3. DET annotation loader using real boxes.
+4. DenseMaskAux for the toy and DET subset.

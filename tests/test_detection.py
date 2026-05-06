@@ -15,6 +15,8 @@ from attention2d.detection import (
     DetectionHead,
     HungarianMatcher,
     TinyAnchorRegionDETR,
+    box_cxcywh_to_xyxy,
+    box_iou,
 )
 
 
@@ -47,6 +49,12 @@ def test_hungarian_matcher_handles_variable_targets() -> None:
     assert len(matches) == 2
     assert matches[0][0].shape == (2,)
     assert matches[1][0].shape == (1,)
+
+
+def test_box_iou_uses_standard_iou() -> None:
+    boxes1 = box_cxcywh_to_xyxy(torch.tensor([[0.5, 0.5, 0.5, 0.5]]))
+    boxes2 = box_cxcywh_to_xyxy(torch.tensor([[0.5, 0.5, 0.5, 0.5]]))
+    assert torch.allclose(box_iou(boxes1, boxes2), torch.tensor([[1.0]]))
 
 
 def test_detection_criterion_backward() -> None:

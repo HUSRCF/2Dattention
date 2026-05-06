@@ -49,6 +49,22 @@ Success criterion:
 
 - Anchor-initialized queries improve convergence or detection quality over random queries on a synthetic/local detection task.
 
+Status:
+
+- Implemented `scripts/train_det_toy.py`.
+- Initial smoke was biased because eval used GIoU as IoU, learned/anchor used different model initialization, and torch noise was not strictly paired.
+- Fixed eval to use true IoU, shared initialization seed across learned/anchor, and deterministic torch noise for train/eval batches.
+- Strict toy result: `results/det_toy_anchor_query_300step_5seeds_strict.csv`.
+- Learned queries: final IoU `0.090`, best IoU `0.095`.
+- Anchor query init: final IoU `0.110`, best IoU `0.123`.
+- Paired delta vs learned: final IoU `+0.020`, best IoU `+0.028`, both `5/5` wins.
+
+Interpretation:
+
+- AnchorQueryInit has a clean positive signal on the single-object square-detection toy task.
+- This is still a limited sanity result: both learned and anchor variants use the same anchor-region feature backbone, and the toy task can be helped by row/column projections.
+- Next control should add a `local_state + learned_queries` detector and a harder toy with distractors or multiple objects.
+
 ### Step 3: DenseMaskAux
 
 Keep the positive bbox-mask signal as an auxiliary loss:

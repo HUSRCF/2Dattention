@@ -122,3 +122,14 @@ def generalized_box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
     enclosing_wh = (enclosing_right_bottom - enclosing_left_top).clamp(min=0)
     enclosing_area = enclosing_wh[:, :, 0] * enclosing_wh[:, :, 1]
     return iou - (enclosing_area - union) / enclosing_area.clamp_min(1e-8)
+
+
+def box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
+    area1 = box_area(boxes1)
+    area2 = box_area(boxes2)
+    left_top = torch.maximum(boxes1[:, None, :2], boxes2[:, :2])
+    right_bottom = torch.minimum(boxes1[:, None, 2:], boxes2[:, 2:])
+    inter_wh = (right_bottom - left_top).clamp(min=0)
+    intersection = inter_wh[:, :, 0] * inter_wh[:, :, 1]
+    union = area1[:, None] + area2 - intersection
+    return intersection / union.clamp_min(1e-8)
