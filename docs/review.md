@@ -445,3 +445,24 @@ Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seed
 | `tiny_vit` | 0.1528 | 0.1309 | 0.377 | 0.715 | 0.1514 | 0.1518 | 248.50 |
 
 Interpretation: this regression probe is also inconclusive as an architecture discriminator. All models are essentially tied and remain at or slightly worse than the eval split mean-target baseline (`0.1518`). The models can learn the dataset-level center prior, but this setup does not show meaningful image-conditioned localization. The negative result is useful: coarse cell classification and direct global-pooled center regression are both too weak to validate region/memory claims. The next localization probe should expose spatial outputs directly, such as a heatmap head or patch-level objective, instead of only regressing coordinates from a global pooled classifier head.
+
+## BBox Heatmap Localization Probe
+
+Task: predict a `16x16` Gaussian heatmap centered at the largest-object bbox center. Unlike the coordinate-regression probe, this head is attached directly to the final 2D spatial feature map through a `1x1` convolution. For FPN controls, the heatmap head uses the fused FPN spatial feature rather than the last unfused memory state.
+
+Output CSV: `results/bbox_heatmap_16x16_1000step_3seeds.csv`
+
+Setting: MPS, 64px images, batch size 32, embed dim 32, 1000 steps, 3 split seeds, eval every 250 steps, heatmap size `16`, Gaussian sigma `1.5`.
+
+| Model | Argmax mean L2 | Softargmax mean L2 | PCK@0.10 | Top1 cell acc | Best argmax L2 | Mean-target baseline L2 | Images/sec |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `region_pool_mixer_no_history` | 0.1588 | 0.1506 | 0.351 | 0.066 | 0.1565 | 0.1518 | 185.07 |
+| `stage_refresh_region_slots_2x2` | 0.1588 | 0.1514 | 0.357 | 0.066 | 0.1568 | 0.1518 | 183.18 |
+| `fpn_sum_lite` | 0.1590 | 0.1516 | 0.354 | 0.067 | 0.1571 | 0.1518 | 192.83 |
+| `no_prefill_local_mix` | 0.1590 | 0.1515 | 0.355 | 0.069 | 0.1568 | 0.1518 | 197.65 |
+| `anchor_only_no_prefill` | 0.1592 | 0.1520 | 0.356 | 0.067 | 0.1568 | 0.1518 | 174.56 |
+| `xattnres_no_prefill` | 0.1592 | 0.1515 | 0.354 | 0.067 | 0.1567 | 0.1518 | 170.22 |
+
+Paired against `no_prefill_local_mix`, all argmax-L2 deltas are within about `0.0003` mean. `region_pool_mixer_no_history` and `stage_refresh_region_slots_2x2` have slightly lower mean argmax L2, but the effect is tiny and not aligned with clearly better PCK or top-1 cell accuracy. `anchor_only_no_prefill` does not improve heatmap localization, and it remains slower than the local/FPN controls.
+
+Interpretation: the explicit heatmap head is a better probe design than global-pooled coordinate regression, but this DET-derived largest-box center target still does not provide strong architecture discrimination. The main warning sign is that argmax mean L2 (`0.1588-0.1592`) is still worse than the eval split mean-target baseline (`0.1518`). Softargmax mean L2 can fall near or below that baseline, but this is likely because smooth heatmaps collapse toward the dataset center prior. Therefore, the current heatmap result does not support a memory/region claim. The next spatial probe should provide denser supervision, such as a bbox mask heatmap or weak segmentation-style target, and should report IoU/Dice in addition to center PCK.

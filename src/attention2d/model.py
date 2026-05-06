@@ -341,6 +341,7 @@ class TinyFPNLiteClassifier(nn.Module):
         return {
             "logits": logits,
             "memories": memories,
+            "spatial_features": fused,
         }
 
 

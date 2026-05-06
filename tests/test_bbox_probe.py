@@ -3,6 +3,12 @@ from pathlib import Path
 import torch
 
 from scripts.compare_bbox_center_regression_models import baseline_l2, bbox_center_target
+from scripts.compare_bbox_heatmap_models import (
+    argmax_coords,
+    center_to_cell_index,
+    gaussian_heatmap,
+    softargmax_coords,
+)
 from scripts.compare_bbox_probe_models import BBoxSample, bbox_probe_label, num_probe_classes
 
 
@@ -45,3 +51,15 @@ def test_bbox_center_target_and_baseline_l2() -> None:
     assert bbox_center_target(sample) == (0.4, 0.6)
     targets = torch.tensor([[0.4, 0.6], [0.5, 0.5]])
     assert baseline_l2(targets, torch.tensor([0.5, 0.5])) > 0.0
+
+
+def test_heatmap_helpers() -> None:
+    center = torch.tensor([0.5, 0.5])
+    heatmap = gaussian_heatmap(center, size=5, sigma=1.0)
+    assert torch.isclose(heatmap.sum(), torch.tensor(1.0))
+    probs = heatmap.flatten().unsqueeze(0)
+    argmax = argmax_coords(probs, size=5)
+    softargmax = softargmax_coords(probs, size=5)
+    assert torch.allclose(argmax, torch.tensor([[0.5, 0.5]]))
+    assert torch.allclose(softargmax, torch.tensor([[0.5, 0.5]]), atol=1e-4)
+    assert int(center_to_cell_index(center.unsqueeze(0), size=5)[0]) == 12
