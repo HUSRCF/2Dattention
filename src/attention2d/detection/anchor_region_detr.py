@@ -33,17 +33,7 @@ class TinyAnchorRegionDETR(nn.Module):
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
         self.anchor_block = AnchorOnlyMemoryReadBlock(embed_dim)
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
-        self.query_decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
-                d_model=embed_dim,
-                nhead=4,
-                dim_feedforward=embed_dim * 2,
-                dropout=0.0,
-                batch_first=True,
-                activation="gelu",
-            ),
-            num_layers=1,
-        )
+        self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
         self.head = DetectionHead(embed_dim, num_classes=num_classes)
 
     def forward(self, x: Tensor) -> dict[str, Tensor | list[Tensor]]:
@@ -60,7 +50,7 @@ class TinyAnchorRegionDETR(nn.Module):
             queries = anchor_queries_from_state(anchor_state, self.num_queries)
         else:
             queries = self.learned_queries(x.shape[0])
-        decoded = self.query_decoder(tgt=queries, memory=spatial_tokens)
+        decoded = self.query_decoder(queries, spatial_tokens)
         outputs = self.head(decoded)
         outputs.update(
             {
@@ -70,6 +60,38 @@ class TinyAnchorRegionDETR(nn.Module):
             }
         )
         return outputs
+
+
+class SimpleCrossAttentionDecoder(nn.Module):
+    """MPS-friendly one-block cross-attention decoder for tiny detection."""
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.query_norm = nn.LayerNorm(dim)
+        self.memory_norm = nn.LayerNorm(dim)
+        self.query_proj = nn.Linear(dim, dim)
+        self.key_proj = nn.Linear(dim, dim)
+        self.value_proj = nn.Linear(dim, dim)
+        self.out_proj = nn.Linear(dim, dim)
+        self.mlp = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim * 2),
+            nn.GELU(),
+            nn.Linear(dim * 2, dim),
+        )
+        self.scale = dim**-0.5
+
+    def forward(self, queries: Tensor, memory: Tensor) -> Tensor:
+        norm_queries = self.query_norm(queries)
+        norm_memory = self.memory_norm(memory)
+        q = self.query_proj(norm_queries)
+        k = self.key_proj(norm_memory)
+        v = self.value_proj(norm_memory)
+        attention = torch.bmm(q, k.transpose(1, 2)) * self.scale
+        weights = attention.softmax(dim=-1)
+        readout = torch.bmm(weights, v)
+        decoded = queries + self.out_proj(readout)
+        return decoded + self.mlp(decoded)
 
 
 def anchor_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
