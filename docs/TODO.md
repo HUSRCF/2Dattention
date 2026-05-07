@@ -63,16 +63,26 @@ Status:
   - `local_anchor`: local-state features + anchor queries, final/best IoU `0.099/0.131`.
   - `anchor_learned`: anchor-region features + learned queries, final/best IoU `0.090/0.095`.
   - `anchor_anchor`: anchor-region features + anchor queries, final/best IoU `0.110/0.123`.
-- In the 2x2 control, anchor query init independently improves over `local_learned`: final IoU delta `+0.020` with `4/5` wins, best IoU delta `+0.042` with `5/5` wins.
+- In the 2x2 control, content-conditioned anchor query generation over local-state features independently improves over `local_learned`: final IoU delta `+0.020` with `4/5` wins, best IoU delta `+0.042` with `5/5` wins.
 - Anchor-region features alone also improve over `local_learned`, but more weakly: final IoU delta `+0.011` with `4/5` wins, best IoU delta `+0.007` with `4/5` wins.
 - Combining anchor features and anchor queries gives the best final IoU, but not the best best-IoU; `local_anchor` has the highest best IoU.
 
 Interpretation:
 
 - AnchorQueryInit has a clean positive signal on the single-object square-detection toy task.
-- The 2x2 control shows that the query-seed signal is not only an artifact of the anchor-region feature backbone.
+- The 2x2 control shows that the content-conditioned anchor query signal is not only an artifact of the anchor-region feature backbone.
+- Caveat: current anchor queries are generated differentiably from the current feature map, so this is not a pure fixed initialization test. Add `local_anchor_detached_query` to separate query content from the extra query-side gradient path.
 - This is still a limited sanity result: the toy task is single-object, square-only, and can be helped by row/column projections.
-- Next control should add a harder toy with distractors or multiple objects, then test DenseMaskAux.
+- Added non-overlapping `multi_distractor` toy support. Distractors are red, unlabeled squares; targets are green labeled squares; target-target and target-distractor overlap is controlled by rejection sampling.
+- The contaminated overlapping multi-distractor run should not be used as formal evidence. Use `results/det_toy_multi_distractor_nonoverlap_2x2_300step_5seeds.csv`.
+- Non-overlap multi-distractor 2x2 result:
+  - `local_learned`: final/best IoU `0.176/0.181`.
+  - `local_anchor`: final/best IoU `0.192/0.194`, delta vs `local_learned` `+0.016/+0.012`, both `4/5` wins.
+  - `anchor_learned`: final/best IoU `0.194/0.198`, delta vs `local_learned` `+0.018/+0.016`, both `3/5` wins.
+  - `anchor_anchor`: final/best IoU `0.200/0.200`, delta vs `local_learned` `+0.024/+0.018`, both `3/5` wins.
+- Interpretation of the harder toy: anchor/region components still help over local learned queries, but the effect is weaker and less clean than the single-object toy. `anchor_anchor` is best on mean final IoU, but only marginally above `anchor_learned` and `local_anchor`.
+- Current multi-object eval is target-matched IoU/recall-style localization. It does not penalize false-positive queries and should not be reported as AP.
+- Next controls: add `local_anchor_detached_query`, confidence-aware AP-lite, and then DenseMaskAux.
 
 ### Step 3: DenseMaskAux
 

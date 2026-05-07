@@ -436,14 +436,43 @@ Paired interpretation:
 
 Updated interpretation:
 
-- Anchor query seeding has an independent positive signal even when the feature backbone is only local-state.
+- Content-conditioned anchor query generation has an independent positive signal even when the feature backbone is only local-state.
 - Anchor-region features also help, but more weakly in this toy setting.
 - The combined `anchor_anchor` variant gives the best final IoU, while `local_anchor` gives the best best-IoU and keeps higher throughput.
-- This remains toy-level evidence: it supports anchor/region summaries as useful query seeds, not RF-DETR-scale detector gains.
+- This remains toy-level evidence: it supports anchor/region summaries as useful query generation signals, not RF-DETR-scale detector gains.
+- Caveat: the current anchor queries are generated differentiably from the feature map. A detached-query control is needed before claiming this is purely an initialization effect.
 
 Next detector controls:
 
-1. multi-object toy with distractors.
-2. object-size and off-center stratified toy evaluation.
-3. DET annotation loader using real boxes.
-4. DenseMaskAux for the toy and DET subset.
+The next control makes the toy harder with multiple labeled targets plus unlabeled distractor squares. An initial overlapping version was treated as contaminated because distractors could cover targets and targets could overlap. The formal toy now uses non-overlap placement.
+
+Output CSV: `results/det_toy_multi_distractor_nonoverlap_2x2_300step_5seeds.csv`.
+
+Setting: 64px images, 1-3 green target squares, 1-3 red distractor squares, controlled non-overlap, `embed_dim=16`, `num_queries=4`, 300 steps, 5 seeds. Evaluation reports target-matched IoU/Recall@0.50, so it measures whether target boxes are covered by queries; it is not AP and does not penalize false-positive queries.
+
+| Variant | Final IoU | Best IoU | Recall@0.50 | Img/s |
+|---|---:|---:|---:|---:|
+| `local_learned` | 0.176 | 0.181 | 0.059 | 201 |
+| `local_anchor` | 0.192 | 0.194 | 0.083 | 208 |
+| `anchor_learned` | 0.194 | 0.198 | 0.086 | 182 |
+| `anchor_anchor` | 0.200 | 0.200 | 0.096 | 188 |
+
+Paired result vs `local_learned`:
+
+- `local_anchor`: final IoU `+0.016`, `4/5` wins; best IoU `+0.012`, `4/5` wins.
+- `anchor_learned`: final IoU `+0.018`, `3/5` wins; best IoU `+0.016`, `3/5` wins.
+- `anchor_anchor`: final IoU `+0.024`, `3/5` wins; best IoU `+0.018`, `3/5` wins.
+
+Interpretation:
+
+- The harder non-overlap multi-distractor toy still supports anchor/region components over the local learned-query baseline.
+- The result is weaker and less clean than the single-object square toy: wins are not 5/5, and `anchor_anchor` is only marginally above `anchor_learned` and `local_anchor`.
+- The safest claim is that anchor/region generation remains promising under distractors, but it is not yet a robust detector-level result.
+
+Next detector controls:
+
+1. `local_anchor_detached_query` to separate query content from the extra query-side gradient path.
+2. confidence-aware AP-lite for distractor false positives.
+3. object-size and off-center stratified toy evaluation.
+4. DET annotation loader using real boxes.
+5. DenseMaskAux for the toy and DET subset.

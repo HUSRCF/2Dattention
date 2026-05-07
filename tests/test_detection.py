@@ -18,6 +18,7 @@ from attention2d.detection import (
     box_cxcywh_to_xyxy,
     box_iou,
 )
+from scripts.train_det_toy import cxcywh_iou, match_targets_by_iou, sample_square_detection_batch
 
 
 def test_detection_head_shapes() -> None:
@@ -124,3 +125,55 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             routing_maps = outputs["routing_maps"]
             assert isinstance(routing_maps, list)
             assert len(routing_maps) == int(feature_mode == "anchor")
+
+
+def test_square_detection_batch_multi_modes() -> None:
+    device = torch.device("cpu")
+    for toy_mode in ("single", "multi", "distractor", "multi_distractor"):
+        images, targets = sample_square_detection_batch(
+            batch_size=4,
+            image_size=32,
+            device=device,
+            toy_mode=toy_mode,
+            max_objects=3,
+            torch_seed=123,
+        )
+        assert images.shape == (4, 3, 32, 32)
+        for target in targets:
+            assert target["boxes"].ndim == 2
+            assert target["boxes"].shape[1] == 4
+            assert 1 <= target["boxes"].shape[0] <= 3
+            assert target["labels"].shape[0] == target["boxes"].shape[0]
+            boxes = target["boxes"].tolist()
+            for idx, box in enumerate(boxes):
+                for other in boxes[idx + 1 :]:
+                    assert cxcywh_iou(box, other) <= 0.05
+
+
+def test_match_targets_by_iou_uses_multiple_queries() -> None:
+    pred_boxes = torch.tensor(
+        [
+            [0.20, 0.20, 0.20, 0.20],
+            [0.80, 0.80, 0.20, 0.20],
+            [0.50, 0.50, 0.20, 0.20],
+        ]
+    )
+    target_boxes = torch.tensor(
+        [
+            [0.80, 0.80, 0.20, 0.20],
+            [0.20, 0.20, 0.20, 0.20],
+        ]
+    )
+    matched = match_targets_by_iou(pred_boxes, target_boxes)
+    assert matched.shape == (2,)
+    assert torch.allclose(matched, torch.ones(2), atol=1e-5)
+
+
+def test_match_targets_by_iou_rejects_more_targets_than_queries() -> None:
+    pred_boxes = torch.rand(2, 4)
+    target_boxes = torch.rand(3, 4)
+    try:
+        match_targets_by_iou(pred_boxes, target_boxes)
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when targets exceed queries")

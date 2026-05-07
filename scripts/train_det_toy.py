@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 import random
 import sys
 import time
@@ -50,6 +51,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=64)
     parser.add_argument("--embed-dim", type=int, default=32)
     parser.add_argument("--num-queries", type=int, default=6)
+    parser.add_argument(
+        "--toy-mode",
+        choices=("single", "multi", "distractor", "multi_distractor"),
+        default="single",
+    )
+    parser.add_argument("--max-objects", type=int, default=3)
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
@@ -60,6 +67,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.max_objects > args.num_queries:
+        raise ValueError("--max-objects must be <= --num-queries for the current brute-force matcher")
     device = get_best_device()
     rows = []
     print("device:", device)
@@ -89,6 +98,8 @@ def main() -> None:
                     batch_size=args.batch_size,
                     image_size=args.image_size,
                     device=device,
+                    toy_mode=args.toy_mode,
+                    max_objects=args.max_objects,
                     torch_seed=30_000_000 + run_seed * 100_000 + step,
                 )
                 outputs = model(images)
@@ -103,6 +114,8 @@ def main() -> None:
                         args.batch_size,
                         args.image_size,
                         device,
+                        toy_mode=args.toy_mode,
+                        max_objects=args.max_objects,
                         seed=20_000_000 + run_seed,
                     )
                     if metrics["iou"] > best_iou:
@@ -136,23 +149,41 @@ def sample_square_detection_batch(
     batch_size: int,
     image_size: int,
     device: torch.device,
+    toy_mode: str = "single",
+    max_objects: int = 3,
     torch_seed: int | None = None,
 ) -> tuple[Tensor, list[dict[str, Tensor]]]:
     images = torch.zeros(batch_size, 3, image_size, image_size, device=device)
     targets = []
     for idx in range(batch_size):
-        side = random.randint(image_size // 8, image_size // 3)
-        left = random.randint(0, image_size - side - 1)
-        top = random.randint(0, image_size - side - 1)
-        color = torch.tensor([0.1, 0.8, 0.2], device=device).view(3, 1, 1)
-        images[idx, :, top : top + side, left : left + side] = color
-        cx = (left + side / 2) / image_size
-        cy = (top + side / 2) / image_size
-        box = torch.tensor([[cx, cy, side / image_size, side / image_size]], device=device)
+        target_count, distractor_count = object_counts(toy_mode, max_objects)
+        occupied_boxes: list[list[float]] = []
+        boxes = []
+        for _ in range(distractor_count):
+            occupied_boxes.append(
+                draw_square(
+                    images[idx],
+                    image_size,
+                    device,
+                    color=(0.85, 0.15, 0.15),
+                    existing_boxes=occupied_boxes,
+                )
+            )
+        for _ in range(target_count):
+            box = draw_square(
+                images[idx],
+                image_size,
+                device,
+                color=(0.1, 0.8, 0.2),
+                existing_boxes=occupied_boxes,
+            )
+            boxes.append(box)
+            occupied_boxes.append(box)
+        box_tensor = torch.tensor(boxes, dtype=torch.float32, device=device)
         targets.append(
             {
-                "labels": torch.zeros(1, dtype=torch.long, device=device),
-                "boxes": box,
+                "labels": torch.zeros(target_count, dtype=torch.long, device=device),
+                "boxes": box_tensor,
             }
         )
     generator = None
@@ -162,12 +193,102 @@ def sample_square_detection_batch(
     return (images + noise).clamp(0, 1), targets
 
 
+def object_counts(toy_mode: str, max_objects: int) -> tuple[int, int]:
+    max_objects = max(1, max_objects)
+    if toy_mode == "single":
+        return 1, 0
+    if toy_mode == "multi":
+        return random.randint(1, max_objects), 0
+    if toy_mode == "distractor":
+        return 1, random.randint(1, max_objects)
+    if toy_mode == "multi_distractor":
+        return random.randint(1, max_objects), random.randint(1, max_objects)
+    raise ValueError(f"unknown toy_mode: {toy_mode}")
+
+
+def draw_square(
+    image: Tensor,
+    image_size: int,
+    device: torch.device,
+    color: tuple[float, float, float],
+    existing_boxes: list[list[float]] | None = None,
+    max_iou: float = 0.02,
+) -> list[float]:
+    existing_boxes = existing_boxes or []
+    box = sample_non_overlapping_square(image_size, existing_boxes, max_iou=max_iou)
+    cx, cy, width, height = box
+    side = int(round(width * image_size))
+    left = int(round((cx - width / 2) * image_size))
+    top = int(round((cy - height / 2) * image_size))
+    color_tensor = torch.tensor(color, device=device).view(3, 1, 1)
+    image[:, top : top + side, left : left + side] = color_tensor
+    return box
+
+
+def sample_non_overlapping_square(
+    image_size: int,
+    existing_boxes: list[list[float]],
+    max_iou: float,
+    attempts: int = 100,
+) -> list[float]:
+    best_box = None
+    best_overlap = float("inf")
+    for _ in range(attempts):
+        box = sample_square_box(image_size)
+        overlap = max((cxcywh_iou(box, existing) for existing in existing_boxes), default=0.0)
+        if overlap <= max_iou:
+            return box
+        if overlap < best_overlap:
+            best_box = box
+            best_overlap = overlap
+    if best_box is None:
+        return sample_square_box(image_size)
+    return best_box
+
+
+def sample_square_box(image_size: int) -> list[float]:
+    side = random.randint(image_size // 8, image_size // 3)
+    left = random.randint(0, image_size - side - 1)
+    top = random.randint(0, image_size - side - 1)
+    cx = (left + side / 2) / image_size
+    cy = (top + side / 2) / image_size
+    return [cx, cy, side / image_size, side / image_size]
+
+
+def cxcywh_iou(box_a: list[float], box_b: list[float]) -> float:
+    ax1, ay1, ax2, ay2 = cxcywh_to_xyxy_list(box_a)
+    bx1, by1, bx2, by2 = cxcywh_to_xyxy_list(box_b)
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    inter_w = max(0.0, ix2 - ix1)
+    inter_h = max(0.0, iy2 - iy1)
+    intersection = inter_w * inter_h
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - intersection
+    return 0.0 if union <= 0 else intersection / union
+
+
+def cxcywh_to_xyxy_list(box: list[float]) -> tuple[float, float, float, float]:
+    cx, cy, width, height = box
+    return (
+        cx - width / 2,
+        cy - height / 2,
+        cx + width / 2,
+        cy + height / 2,
+    )
+
+
 @torch.no_grad()
 def evaluate_toy(
     model: TinyAnchorRegionDETR,
     batch_size: int,
     image_size: int,
     device: torch.device,
+    toy_mode: str = "single",
+    max_objects: int = 3,
     batches: int = 8,
     seed: int = 0,
 ) -> dict[str, float]:
@@ -180,20 +301,18 @@ def evaluate_toy(
             batch_size,
             image_size,
             device,
+            toy_mode=toy_mode,
+            max_objects=max_objects,
             torch_seed=seed + batch_idx,
         )
         outputs = model(images)
-        probs = outputs["pred_logits"].softmax(dim=-1)[..., 0]
-        query_idx = probs.argmax(dim=1)
-        pred_boxes = outputs["pred_boxes"][torch.arange(batch_size, device=device), query_idx]
-        target_boxes = torch.cat([target["boxes"] for target in targets], dim=0)
-        iou_matrix = box_iou(
-            box_cxcywh_to_xyxy(pred_boxes),
-            box_cxcywh_to_xyxy(target_boxes),
-        )
-        iou = torch.diag(iou_matrix)
-        ious.append(iou.cpu())
-        recalls.append((iou >= 0.5).float().cpu())
+        for sample_idx, target in enumerate(targets):
+            matched_iou = match_targets_by_iou(
+                outputs["pred_boxes"][sample_idx],
+                target["boxes"],
+            )
+            ious.append(matched_iou.cpu())
+            recalls.append((matched_iou >= 0.5).float().cpu())
     model.train()
     all_ious = torch.cat(ious)
     all_recalls = torch.cat(recalls)
@@ -201,6 +320,33 @@ def evaluate_toy(
         "iou": float(all_ious.mean().item()),
         "recall50": float(all_recalls.mean().item()),
     }
+
+
+def match_targets_by_iou(pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
+    target_count = target_boxes.shape[0]
+    if target_count == 0:
+        return target_boxes.new_zeros((0,))
+    query_count = pred_boxes.shape[0]
+    if target_count > query_count:
+        raise ValueError("target_count must be <= query_count for match_targets_by_iou")
+    matched_count = target_count
+    iou_matrix = box_iou(
+        box_cxcywh_to_xyxy(pred_boxes),
+        box_cxcywh_to_xyxy(target_boxes),
+    )
+    target_indices = torch.arange(matched_count, device=target_boxes.device)
+    best_values = None
+    best_score = None
+    for query_indices_tuple in itertools.permutations(range(query_count), matched_count):
+        query_indices = torch.tensor(query_indices_tuple, device=target_boxes.device)
+        values = iou_matrix[query_indices, target_indices]
+        score = values.sum()
+        if best_score is None or bool(score > best_score):
+            best_score = score
+            best_values = values
+    if best_values is None:
+        return target_boxes.new_zeros((target_count,))
+    return best_values
 
 
 def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
