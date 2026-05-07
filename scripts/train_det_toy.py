@@ -22,9 +22,29 @@ from attention2d.detection import DetectionCriterion, TinyAnchorRegionDETR  # no
 from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E402
 
 
+MODEL_CONFIGS = {
+    "learned": ("anchor", "learned"),
+    "anchor": ("anchor", "anchor"),
+    "local_learned": ("local", "learned"),
+    "local_anchor": ("local", "anchor"),
+    "anchor_learned": ("anchor", "learned"),
+    "anchor_anchor": ("anchor", "anchor"),
+}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", choices=("learned", "anchor"), default=["learned", "anchor"])
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        choices=tuple(MODEL_CONFIGS),
+        default=["learned", "anchor"],
+        help=(
+            "Model variants. Legacy aliases: learned=anchor_learned, "
+            "anchor=anchor_anchor."
+        ),
+    )
+    parser.add_argument("--reference-model", choices=tuple(MODEL_CONFIGS), default="learned")
     parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=64)
@@ -47,13 +67,15 @@ def main() -> None:
     for seed_idx in range(args.seeds):
         run_seed = args.seed + seed_idx
         for model_name in args.models:
+            feature_mode, query_init = MODEL_CONFIGS[model_name]
             torch.manual_seed(run_seed)
             random.seed(run_seed)
             model = TinyAnchorRegionDETR(
                 embed_dim=args.embed_dim,
                 num_classes=1,
                 num_queries=args.num_queries,
-                query_init=model_name,
+                feature_mode=feature_mode,
+                query_init=query_init,
             ).to(device)
             criterion = DetectionCriterion(num_classes=1).to(device)
             optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
@@ -107,7 +129,7 @@ def main() -> None:
     write_rows(args.out, rows)
     print("saved_csv:", args.out)
     print_summary(rows)
-    print_paired_summary(rows, reference_model="learned")
+    print_paired_summary(rows, reference_model=args.reference_model)
 
 
 def sample_square_detection_batch(

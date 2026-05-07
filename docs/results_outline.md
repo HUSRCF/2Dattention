@@ -416,7 +416,34 @@ Interpretation:
 
 Next detector controls:
 
-1. `local_state + learned_queries` without anchor-region feature backbone.
-2. multi-object toy with distractors.
+The first control is now complete: feature backbone and query initialization were separated into a 2x2 matrix.
+
+Output CSV: `results/det_toy_feature_query_2x2_300step_5seeds.csv`.
+
+| Variant | Feature source | Query init | Final IoU | Best IoU | Recall@0.50 | Img/s |
+|---|---|---|---:|---:|---:|---:|
+| `local_learned` | local-state | learned | 0.079 | 0.088 | 0.033 | 320 |
+| `local_anchor` | local-state | anchor | 0.099 | 0.131 | 0.048 | 321 |
+| `anchor_learned` | anchor-region | learned | 0.090 | 0.095 | 0.048 | 254 |
+| `anchor_anchor` | anchor-region | anchor | 0.110 | 0.123 | 0.047 | 277 |
+
+Paired interpretation:
+
+- `local_anchor` vs `local_learned`: final IoU `+0.020`, `4/5` wins; best IoU `+0.042`, `5/5` wins.
+- `anchor_learned` vs `local_learned`: final IoU `+0.011`, `4/5` wins; best IoU `+0.007`, `4/5` wins.
+- `anchor_anchor` vs `anchor_learned`: final IoU `+0.020`, `5/5` wins; best IoU `+0.028`, `5/5` wins.
+- `anchor_anchor` vs `local_anchor`: final IoU `+0.011`, `4/5` wins; best IoU `-0.008`, `2/5` wins.
+
+Updated interpretation:
+
+- Anchor query seeding has an independent positive signal even when the feature backbone is only local-state.
+- Anchor-region features also help, but more weakly in this toy setting.
+- The combined `anchor_anchor` variant gives the best final IoU, while `local_anchor` gives the best best-IoU and keeps higher throughput.
+- This remains toy-level evidence: it supports anchor/region summaries as useful query seeds, not RF-DETR-scale detector gains.
+
+Next detector controls:
+
+1. multi-object toy with distractors.
+2. object-size and off-center stratified toy evaluation.
 3. DET annotation loader using real boxes.
 4. DenseMaskAux for the toy and DET subset.

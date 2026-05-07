@@ -11,7 +11,7 @@ from .heads import DetectionHead, LearnedObjectQueries
 
 
 class TinyAnchorRegionDETR(nn.Module):
-    """Small detector scaffold for testing anchor-region query initialization."""
+    """Small detector scaffold for testing feature/query anchor controls."""
 
     def __init__(
         self,
@@ -21,11 +21,15 @@ class TinyAnchorRegionDETR(nn.Module):
         num_classes: int = 3,
         num_queries: int = 8,
         local_blocks: int = 2,
+        feature_mode: str = "anchor",
         query_init: str = "learned",
     ) -> None:
         super().__init__()
+        if feature_mode not in {"local", "anchor"}:
+            raise ValueError("feature_mode must be 'local' or 'anchor'")
         if query_init not in {"learned", "anchor"}:
             raise ValueError("query_init must be 'learned' or 'anchor'")
+        self.feature_mode = feature_mode
         self.query_init = query_init
         self.num_queries = num_queries
         self.patch_embed = PatchEmbed2D(in_channels, embed_dim, patch_size)
@@ -42,21 +46,27 @@ class TinyAnchorRegionDETR(nn.Module):
         for block in self.local_blocks:
             state = block(state)
             memories.append(state)
-        anchor_state, anchor_routing = self.anchor_block(memories)
-        memories.append(anchor_state)
 
-        spatial_tokens = anchor_state.flatten(2).transpose(1, 2)
+        routing_maps: list[Tensor] = []
+        if self.feature_mode == "anchor":
+            spatial_state, anchor_routing = self.anchor_block(memories)
+            memories.append(spatial_state)
+            routing_maps.append(anchor_routing)
+        else:
+            spatial_state = state
+
+        spatial_tokens = spatial_state.flatten(2).transpose(1, 2)
         if self.query_init == "anchor":
-            queries = anchor_queries_from_state(anchor_state, self.num_queries)
+            queries = anchor_queries_from_state(spatial_state, self.num_queries)
         else:
             queries = self.learned_queries(x.shape[0])
         decoded = self.query_decoder(queries, spatial_tokens)
         outputs = self.head(decoded)
         outputs.update(
             {
-                "spatial_features": anchor_state,
+                "spatial_features": spatial_state,
                 "memories": memories,
-                "routing_maps": [anchor_routing],
+                "routing_maps": routing_maps,
             }
         )
         return outputs

@@ -58,12 +58,21 @@ Status:
 - Learned queries: final IoU `0.090`, best IoU `0.095`.
 - Anchor query init: final IoU `0.110`, best IoU `0.123`.
 - Paired delta vs learned: final IoU `+0.020`, best IoU `+0.028`, both `5/5` wins.
+- Added formal feature/query 2x2 controls in `results/det_toy_feature_query_2x2_300step_5seeds.csv`:
+  - `local_learned`: local-state features + learned queries, final/best IoU `0.079/0.088`.
+  - `local_anchor`: local-state features + anchor queries, final/best IoU `0.099/0.131`.
+  - `anchor_learned`: anchor-region features + learned queries, final/best IoU `0.090/0.095`.
+  - `anchor_anchor`: anchor-region features + anchor queries, final/best IoU `0.110/0.123`.
+- In the 2x2 control, anchor query init independently improves over `local_learned`: final IoU delta `+0.020` with `4/5` wins, best IoU delta `+0.042` with `5/5` wins.
+- Anchor-region features alone also improve over `local_learned`, but more weakly: final IoU delta `+0.011` with `4/5` wins, best IoU delta `+0.007` with `4/5` wins.
+- Combining anchor features and anchor queries gives the best final IoU, but not the best best-IoU; `local_anchor` has the highest best IoU.
 
 Interpretation:
 
 - AnchorQueryInit has a clean positive signal on the single-object square-detection toy task.
-- This is still a limited sanity result: both learned and anchor variants use the same anchor-region feature backbone, and the toy task can be helped by row/column projections.
-- Next control should add a `local_state + learned_queries` detector and a harder toy with distractors or multiple objects.
+- The 2x2 control shows that the query-seed signal is not only an artifact of the anchor-region feature backbone.
+- This is still a limited sanity result: the toy task is single-object, square-only, and can be helped by row/column projections.
+- Next control should add a harder toy with distractors or multiple objects, then test DenseMaskAux.
 
 ### Step 3: DenseMaskAux
 

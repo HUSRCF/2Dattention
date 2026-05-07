@@ -83,6 +83,7 @@ def test_tiny_anchor_region_detr_backward() -> None:
         embed_dim=16,
         num_classes=2,
         num_queries=5,
+        feature_mode="anchor",
         query_init="anchor",
     )
     criterion = DetectionCriterion(num_classes=2)
@@ -103,3 +104,23 @@ def test_tiny_anchor_region_detr_backward() -> None:
     losses = criterion(outputs, targets)
     losses["loss"].backward()
     assert torch.isfinite(losses["loss"])
+
+
+def test_tiny_anchor_region_detr_feature_query_modes() -> None:
+    images = torch.randn(2, 3, 32, 32)
+    for feature_mode in ("local", "anchor"):
+        for query_init in ("learned", "anchor"):
+            model = TinyAnchorRegionDETR(
+                embed_dim=16,
+                num_classes=1,
+                num_queries=4,
+                feature_mode=feature_mode,
+                query_init=query_init,
+            )
+            outputs = model(images)
+            assert outputs["pred_logits"].shape == (2, 4, 2)
+            assert outputs["pred_boxes"].shape == (2, 4, 4)
+            assert outputs["spatial_features"].ndim == 4
+            routing_maps = outputs["routing_maps"]
+            assert isinstance(routing_maps, list)
+            assert len(routing_maps) == int(feature_mode == "anchor")
