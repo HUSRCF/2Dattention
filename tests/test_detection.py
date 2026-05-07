@@ -110,7 +110,7 @@ def test_tiny_anchor_region_detr_backward() -> None:
 def test_tiny_anchor_region_detr_feature_query_modes() -> None:
     images = torch.randn(2, 3, 32, 32)
     for feature_mode in ("local", "anchor"):
-        for query_init in ("learned", "anchor"):
+        for query_init in ("learned", "anchor", "anchor_detached"):
             model = TinyAnchorRegionDETR(
                 embed_dim=16,
                 num_classes=1,

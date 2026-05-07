@@ -71,7 +71,12 @@ Interpretation:
 
 - AnchorQueryInit has a clean positive signal on the single-object square-detection toy task.
 - The 2x2 control shows that the content-conditioned anchor query signal is not only an artifact of the anchor-region feature backbone.
-- Caveat: current anchor queries are generated differentiably from the current feature map, so this is not a pure fixed initialization test. Add `local_anchor_detached_query` to separate query content from the extra query-side gradient path.
+- Added `local_anchor_detached` to separate anchor query content from the extra query-side gradient path.
+- Under target-matched single-object eval, `results/det_toy_local_anchor_detached_single_300step_5seeds.csv` gives:
+  - `local_learned`: final/best IoU `0.195/0.200`.
+  - `local_anchor`: final/best IoU `0.241/0.250`, delta vs `local_learned` `+0.046/+0.050`, both `5/5` wins.
+  - `local_anchor_detached`: final/best IoU `0.258/0.265`, delta vs `local_learned` `+0.063/+0.065`, final `4/5` wins and best `5/5` wins.
+- Single-object interpretation: detached anchor queries preserve and even improve the signal, so simple single-object localization is helped mainly by the anchor query content/geometry summary, not by the extra query-side gradient path.
 - This is still a limited sanity result: the toy task is single-object, square-only, and can be helped by row/column projections.
 - Added non-overlapping `multi_distractor` toy support. Distractors are red, unlabeled squares; targets are green labeled squares; target-target and target-distractor overlap is controlled by rejection sampling.
 - The contaminated overlapping multi-distractor run should not be used as formal evidence. Use `results/det_toy_multi_distractor_nonoverlap_2x2_300step_5seeds.csv`.
@@ -81,8 +86,13 @@ Interpretation:
   - `anchor_learned`: final/best IoU `0.194/0.198`, delta vs `local_learned` `+0.018/+0.016`, both `3/5` wins.
   - `anchor_anchor`: final/best IoU `0.200/0.200`, delta vs `local_learned` `+0.024/+0.018`, both `3/5` wins.
 - Interpretation of the harder toy: anchor/region components still help over local learned queries, but the effect is weaker and less clean than the single-object toy. `anchor_anchor` is best on mean final IoU, but only marginally above `anchor_learned` and `local_anchor`.
+- Detached query control on non-overlap multi-distractor, `results/det_toy_local_anchor_detached_multi_distractor_300step_5seeds.csv`:
+  - `local_learned`: final/best IoU `0.176/0.181`.
+  - `local_anchor`: final/best IoU `0.192/0.194`, delta vs `local_learned` `+0.016/+0.012`, both `4/5` wins.
+  - `local_anchor_detached`: final/best IoU `0.163/0.166`, delta vs `local_learned` `-0.013/-0.016`, both `2/5` wins.
+- Multi-distractor interpretation: unlike the single-object toy, detached query content alone is not enough and can hurt. The harder task appears to need differentiable online query-feature coupling or a stronger decoder/matcher.
 - Current multi-object eval is target-matched IoU/recall-style localization. It does not penalize false-positive queries and should not be reported as AP.
-- Next controls: add `local_anchor_detached_query`, confidence-aware AP-lite, and then DenseMaskAux.
+- Next controls: confidence-aware AP-lite, then DenseMaskAux.
 
 ### Step 3: DenseMaskAux
 

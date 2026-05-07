@@ -28,8 +28,10 @@ MODEL_CONFIGS = {
     "anchor": ("anchor", "anchor"),
     "local_learned": ("local", "learned"),
     "local_anchor": ("local", "anchor"),
+    "local_anchor_detached": ("local", "anchor_detached"),
     "anchor_learned": ("anchor", "learned"),
     "anchor_anchor": ("anchor", "anchor"),
+    "anchor_anchor_detached": ("anchor", "anchor_detached"),
 }
 
 

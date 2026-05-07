@@ -469,10 +469,45 @@ Interpretation:
 - The result is weaker and less clean than the single-object square toy: wins are not 5/5, and `anchor_anchor` is only marginally above `anchor_learned` and `local_anchor`.
 - The safest claim is that anchor/region generation remains promising under distractors, but it is not yet a robust detector-level result.
 
+Detached-query control:
+
+`local_anchor_detached` was added to separate anchor query content from the extra query-side gradient path. It builds anchor queries from `spatial_state.detach()`, so decoder loss cannot flow through the query branch back into the feature map.
+
+Single-object target-matched eval:
+
+Output CSV: `results/det_toy_local_anchor_detached_single_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | Recall@0.50 | Img/s |
+|---|---:|---:|---:|---:|
+| `local_learned` | 0.195 | 0.200 | 0.094 | 287 |
+| `local_anchor` | 0.241 | 0.250 | 0.138 | 294 |
+| `local_anchor_detached` | 0.258 | 0.265 | 0.144 | 286 |
+
+Single-object interpretation:
+
+- Detaching the anchor query branch does not remove the signal; it improves the mean result in this simple setting.
+- This suggests that simple square localization benefits strongly from the anchor query content/geometry summary itself.
+- The absolute values are not directly comparable to the earlier single-object table because this run uses target-matched IoU eval.
+
+Non-overlap multi-distractor eval:
+
+Output CSV: `results/det_toy_local_anchor_detached_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | Recall@0.50 | Img/s |
+|---|---:|---:|---:|---:|
+| `local_learned` | 0.176 | 0.181 | 0.059 | 203 |
+| `local_anchor` | 0.192 | 0.194 | 0.083 | 209 |
+| `local_anchor_detached` | 0.163 | 0.166 | 0.077 | 202 |
+
+Multi-distractor interpretation:
+
+- Detached anchor query content does not transfer to the harder setting; it falls below `local_learned`.
+- The differentiable `local_anchor` branch remains positive, suggesting that online query-feature coupling matters when multiple targets and distractors are present.
+- This is a useful boundary: anchor query content alone is enough for the simplest toy, but the harder toy needs either gradient-coupled query generation, a better decoder, or AP-aware training/evaluation.
+
 Next detector controls:
 
-1. `local_anchor_detached_query` to separate query content from the extra query-side gradient path.
-2. confidence-aware AP-lite for distractor false positives.
-3. object-size and off-center stratified toy evaluation.
-4. DET annotation loader using real boxes.
-5. DenseMaskAux for the toy and DET subset.
+1. confidence-aware AP-lite for distractor false positives.
+2. object-size and off-center stratified toy evaluation.
+3. DET annotation loader using real boxes.
+4. DenseMaskAux for the toy and DET subset.

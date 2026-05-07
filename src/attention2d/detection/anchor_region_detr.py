@@ -27,8 +27,8 @@ class TinyAnchorRegionDETR(nn.Module):
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
             raise ValueError("feature_mode must be 'local' or 'anchor'")
-        if query_init not in {"learned", "anchor"}:
-            raise ValueError("query_init must be 'learned' or 'anchor'")
+        if query_init not in {"learned", "anchor", "anchor_detached"}:
+            raise ValueError("query_init must be 'learned', 'anchor', or 'anchor_detached'")
         self.feature_mode = feature_mode
         self.query_init = query_init
         self.num_queries = num_queries
@@ -58,6 +58,8 @@ class TinyAnchorRegionDETR(nn.Module):
         spatial_tokens = spatial_state.flatten(2).transpose(1, 2)
         if self.query_init == "anchor":
             queries = anchor_queries_from_state(spatial_state, self.num_queries)
+        elif self.query_init == "anchor_detached":
+            queries = anchor_queries_from_state(spatial_state.detach(), self.num_queries)
         else:
             queries = self.learned_queries(x.shape[0])
         decoded = self.query_decoder(queries, spatial_tokens)
