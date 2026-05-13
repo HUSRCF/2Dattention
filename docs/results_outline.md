@@ -554,8 +554,31 @@ DenseMaskAux interpretation:
 - The best current coverage model remains `local_anchor` without DenseMaskAux.
 - Therefore, the next useful step is not more side supervision by itself, but a stronger coupling between dense spatial masks and query/box refinement.
 
+Maskpooled-query coupling:
+
+The first direct coupling variant predicts an internal dense mask, soft-pools a foreground region summary from the spatial feature map, and adds that region vector to every query before decoding.
+
+Output CSV: `results/det_toy_maskpooled_query_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor` | 0.192 | 0.194 | 0.048 | 0.000 | 0.000 |
+| `local_anchor_maskaux` | 0.189 | 0.189 | 0.046 | 0.982 | 0.991 |
+| `local_anchor_maskpooled_query` | 0.172 | 0.179 | 0.034 | 0.978 | 0.989 |
+| `local_learned` | 0.176 | 0.181 | 0.039 | 0.000 | 0.000 |
+| `local_learned_maskpooled_query` | 0.163 | 0.166 | 0.053 | 0.989 | 0.995 |
+
+Maskpooled interpretation:
+
+- Like DenseMaskAux, the mask branch itself learns the union mask well.
+- The global pooled foreground vector does not improve box coverage; it hurts `local_anchor` by final IoU `-0.020` and AP50-lite `-0.014`.
+- For `local_learned`, it improves AP50-lite by `+0.015` but lowers final/best IoU, so it mainly changes confidence ordering rather than localization.
+- This suggests that query consumption of dense masks must be query-specific. A single foreground summary broadcast to all queries is too coarse for multi-object/distractor detection.
+
 Next detector controls:
 
-1. confidence-aware loss or decoder refinement for AP-lite.
-2. object-size and off-center stratified toy evaluation.
-3. DET annotation loader using real boxes.
+1. mask-biased query attention with per-query spatial attention logits.
+2. mask proposal query initialization from top-k/connected foreground regions.
+3. confidence-aware loss or decoder refinement for AP-lite.
+4. object-size and off-center stratified toy evaluation.
+5. DET annotation loader using real boxes.

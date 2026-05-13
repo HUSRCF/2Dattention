@@ -137,6 +137,19 @@ Interpretation:
 - The auxiliary mask head does not reliably improve detection box IoU or AP-lite in the current tiny detector.
 - The best current coverage model remains `local_anchor` without mask auxiliary.
 - The useful signal is that dense supervision can train a spatial head, but transferring it into query boxes likely needs a stronger coupling mechanism than a side auxiliary loss.
+- Implemented first coupling attempt: `maskpooled_query`.
+  - `local_anchor_maskpooled_query` and `local_learned_maskpooled_query` predict an internal dense mask, soft-pool a foreground region summary from spatial features, then add that summary to queries before decoding.
+  - Formal result: `results/det_toy_maskpooled_query_multi_distractor_300step_5seeds.csv`.
+  - `local_anchor_maskpooled_query`: final/best IoU `0.172/0.179`, AP50-lite `0.034`, mask IoU/Dice `0.978/0.989`.
+  - `local_learned_maskpooled_query`: final/best IoU `0.163/0.166`, AP50-lite `0.053`, mask IoU/Dice `0.989/0.995`.
+  - Against `local_anchor`, `local_anchor_maskpooled_query` is worse by final IoU `-0.020`, best IoU `-0.015`, AP50-lite `-0.014`.
+  - Against `local_learned`, `local_learned_maskpooled_query` is worse by final IoU `-0.012` and best IoU `-0.015`, but AP50-lite improves by `+0.015`.
+
+Maskpooled interpretation:
+
+- The internal mask can be learned, but a single global foreground summary added to all queries is too coarse for multi-object/distractor detection.
+- It can shift score ordering for learned queries, but it hurts target coverage.
+- The next coupling should be per-query, such as mask-biased query attention or mask proposal query initialization, not one shared pooled region vector.
 
 ### Step 4: Real Detection Dataset Path
 

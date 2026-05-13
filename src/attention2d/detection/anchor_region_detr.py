@@ -23,20 +23,28 @@ class TinyAnchorRegionDETR(nn.Module):
         local_blocks: int = 2,
         feature_mode: str = "anchor",
         query_init: str = "learned",
+        query_refine: str = "none",
     ) -> None:
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
             raise ValueError("feature_mode must be 'local' or 'anchor'")
         if query_init not in {"learned", "anchor", "anchor_detached"}:
             raise ValueError("query_init must be 'learned', 'anchor', or 'anchor_detached'")
+        if query_refine not in {"none", "mask_pool"}:
+            raise ValueError("query_refine must be 'none' or 'mask_pool'")
         self.feature_mode = feature_mode
         self.query_init = query_init
+        self.query_refine = query_refine
         self.num_queries = num_queries
         self.patch_embed = PatchEmbed2D(in_channels, embed_dim, patch_size)
         self.coord_encoding = Coordinate2DEncoding(embed_dim)
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
         self.anchor_block = AnchorOnlyMemoryReadBlock(embed_dim)
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
+        if query_refine == "mask_pool":
+            self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
+            self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
+            self.query_mask_gate = nn.Parameter(torch.tensor(0.1))
         self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
         self.head = DetectionHead(embed_dim, num_classes=num_classes)
 
@@ -62,8 +70,15 @@ class TinyAnchorRegionDETR(nn.Module):
             queries = anchor_queries_from_state(spatial_state.detach(), self.num_queries)
         else:
             queries = self.learned_queries(x.shape[0])
+        query_mask_logits = None
+        if self.query_refine == "mask_pool":
+            query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
+            region = mask_pooled_region(spatial_state, query_mask_logits)
+            queries = queries + self.query_mask_gate * self.query_mask_proj(region).unsqueeze(1)
         decoded = self.query_decoder(queries, spatial_tokens)
         outputs = self.head(decoded)
+        if query_mask_logits is not None:
+            outputs["query_mask_logits"] = query_mask_logits
         outputs.update(
             {
                 "spatial_features": spatial_state,
@@ -124,3 +139,12 @@ def anchor_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
         return tokens[:, positions]
     repeats = (num_queries + tokens.shape[1] - 1) // tokens.shape[1]
     return tokens.repeat(1, repeats, 1)[:, :num_queries]
+
+
+def mask_pooled_region(state: Tensor, mask_logits: Tensor) -> Tensor:
+    """Pool a foreground region summary from a 2D state using soft mask logits."""
+
+    weights = mask_logits.sigmoid().unsqueeze(1)
+    numerator = (state * weights).sum(dim=(2, 3))
+    denominator = weights.sum(dim=(2, 3)).clamp_min(1e-6)
+    return numerator / denominator

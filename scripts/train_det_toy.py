@@ -26,17 +26,19 @@ from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E
 
 
 MODEL_CONFIGS = {
-    "learned": ("anchor", "learned", False),
-    "anchor": ("anchor", "anchor", False),
-    "local_learned": ("local", "learned", False),
-    "local_anchor": ("local", "anchor", False),
-    "local_anchor_detached": ("local", "anchor_detached", False),
-    "anchor_learned": ("anchor", "learned", False),
-    "anchor_anchor": ("anchor", "anchor", False),
-    "anchor_anchor_detached": ("anchor", "anchor_detached", False),
-    "local_learned_maskaux": ("local", "learned", True),
-    "local_anchor_maskaux": ("local", "anchor", True),
-    "local_anchor_detached_maskaux": ("local", "anchor_detached", True),
+    "learned": ("anchor", "learned", "none", "none"),
+    "anchor": ("anchor", "anchor", "none", "none"),
+    "local_learned": ("local", "learned", "none", "none"),
+    "local_anchor": ("local", "anchor", "none", "none"),
+    "local_anchor_detached": ("local", "anchor_detached", "none", "none"),
+    "anchor_learned": ("anchor", "learned", "none", "none"),
+    "anchor_anchor": ("anchor", "anchor", "none", "none"),
+    "anchor_anchor_detached": ("anchor", "anchor_detached", "none", "none"),
+    "local_learned_maskaux": ("local", "learned", "none", "side"),
+    "local_anchor_maskaux": ("local", "anchor", "none", "side"),
+    "local_anchor_detached_maskaux": ("local", "anchor_detached", "none", "side"),
+    "local_learned_maskpooled_query": ("local", "learned", "mask_pool", "pooled"),
+    "local_anchor_maskpooled_query": ("local", "anchor", "mask_pool", "pooled"),
 }
 
 
@@ -88,7 +90,7 @@ def main() -> None:
     for seed_idx in range(args.seeds):
         run_seed = args.seed + seed_idx
         for model_name in args.models:
-            feature_mode, query_init, use_mask_aux = MODEL_CONFIGS[model_name]
+            feature_mode, query_init, query_refine, mask_aux_mode = MODEL_CONFIGS[model_name]
             torch.manual_seed(run_seed)
             random.seed(run_seed)
             model = TinyAnchorRegionDETR(
@@ -97,8 +99,9 @@ def main() -> None:
                 num_queries=args.num_queries,
                 feature_mode=feature_mode,
                 query_init=query_init,
+                query_refine=query_refine,
             ).to(device)
-            mask_head = DenseMaskAuxHead(args.embed_dim).to(device) if use_mask_aux else None
+            mask_head = DenseMaskAuxHead(args.embed_dim).to(device) if mask_aux_mode == "side" else None
             criterion = DetectionCriterion(num_classes=1).to(device)
             parameters = list(model.parameters())
             if mask_head is not None:
@@ -120,7 +123,7 @@ def main() -> None:
                 )
                 outputs = model(images)
                 losses = criterion(outputs, targets)
-                if mask_head is not None:
+                if mask_aux_mode != "none":
                     mask_losses = dense_mask_aux_loss(
                         outputs=outputs,
                         targets=targets,
@@ -341,7 +344,7 @@ def evaluate_toy(
             torch_seed=seed + batch_idx,
         )
         outputs = model(images)
-        if mask_head is not None:
+        if mask_head is not None or "query_mask_logits" in outputs:
             mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head)
             mask_ious.append(mask_metrics["mask_iou"].cpu())
             mask_dices.append(mask_metrics["mask_dice"].cpu())
@@ -463,10 +466,10 @@ class DenseMaskAuxHead(nn.Module):
 def dense_mask_aux_loss(
     outputs: dict[str, Tensor | list[Tensor]],
     targets: list[dict[str, Tensor]],
-    mask_head: DenseMaskAuxHead,
+    mask_head: DenseMaskAuxHead | None,
     dice_weight: float,
 ) -> dict[str, Tensor]:
-    logits = mask_head(outputs["spatial_features"])
+    logits = dense_mask_logits(outputs, mask_head)
     target_masks = dense_mask_targets_from_boxes(
         targets=targets,
         height=logits.shape[-2],
@@ -487,10 +490,10 @@ def dense_mask_aux_loss(
 def dense_mask_aux_metrics(
     outputs: dict[str, Tensor | list[Tensor]],
     targets: list[dict[str, Tensor]],
-    mask_head: DenseMaskAuxHead,
+    mask_head: DenseMaskAuxHead | None,
     threshold: float = 0.5,
 ) -> dict[str, Tensor]:
-    logits = mask_head(outputs["spatial_features"])
+    logits = dense_mask_logits(outputs, mask_head)
     target_masks = dense_mask_targets_from_boxes(
         targets=targets,
         height=logits.shape[-2],
@@ -509,6 +512,17 @@ def dense_mask_aux_metrics(
         "mask_iou": (intersection / union).mean(),
         "mask_dice": dice,
     }
+
+
+def dense_mask_logits(
+    outputs: dict[str, Tensor | list[Tensor]],
+    mask_head: DenseMaskAuxHead | None,
+) -> Tensor:
+    if "query_mask_logits" in outputs:
+        return outputs["query_mask_logits"]
+    if mask_head is None:
+        raise ValueError("mask_head is required when outputs do not include query_mask_logits")
+    return mask_head(outputs["spatial_features"])
 
 
 def dense_mask_targets_from_boxes(
