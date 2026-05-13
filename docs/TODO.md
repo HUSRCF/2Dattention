@@ -92,7 +92,13 @@ Interpretation:
   - `local_anchor_detached`: final/best IoU `0.163/0.166`, delta vs `local_learned` `-0.013/-0.016`, both `2/5` wins.
 - Multi-distractor interpretation: unlike the single-object toy, detached query content alone is not enough and can hurt. The harder task appears to need differentiable online query-feature coupling or a stronger decoder/matcher.
 - Current multi-object eval is target-matched IoU/recall-style localization. It does not penalize false-positive queries and should not be reported as AP.
-- Next controls: confidence-aware AP-lite, then DenseMaskAux.
+- Added confidence-aware AP50-lite to `scripts/train_det_toy.py`. It ranks queries by object-class probability, matches predictions to targets at IoU `0.50`, and therefore penalizes false-positive ordering unlike target-matched IoU.
+- AP-lite non-overlap multi-distractor result: `results/det_toy_aplite_multi_distractor_300step_5seeds.csv`.
+  - `local_learned`: final/best IoU `0.176/0.181`, AP50-lite `0.039`.
+  - `local_anchor`: final/best IoU `0.192/0.194`, AP50-lite `0.048`, AP delta vs `local_learned` `+0.010` with `4/5` wins.
+  - `local_anchor_detached`: final/best IoU `0.163/0.166`, AP50-lite `0.055`, AP delta vs `local_learned` `+0.017` with `4/5` wins.
+- AP-lite interpretation: `local_anchor` remains the better localization/coverage model, while `local_anchor_detached` ranks some true-positive queries better despite worse target-matched IoU. This separates "coverage quality" from "confidence ordering"; neither should be treated as detector AP yet.
+- Next controls: DenseMaskAux and stronger decoder/AP training.
 
 ### Step 3: DenseMaskAux
 

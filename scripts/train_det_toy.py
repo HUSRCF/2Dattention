@@ -74,7 +74,7 @@ def main() -> None:
     device = get_best_device()
     rows = []
     print("device:", device)
-    print("model,run_seed,step,loss,eval_iou,eval_recall50,best_iou,best_step,images_per_sec")
+    print("model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,best_iou,best_step,images_per_sec")
     for seed_idx in range(args.seeds):
         run_seed = args.seed + seed_idx
         for model_name in args.models:
@@ -131,6 +131,7 @@ def main() -> None:
                         "loss": last_loss,
                         "eval_iou": metrics["iou"],
                         "eval_recall50": metrics["recall50"],
+                        "eval_ap50": metrics["ap50"],
                         "best_iou": best_iou,
                         "best_step": best_step,
                         "images_per_sec": speed,
@@ -138,7 +139,7 @@ def main() -> None:
                     rows.append(row)
                     print(
                         f"{model_name},{run_seed},{step},{last_loss:.4f},"
-                        f"{metrics['iou']:.3f},{metrics['recall50']:.3f},"
+                        f"{metrics['iou']:.3f},{metrics['recall50']:.3f},{metrics['ap50']:.3f},"
                         f"{best_iou:.3f},{best_step},{speed:.2f}"
                     )
     write_rows(args.out, rows)
@@ -297,6 +298,7 @@ def evaluate_toy(
     model.eval()
     ious = []
     recalls = []
+    aps = []
     for batch_idx in range(batches):
         random.seed(seed + batch_idx)
         images, targets = sample_square_detection_batch(
@@ -315,12 +317,20 @@ def evaluate_toy(
             )
             ious.append(matched_iou.cpu())
             recalls.append((matched_iou >= 0.5).float().cpu())
+            aps.append(
+                ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                ).cpu()
+            )
     model.train()
     all_ious = torch.cat(ious)
     all_recalls = torch.cat(recalls)
     return {
         "iou": float(all_ious.mean().item()),
         "recall50": float(all_recalls.mean().item()),
+        "ap50": float(torch.stack(aps).mean().item()),
     }
 
 
@@ -351,6 +361,49 @@ def match_targets_by_iou(pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
     return best_values
 
 
+def ap50_for_image(pred_logits: Tensor, pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
+    target_count = target_boxes.shape[0]
+    if target_count == 0:
+        return pred_logits.new_tensor(0.0)
+    scores = pred_logits.softmax(dim=-1)[:, 0]
+    order = scores.argsort(descending=True)
+    iou_matrix = box_iou(
+        box_cxcywh_to_xyxy(pred_boxes),
+        box_cxcywh_to_xyxy(target_boxes),
+    )
+    matched_targets: set[int] = set()
+    true_positives = []
+    false_positives = []
+    for query_idx_tensor in order:
+        query_idx = int(query_idx_tensor.item())
+        ious = iou_matrix[query_idx]
+        best_iou, best_target_tensor = ious.max(dim=0)
+        best_target = int(best_target_tensor.item())
+        if float(best_iou.item()) >= 0.5 and best_target not in matched_targets:
+            matched_targets.add(best_target)
+            true_positives.append(1.0)
+            false_positives.append(0.0)
+        else:
+            true_positives.append(0.0)
+            false_positives.append(1.0)
+    tp = torch.tensor(true_positives, device=pred_logits.device, dtype=pred_logits.dtype).cumsum(dim=0)
+    fp = torch.tensor(false_positives, device=pred_logits.device, dtype=pred_logits.dtype).cumsum(dim=0)
+    recall = tp / max(target_count, 1)
+    precision = tp / (tp + fp).clamp_min(1e-8)
+    return precision_recall_ap(recall, precision)
+
+
+def precision_recall_ap(recall: Tensor, precision: Tensor) -> Tensor:
+    zero = recall.new_tensor([0.0])
+    one = recall.new_tensor([1.0])
+    mrec = torch.cat((zero, recall, one), dim=0)
+    mpre = torch.cat((zero, precision, zero), dim=0)
+    for idx in range(mpre.numel() - 2, -1, -1):
+        mpre[idx] = torch.maximum(mpre[idx], mpre[idx + 1])
+    changes = mrec[1:] - mrec[:-1]
+    return (changes * mpre[1:]).sum()
+
+
 def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -363,6 +416,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
                 "loss",
                 "eval_iou",
                 "eval_recall50",
+                "eval_ap50",
                 "best_iou",
                 "best_step",
                 "images_per_sec",
@@ -375,7 +429,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
 
 def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
-    print("summary_model,final_iou_mean,best_iou_mean,recall50_mean,images_per_sec_mean")
+    print("summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,images_per_sec_mean")
     for model in sorted({str(row["model"]) for row in final_rows}):
         model_rows = [row for row in final_rows if row["model"] == model]
         print(
@@ -383,6 +437,7 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['best_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
             f"{mean([float(row['images_per_sec']) for row in model_rows]):.2f}"
         )
 
@@ -392,13 +447,14 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
     if reference_model not in {str(row["model"]) for row in final_rows}:
         return
     print(f"paired_det_toy_vs,{reference_model}")
-    print("paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins")
+    print("paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,ap50_delta_mean,ap50_wins")
     run_seeds = sorted({int(row["run_seed"]) for row in final_rows})
     for model in sorted({str(row["model"]) for row in final_rows}):
         if model == reference_model:
             continue
         final_deltas = []
         best_deltas = []
+        ap_deltas = []
         for run_seed in run_seeds:
             ref = find_row(final_rows, model=reference_model, run_seed=run_seed)
             cur = find_row(final_rows, model=model, run_seed=run_seed)
@@ -406,12 +462,14 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
                 continue
             final_deltas.append(float(cur["eval_iou"]) - float(ref["eval_iou"]))
             best_deltas.append(float(cur["best_iou"]) - float(ref["best_iou"]))
+            ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
         if not final_deltas:
             continue
         print(
             f"{model},"
             f"{mean(final_deltas):.3f},{wins_higher(final_deltas)},"
-            f"{mean(best_deltas):.3f},{wins_higher(best_deltas)}"
+            f"{mean(best_deltas):.3f},{wins_higher(best_deltas)},"
+            f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)}"
         )
 
 

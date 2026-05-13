@@ -505,9 +505,28 @@ Multi-distractor interpretation:
 - The differentiable `local_anchor` branch remains positive, suggesting that online query-feature coupling matters when multiple targets and distractors are present.
 - This is a useful boundary: anchor query content alone is enough for the simplest toy, but the harder toy needs either gradient-coupled query generation, a better decoder, or AP-aware training/evaluation.
 
+AP-lite control:
+
+`scripts/train_det_toy.py` now reports an additional confidence-aware `eval_ap50`. It sorts queries by object-class probability and greedily matches predictions to unmatched targets at IoU `0.50`. This is still a toy AP-lite metric, not COCO AP, but it penalizes false-positive ordering in a way target-matched IoU does not.
+
+Output CSV: `results/det_toy_aplite_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | Recall@0.50 | AP50-lite | Img/s |
+|---|---:|---:|---:|---:|---:|
+| `local_learned` | 0.176 | 0.181 | 0.059 | 0.039 | 161 |
+| `local_anchor` | 0.192 | 0.194 | 0.083 | 0.048 | 161 |
+| `local_anchor_detached` | 0.163 | 0.166 | 0.077 | 0.055 | 162 |
+
+AP-lite interpretation:
+
+- `local_anchor` remains the stronger target-coverage/localization model: final IoU `+0.016`, best IoU `+0.012`, both `4/5` wins vs `local_learned`.
+- `local_anchor_detached` has worse target-matched IoU but higher AP50-lite, suggesting it can rank some true-positive queries better even when coverage is worse.
+- This separates two failure modes: query boxes must cover targets, and object scores must rank good boxes before false positives.
+- The next detector step should train and evaluate these aspects more explicitly rather than relying only on target-matched IoU.
+
 Next detector controls:
 
-1. confidence-aware AP-lite for distractor false positives.
-2. object-size and off-center stratified toy evaluation.
-3. DET annotation loader using real boxes.
-4. DenseMaskAux for the toy and DET subset.
+1. DenseMaskAux for the toy and DET subset.
+2. confidence-aware loss or decoder refinement for AP-lite.
+3. object-size and off-center stratified toy evaluation.
+4. DET annotation loader using real boxes.

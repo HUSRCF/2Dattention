@@ -18,7 +18,7 @@ from attention2d.detection import (
     box_cxcywh_to_xyxy,
     box_iou,
 )
-from scripts.train_det_toy import cxcywh_iou, match_targets_by_iou, sample_square_detection_batch
+from scripts.train_det_toy import ap50_for_image, cxcywh_iou, match_targets_by_iou, sample_square_detection_batch
 
 
 def test_detection_head_shapes() -> None:
@@ -177,3 +177,17 @@ def test_match_targets_by_iou_rejects_more_targets_than_queries() -> None:
     except ValueError:
         return
     raise AssertionError("expected ValueError when targets exceed queries")
+
+
+def test_ap50_for_image_penalizes_false_positive_ordering() -> None:
+    target_boxes = torch.tensor([[0.20, 0.20, 0.20, 0.20]])
+    pred_boxes = torch.tensor(
+        [
+            [0.80, 0.80, 0.20, 0.20],
+            [0.20, 0.20, 0.20, 0.20],
+        ]
+    )
+    good_logits = torch.tensor([[0.0, 3.0], [3.0, 0.0]])
+    bad_logits = torch.tensor([[3.0, 0.0], [0.0, 3.0]])
+    assert ap50_for_image(good_logits, pred_boxes, target_boxes) > 0.99
+    assert ap50_for_image(bad_logits, pred_boxes, target_boxes) < 0.51
