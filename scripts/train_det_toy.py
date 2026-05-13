@@ -12,6 +12,8 @@ from pathlib import Path
 
 import torch
 from torch import Tensor
+from torch import nn
+import torch.nn.functional as F
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -24,14 +26,17 @@ from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E
 
 
 MODEL_CONFIGS = {
-    "learned": ("anchor", "learned"),
-    "anchor": ("anchor", "anchor"),
-    "local_learned": ("local", "learned"),
-    "local_anchor": ("local", "anchor"),
-    "local_anchor_detached": ("local", "anchor_detached"),
-    "anchor_learned": ("anchor", "learned"),
-    "anchor_anchor": ("anchor", "anchor"),
-    "anchor_anchor_detached": ("anchor", "anchor_detached"),
+    "learned": ("anchor", "learned", False),
+    "anchor": ("anchor", "anchor", False),
+    "local_learned": ("local", "learned", False),
+    "local_anchor": ("local", "anchor", False),
+    "local_anchor_detached": ("local", "anchor_detached", False),
+    "anchor_learned": ("anchor", "learned", False),
+    "anchor_anchor": ("anchor", "anchor", False),
+    "anchor_anchor_detached": ("anchor", "anchor_detached", False),
+    "local_learned_maskaux": ("local", "learned", True),
+    "local_anchor_maskaux": ("local", "anchor", True),
+    "local_anchor_detached_maskaux": ("local", "anchor_detached", True),
 }
 
 
@@ -60,6 +65,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-objects", type=int, default=3)
     parser.add_argument("--lr", type=float, default=3e-3)
+    parser.add_argument("--mask-aux-weight", type=float, default=0.5)
+    parser.add_argument("--mask-dice-weight", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
@@ -74,11 +81,14 @@ def main() -> None:
     device = get_best_device()
     rows = []
     print("device:", device)
-    print("model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,best_iou,best_step,images_per_sec")
+    print(
+        "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,"
+        "eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
+    )
     for seed_idx in range(args.seeds):
         run_seed = args.seed + seed_idx
         for model_name in args.models:
-            feature_mode, query_init = MODEL_CONFIGS[model_name]
+            feature_mode, query_init, use_mask_aux = MODEL_CONFIGS[model_name]
             torch.manual_seed(run_seed)
             random.seed(run_seed)
             model = TinyAnchorRegionDETR(
@@ -88,8 +98,12 @@ def main() -> None:
                 feature_mode=feature_mode,
                 query_init=query_init,
             ).to(device)
+            mask_head = DenseMaskAuxHead(args.embed_dim).to(device) if use_mask_aux else None
             criterion = DetectionCriterion(num_classes=1).to(device)
-            optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
+            parameters = list(model.parameters())
+            if mask_head is not None:
+                parameters.extend(mask_head.parameters())
+            optimizer = torch.optim.AdamW(parameters, lr=args.lr, weight_decay=1e-3)
             start = time.perf_counter()
             last_loss = 0.0
             best_iou = -1.0
@@ -106,6 +120,14 @@ def main() -> None:
                 )
                 outputs = model(images)
                 losses = criterion(outputs, targets)
+                if mask_head is not None:
+                    mask_losses = dense_mask_aux_loss(
+                        outputs=outputs,
+                        targets=targets,
+                        mask_head=mask_head,
+                        dice_weight=args.mask_dice_weight,
+                    )
+                    losses["loss"] = losses["loss"] + args.mask_aux_weight * mask_losses["loss_mask_aux"]
                 optimizer.zero_grad(set_to_none=True)
                 losses["loss"].backward()
                 optimizer.step()
@@ -118,6 +140,7 @@ def main() -> None:
                         device,
                         toy_mode=args.toy_mode,
                         max_objects=args.max_objects,
+                        mask_head=mask_head,
                         seed=20_000_000 + run_seed,
                     )
                     if metrics["iou"] > best_iou:
@@ -132,6 +155,8 @@ def main() -> None:
                         "eval_iou": metrics["iou"],
                         "eval_recall50": metrics["recall50"],
                         "eval_ap50": metrics["ap50"],
+                        "eval_mask_iou": metrics["mask_iou"],
+                        "eval_mask_dice": metrics["mask_dice"],
                         "best_iou": best_iou,
                         "best_step": best_step,
                         "images_per_sec": speed,
@@ -140,6 +165,7 @@ def main() -> None:
                     print(
                         f"{model_name},{run_seed},{step},{last_loss:.4f},"
                         f"{metrics['iou']:.3f},{metrics['recall50']:.3f},{metrics['ap50']:.3f},"
+                        f"{metrics['mask_iou']:.3f},{metrics['mask_dice']:.3f},"
                         f"{best_iou:.3f},{best_step},{speed:.2f}"
                     )
     write_rows(args.out, rows)
@@ -292,13 +318,18 @@ def evaluate_toy(
     device: torch.device,
     toy_mode: str = "single",
     max_objects: int = 3,
+    mask_head: nn.Module | None = None,
     batches: int = 8,
     seed: int = 0,
 ) -> dict[str, float]:
     model.eval()
+    if mask_head is not None:
+        mask_head.eval()
     ious = []
     recalls = []
     aps = []
+    mask_ious = []
+    mask_dices = []
     for batch_idx in range(batches):
         random.seed(seed + batch_idx)
         images, targets = sample_square_detection_batch(
@@ -310,6 +341,10 @@ def evaluate_toy(
             torch_seed=seed + batch_idx,
         )
         outputs = model(images)
+        if mask_head is not None:
+            mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head)
+            mask_ious.append(mask_metrics["mask_iou"].cpu())
+            mask_dices.append(mask_metrics["mask_dice"].cpu())
         for sample_idx, target in enumerate(targets):
             matched_iou = match_targets_by_iou(
                 outputs["pred_boxes"][sample_idx],
@@ -325,12 +360,22 @@ def evaluate_toy(
                 ).cpu()
             )
     model.train()
+    if mask_head is not None:
+        mask_head.train()
     all_ious = torch.cat(ious)
     all_recalls = torch.cat(recalls)
+    if mask_ious:
+        mean_mask_iou = float(torch.stack(mask_ious).mean().item())
+        mean_mask_dice = float(torch.stack(mask_dices).mean().item())
+    else:
+        mean_mask_iou = 0.0
+        mean_mask_dice = 0.0
     return {
         "iou": float(all_ious.mean().item()),
         "recall50": float(all_recalls.mean().item()),
         "ap50": float(torch.stack(aps).mean().item()),
+        "mask_iou": mean_mask_iou,
+        "mask_dice": mean_mask_dice,
     }
 
 
@@ -404,6 +449,95 @@ def precision_recall_ap(recall: Tensor, precision: Tensor) -> Tensor:
     return (changes * mpre[1:]).sum()
 
 
+class DenseMaskAuxHead(nn.Module):
+    """Predict a dense target-box mask from detector spatial features."""
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.proj = nn.Conv2d(dim, 1, kernel_size=1)
+
+    def forward(self, features: Tensor) -> Tensor:
+        return self.proj(features).squeeze(1)
+
+
+def dense_mask_aux_loss(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    mask_head: DenseMaskAuxHead,
+    dice_weight: float,
+) -> dict[str, Tensor]:
+    logits = mask_head(outputs["spatial_features"])
+    target_masks = dense_mask_targets_from_boxes(
+        targets=targets,
+        height=logits.shape[-2],
+        width=logits.shape[-1],
+        device=logits.device,
+    )
+    loss_bce = F.binary_cross_entropy_with_logits(logits, target_masks)
+    probs = logits.sigmoid()
+    loss_dice = 1.0 - soft_dice_score(probs, target_masks)
+    return {
+        "loss_mask_aux": loss_bce + dice_weight * loss_dice,
+        "loss_mask_bce": loss_bce,
+        "loss_mask_dice": loss_dice,
+    }
+
+
+@torch.no_grad()
+def dense_mask_aux_metrics(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    mask_head: DenseMaskAuxHead,
+    threshold: float = 0.5,
+) -> dict[str, Tensor]:
+    logits = mask_head(outputs["spatial_features"])
+    target_masks = dense_mask_targets_from_boxes(
+        targets=targets,
+        height=logits.shape[-2],
+        width=logits.shape[-1],
+        device=logits.device,
+    )
+    probs = logits.sigmoid()
+    pred = probs >= threshold
+    target_bool = target_masks >= 0.5
+    intersection = (pred & target_bool).float().flatten(1).sum(dim=1)
+    union = (pred | target_bool).float().flatten(1).sum(dim=1).clamp_min(1e-8)
+    pred_sum = pred.float().flatten(1).sum(dim=1)
+    target_sum = target_bool.float().flatten(1).sum(dim=1)
+    dice = (2 * intersection / (pred_sum + target_sum).clamp_min(1e-8)).mean()
+    return {
+        "mask_iou": (intersection / union).mean(),
+        "mask_dice": dice,
+    }
+
+
+def dense_mask_targets_from_boxes(
+    targets: list[dict[str, Tensor]],
+    height: int,
+    width: int,
+    device: torch.device,
+) -> Tensor:
+    masks = torch.zeros(len(targets), height, width, device=device)
+    for batch_idx, target in enumerate(targets):
+        for box in target["boxes"].to(device):
+            cx, cy, box_w, box_h = box.tolist()
+            x1 = max(0, int(torch.floor(torch.tensor((cx - box_w / 2) * width)).item()))
+            y1 = max(0, int(torch.floor(torch.tensor((cy - box_h / 2) * height)).item()))
+            x2 = min(width, int(torch.ceil(torch.tensor((cx + box_w / 2) * width)).item()))
+            y2 = min(height, int(torch.ceil(torch.tensor((cy + box_h / 2) * height)).item()))
+            if x2 > x1 and y2 > y1:
+                masks[batch_idx, y1:y2, x1:x2] = 1.0
+    return masks
+
+
+def soft_dice_score(probs: Tensor, targets: Tensor) -> Tensor:
+    probs_flat = probs.flatten(1)
+    targets_flat = targets.flatten(1)
+    intersection = (probs_flat * targets_flat).sum(dim=1)
+    denominator = probs_flat.sum(dim=1) + targets_flat.sum(dim=1)
+    return ((2 * intersection + 1.0) / (denominator + 1.0)).mean()
+
+
 def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -417,6 +551,8 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
                 "eval_iou",
                 "eval_recall50",
                 "eval_ap50",
+                "eval_mask_iou",
+                "eval_mask_dice",
                 "best_iou",
                 "best_step",
                 "images_per_sec",
@@ -429,7 +565,10 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
 
 def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
-    print("summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,images_per_sec_mean")
+    print(
+        "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,"
+        "mask_iou_mean,mask_dice_mean,images_per_sec_mean"
+    )
     for model in sorted({str(row["model"]) for row in final_rows}):
         model_rows = [row for row in final_rows if row["model"] == model]
         print(
@@ -438,6 +577,8 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['best_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_mask_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_mask_dice']) for row in model_rows]):.3f},"
             f"{mean([float(row['images_per_sec']) for row in model_rows]):.2f}"
         )
 
@@ -447,7 +588,10 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
     if reference_model not in {str(row["model"]) for row in final_rows}:
         return
     print(f"paired_det_toy_vs,{reference_model}")
-    print("paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,ap50_delta_mean,ap50_wins")
+    print(
+        "paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,"
+        "best_iou_wins,ap50_delta_mean,ap50_wins,mask_iou_delta_mean,mask_iou_wins"
+    )
     run_seeds = sorted({int(row["run_seed"]) for row in final_rows})
     for model in sorted({str(row["model"]) for row in final_rows}):
         if model == reference_model:
@@ -455,6 +599,7 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
         final_deltas = []
         best_deltas = []
         ap_deltas = []
+        mask_deltas = []
         for run_seed in run_seeds:
             ref = find_row(final_rows, model=reference_model, run_seed=run_seed)
             cur = find_row(final_rows, model=model, run_seed=run_seed)
@@ -463,13 +608,15 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
             final_deltas.append(float(cur["eval_iou"]) - float(ref["eval_iou"]))
             best_deltas.append(float(cur["best_iou"]) - float(ref["best_iou"]))
             ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
+            mask_deltas.append(float(cur["eval_mask_iou"]) - float(ref["eval_mask_iou"]))
         if not final_deltas:
             continue
         print(
             f"{model},"
             f"{mean(final_deltas):.3f},{wins_higher(final_deltas)},"
             f"{mean(best_deltas):.3f},{wins_higher(best_deltas)},"
-            f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)}"
+            f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)},"
+            f"{mean(mask_deltas):.3f},{wins_higher(mask_deltas)}"
         )
 
 

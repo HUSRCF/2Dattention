@@ -98,7 +98,7 @@ Interpretation:
   - `local_anchor`: final/best IoU `0.192/0.194`, AP50-lite `0.048`, AP delta vs `local_learned` `+0.010` with `4/5` wins.
   - `local_anchor_detached`: final/best IoU `0.163/0.166`, AP50-lite `0.055`, AP delta vs `local_learned` `+0.017` with `4/5` wins.
 - AP-lite interpretation: `local_anchor` remains the better localization/coverage model, while `local_anchor_detached` ranks some true-positive queries better despite worse target-matched IoU. This separates "coverage quality" from "confidence ordering"; neither should be treated as detector AP yet.
-- Next controls: DenseMaskAux and stronger decoder/AP training.
+- Next controls: stronger decoder/AP training and real DET dataset path.
 
 ### Step 3: DenseMaskAux
 
@@ -111,6 +111,32 @@ Keep the positive bbox-mask signal as an auxiliary loss:
 Success criterion:
 
 - Mask auxiliary improves detector box AP or convergence without hurting classification/detection loss stability.
+
+Status:
+
+- Implemented explicit mask-aux variants in `scripts/train_det_toy.py`:
+  - `local_learned_maskaux`
+  - `local_anchor_maskaux`
+  - `local_anchor_detached_maskaux`
+- Each mask-aux variant adds a `1x1` dense mask head on `outputs["spatial_features"]`, trained with BCE + Dice against the union of target bbox rectangle masks.
+- Formal result: `results/det_toy_densemaskaux_multi_distractor_300step_5seeds.csv`.
+  - `local_anchor`: final/best IoU `0.192/0.194`, AP50-lite `0.048`.
+  - `local_anchor_maskaux`: final/best IoU `0.189/0.189`, AP50-lite `0.046`, mask IoU/Dice `0.982/0.991`.
+  - `local_learned`: final/best IoU `0.176/0.181`, AP50-lite `0.039`.
+  - `local_learned_maskaux`: final/best IoU `0.170/0.172`, AP50-lite `0.054`, mask IoU/Dice `0.983/0.991`.
+  - `local_anchor_detached`: final/best IoU `0.172/0.172`, AP50-lite `0.044`.
+  - `local_anchor_detached_maskaux`: final/best IoU `0.177/0.192`, AP50-lite `0.041`, mask IoU/Dice `0.987/0.993`.
+- Paired deltas:
+  - `local_anchor_maskaux` vs `local_anchor`: final IoU `-0.003`, best IoU `-0.005`, AP50-lite `-0.002`.
+  - `local_learned_maskaux` vs `local_learned`: final IoU `-0.006`, best IoU `-0.010`, AP50-lite `+0.015`.
+  - `local_anchor_detached_maskaux` vs `local_anchor_detached`: final IoU `+0.005`, best IoU `+0.020`, AP50-lite `-0.002`.
+
+Interpretation:
+
+- DenseMaskAux is learnable: all mask-aux variants reach mask IoU around `0.98`.
+- The auxiliary mask head does not reliably improve detection box IoU or AP-lite in the current tiny detector.
+- The best current coverage model remains `local_anchor` without mask auxiliary.
+- The useful signal is that dense supervision can train a spatial head, but transferring it into query boxes likely needs a stronger coupling mechanism than a side auxiliary loss.
 
 ### Step 4: Real Detection Dataset Path
 

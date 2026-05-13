@@ -18,7 +18,15 @@ from attention2d.detection import (
     box_cxcywh_to_xyxy,
     box_iou,
 )
-from scripts.train_det_toy import ap50_for_image, cxcywh_iou, match_targets_by_iou, sample_square_detection_batch
+from scripts.train_det_toy import (
+    DenseMaskAuxHead,
+    ap50_for_image,
+    cxcywh_iou,
+    dense_mask_aux_loss,
+    dense_mask_targets_from_boxes,
+    match_targets_by_iou,
+    sample_square_detection_batch,
+)
 
 
 def test_detection_head_shapes() -> None:
@@ -191,3 +199,33 @@ def test_ap50_for_image_penalizes_false_positive_ordering() -> None:
     bad_logits = torch.tensor([[3.0, 0.0], [0.0, 3.0]])
     assert ap50_for_image(good_logits, pred_boxes, target_boxes) > 0.99
     assert ap50_for_image(bad_logits, pred_boxes, target_boxes) < 0.51
+
+
+def test_dense_mask_aux_targets_and_backward() -> None:
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor",
+    )
+    mask_head = DenseMaskAuxHead(dim=16)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0, 0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25], [0.75, 0.75, 0.25, 0.25]]),
+        },
+    ]
+    masks = dense_mask_targets_from_boxes(targets, height=4, width=4, device=torch.device("cpu"))
+    assert masks.shape == (2, 4, 4)
+    assert masks[0].sum() > 0
+    outputs = model(images)
+    losses = dense_mask_aux_loss(outputs, targets, mask_head, dice_weight=1.0)
+    losses["loss_mask_aux"].backward()
+    assert torch.isfinite(losses["loss_mask_aux"])
+    assert mask_head.proj.weight.grad is not None

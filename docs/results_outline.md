@@ -526,7 +526,36 @@ AP-lite interpretation:
 
 Next detector controls:
 
-1. DenseMaskAux for the toy and DET subset.
-2. confidence-aware loss or decoder refinement for AP-lite.
-3. object-size and off-center stratified toy evaluation.
-4. DET annotation loader using real boxes.
+DenseMaskAux control:
+
+The detection toy now supports explicit mask-aux model variants. A variant with suffix `_maskaux` adds a `1x1` dense mask head on the detector spatial feature map and trains it with BCE + Dice against the union of target bbox rectangle masks.
+
+Output CSV: `results/det_toy_densemaskaux_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|
+| `local_learned` | 0.176 | 0.181 | 0.039 | 0.000 | 0.000 |
+| `local_learned_maskaux` | 0.170 | 0.172 | 0.054 | 0.983 | 0.991 |
+| `local_anchor` | 0.192 | 0.194 | 0.048 | 0.000 | 0.000 |
+| `local_anchor_maskaux` | 0.189 | 0.189 | 0.046 | 0.982 | 0.991 |
+| `local_anchor_detached` | 0.172 | 0.172 | 0.044 | 0.000 | 0.000 |
+| `local_anchor_detached_maskaux` | 0.177 | 0.192 | 0.041 | 0.987 | 0.993 |
+
+Paired interpretation:
+
+- `local_anchor_maskaux` vs `local_anchor`: final IoU `-0.003`, best IoU `-0.005`, AP50-lite `-0.002`.
+- `local_learned_maskaux` vs `local_learned`: final IoU `-0.006`, best IoU `-0.010`, AP50-lite `+0.015`.
+- `local_anchor_detached_maskaux` vs `local_anchor_detached`: final IoU `+0.005`, best IoU `+0.020`, AP50-lite `-0.002`.
+
+DenseMaskAux interpretation:
+
+- Dense mask supervision is easy for the spatial feature map: all `_maskaux` variants learn bbox rectangle masks with mask IoU around `0.98`.
+- In the current tiny detector, this side auxiliary does not reliably improve box localization or AP-lite.
+- The best current coverage model remains `local_anchor` without DenseMaskAux.
+- Therefore, the next useful step is not more side supervision by itself, but a stronger coupling between dense spatial masks and query/box refinement.
+
+Next detector controls:
+
+1. confidence-aware loss or decoder refinement for AP-lite.
+2. object-size and off-center stratified toy evaluation.
+3. DET annotation loader using real boxes.
