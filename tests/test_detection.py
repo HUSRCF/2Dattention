@@ -136,6 +136,7 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
 
 
 def test_tiny_anchor_region_detr_mask_pool_query_refine() -> None:
+    torch.manual_seed(7)
     model = TinyAnchorRegionDETR(
         embed_dim=16,
         num_classes=1,
@@ -163,6 +164,18 @@ def test_tiny_anchor_region_detr_mask_pool_query_refine() -> None:
     losses = dense_mask_aux_loss(outputs, targets, mask_head=None, dice_weight=1.0)
     losses["loss_mask_aux"].backward()
     assert torch.isfinite(losses["loss_mask_aux"])
+
+    model.zero_grad(set_to_none=True)
+    criterion = DetectionCriterion(num_classes=1)
+    outputs = model(images)
+    det_losses = criterion(outputs, targets)
+    det_losses["loss"].backward()
+    assert model.query_mask_gate.grad is not None
+    assert model.query_mask_proj.weight.grad is not None
+    assert torch.isfinite(model.query_mask_gate.grad).all()
+    assert torch.isfinite(model.query_mask_proj.weight.grad).all()
+    assert float(model.query_mask_gate.grad.detach().abs().sum()) > 0.0
+    assert float(model.query_mask_proj.weight.grad.detach().abs().sum()) > 0.0
 
 
 def test_square_detection_batch_multi_modes() -> None:

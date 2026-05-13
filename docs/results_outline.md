@@ -534,11 +534,11 @@ Output CSV: `results/det_toy_densemaskaux_multi_distractor_300step_5seeds.csv`.
 
 | Variant | Final IoU | Best IoU | AP50-lite | Mask IoU | Mask Dice |
 |---|---:|---:|---:|---:|---:|
-| `local_learned` | 0.176 | 0.181 | 0.039 | 0.000 | 0.000 |
+| `local_learned` | 0.176 | 0.181 | 0.039 | N/A | N/A |
 | `local_learned_maskaux` | 0.170 | 0.172 | 0.054 | 0.983 | 0.991 |
-| `local_anchor` | 0.192 | 0.194 | 0.048 | 0.000 | 0.000 |
+| `local_anchor` | 0.192 | 0.194 | 0.048 | N/A | N/A |
 | `local_anchor_maskaux` | 0.189 | 0.189 | 0.046 | 0.982 | 0.991 |
-| `local_anchor_detached` | 0.172 | 0.172 | 0.044 | 0.000 | 0.000 |
+| `local_anchor_detached` | 0.172 | 0.172 | 0.044 | N/A | N/A |
 | `local_anchor_detached_maskaux` | 0.177 | 0.192 | 0.041 | 0.987 | 0.993 |
 
 Paired interpretation:
@@ -562,10 +562,10 @@ Output CSV: `results/det_toy_maskpooled_query_multi_distractor_300step_5seeds.cs
 
 | Variant | Final IoU | Best IoU | AP50-lite | Mask IoU | Mask Dice |
 |---|---:|---:|---:|---:|---:|
-| `local_anchor` | 0.192 | 0.194 | 0.048 | 0.000 | 0.000 |
+| `local_anchor` | 0.192 | 0.194 | 0.048 | N/A | N/A |
 | `local_anchor_maskaux` | 0.189 | 0.189 | 0.046 | 0.982 | 0.991 |
 | `local_anchor_maskpooled_query` | 0.172 | 0.179 | 0.034 | 0.978 | 0.989 |
-| `local_learned` | 0.176 | 0.181 | 0.039 | 0.000 | 0.000 |
+| `local_learned` | 0.176 | 0.181 | 0.039 | N/A | N/A |
 | `local_learned_maskpooled_query` | 0.163 | 0.166 | 0.053 | 0.989 | 0.995 |
 
 Maskpooled interpretation:
