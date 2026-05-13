@@ -30,8 +30,8 @@ class TinyAnchorRegionDETR(nn.Module):
             raise ValueError("feature_mode must be 'local' or 'anchor'")
         if query_init not in {"learned", "anchor", "anchor_detached"}:
             raise ValueError("query_init must be 'learned', 'anchor', or 'anchor_detached'")
-        if query_refine not in {"none", "mask_pool"}:
-            raise ValueError("query_refine must be 'none' or 'mask_pool'")
+        if query_refine not in {"none", "mask_pool", "mask_bias"}:
+            raise ValueError("query_refine must be 'none', 'mask_pool', or 'mask_bias'")
         self.feature_mode = feature_mode
         self.query_init = query_init
         self.query_refine = query_refine
@@ -41,10 +41,11 @@ class TinyAnchorRegionDETR(nn.Module):
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
         self.anchor_block = AnchorOnlyMemoryReadBlock(embed_dim)
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
-        if query_refine == "mask_pool":
+        if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
-            self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
             self.query_mask_gate = nn.Parameter(torch.tensor(0.1))
+        if query_refine == "mask_pool":
+            self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
         self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
         self.head = DetectionHead(embed_dim, num_classes=num_classes)
 
@@ -75,7 +76,11 @@ class TinyAnchorRegionDETR(nn.Module):
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             region = mask_pooled_region(spatial_state, query_mask_logits)
             queries = queries + self.query_mask_gate * self.query_mask_proj(region).unsqueeze(1)
-        decoded = self.query_decoder(queries, spatial_tokens)
+        attention_bias = None
+        if self.query_refine == "mask_bias":
+            query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
+            attention_bias = mask_attention_bias(query_mask_logits, self.query_mask_gate)
+        decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
         outputs = self.head(decoded)
         if query_mask_logits is not None:
             outputs["query_mask_logits"] = query_mask_logits
@@ -108,13 +113,15 @@ class SimpleCrossAttentionDecoder(nn.Module):
         )
         self.scale = dim**-0.5
 
-    def forward(self, queries: Tensor, memory: Tensor) -> Tensor:
+    def forward(self, queries: Tensor, memory: Tensor, attention_bias: Tensor | None = None) -> Tensor:
         norm_queries = self.query_norm(queries)
         norm_memory = self.memory_norm(memory)
         q = self.query_proj(norm_queries)
         k = self.key_proj(norm_memory)
         v = self.value_proj(norm_memory)
         attention = torch.bmm(q, k.transpose(1, 2)) * self.scale
+        if attention_bias is not None:
+            attention = attention + attention_bias
         weights = attention.softmax(dim=-1)
         readout = torch.bmm(weights, v)
         decoded = queries + self.out_proj(readout)
@@ -148,3 +155,10 @@ def mask_pooled_region(state: Tensor, mask_logits: Tensor) -> Tensor:
     numerator = (state * weights).sum(dim=(2, 3))
     denominator = weights.sum(dim=(2, 3)).clamp_min(1e-6)
     return numerator / denominator
+
+
+def mask_attention_bias(mask_logits: Tensor, gate: Tensor) -> Tensor:
+    """Convert dense foreground logits into a soft attention bias over spatial tokens."""
+
+    bias = torch.nn.functional.logsigmoid(mask_logits).flatten(1).unsqueeze(1)
+    return gate * bias

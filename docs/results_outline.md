@@ -575,9 +575,38 @@ Maskpooled interpretation:
 - For `local_learned`, it improves AP50-lite by `+0.015` but lowers final/best IoU, so it mainly changes confidence ordering rather than localization.
 - This suggests that query consumption of dense masks must be query-specific. A single foreground summary broadcast to all queries is too coarse for multi-object/distractor detection.
 
+Mask-biased query attention:
+
+The second direct coupling variant predicts an internal dense mask and adds `log(sigmoid(mask))` as a soft foreground bias to the query-to-spatial attention logits. This preserves per-query QK selection while nudging attention toward predicted foreground regions.
+
+Output CSV: `results/det_toy_mask_biased_attn_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor` | 0.192 | 0.194 | 0.048 | N/A | N/A |
+| `local_anchor_maskaux` | 0.189 | 0.189 | 0.046 | 0.982 | 0.991 |
+| `local_anchor_maskpooled_query` | 0.172 | 0.179 | 0.034 | 0.978 | 0.989 |
+| `local_anchor_mask_biased_attn` | 0.189 | 0.189 | 0.052 | 0.978 | 0.989 |
+| `local_learned` | 0.176 | 0.181 | 0.039 | N/A | N/A |
+| `local_learned_maskpooled_query` | 0.163 | 0.166 | 0.053 | 0.989 | 0.995 |
+| `local_learned_mask_biased_attn` | 0.222 | 0.227 | 0.093 | 0.989 | 0.994 |
+
+Paired interpretation:
+
+- `local_anchor_mask_biased_attn` vs `local_anchor`: final IoU `-0.003` with `3/5` wins, best IoU `-0.005` with `3/5` wins, AP50-lite `+0.004` with `3/5` wins.
+- `local_learned_mask_biased_attn` vs `local_learned`: final IoU `+0.046` but only `2/5` wins, AP50-lite `+0.054` with `3/5` wins.
+- `local_learned_mask_biased_attn` vs `local_anchor`: final IoU `+0.030` but only `1/5` wins, AP50-lite `+0.044` with `2/5` wins.
+
+Mask-biased interpretation:
+
+- Mask-biased attention is better than global mask pooling as a coupling mechanism: it avoids the large coverage drop seen in `local_anchor_maskpooled_query`.
+- For `local_anchor`, it is roughly tied on IoU and gives a small AP-lite signal, but it does not clearly beat the current coverage baseline.
+- For `local_learned`, the mean is much higher but seed wins are weak, so this is an unstable optimization signal rather than robust evidence.
+- The next useful step is to stabilize this path with bias-gate schedules and compare it with mask-proposal query initialization.
+
 Next detector controls:
 
-1. mask-biased query attention with per-query spatial attention logits.
+1. mask-bias gate schedule or smaller initialization to reduce seed instability.
 2. mask proposal query initialization from top-k/connected foreground regions.
 3. confidence-aware loss or decoder refinement for AP-lite.
 4. object-size and off-center stratified toy evaluation.

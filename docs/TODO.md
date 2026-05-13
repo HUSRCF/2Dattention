@@ -150,6 +150,19 @@ Maskpooled interpretation:
 - The internal mask can be learned, but a single global foreground summary added to all queries is too coarse for multi-object/distractor detection.
 - It can shift score ordering for learned queries, but it hurts target coverage.
 - The next coupling should be per-query, such as mask-biased query attention or mask proposal query initialization, not one shared pooled region vector.
+- Implemented second coupling attempt: `mask_biased_attn`.
+  - `local_anchor_mask_biased_attn` and `local_learned_mask_biased_attn` predict an internal dense mask and add `log(sigmoid(mask))` as a soft foreground bias to query-to-spatial attention logits.
+  - Formal result: `results/det_toy_mask_biased_attn_multi_distractor_300step_5seeds.csv`.
+  - `local_anchor_mask_biased_attn`: final/best IoU `0.189/0.189`, AP50-lite `0.052`, mask IoU/Dice `0.978/0.989`.
+  - Against `local_anchor`, it is roughly tied on IoU (`-0.003` final, `-0.005` best; `3/5` final wins) and slightly better on AP50-lite (`+0.004`, `3/5` wins).
+  - `local_learned_mask_biased_attn`: final/best IoU `0.222/0.227`, AP50-lite `0.093`, mask IoU/Dice `0.989/0.994`.
+  - Against `local_learned`, it improves mean final IoU by `+0.046` and AP50-lite by `+0.054`, but wins only `2/5` seeds on IoU and is strongly pulled by one high-performing seed.
+
+Mask-biased interpretation:
+
+- Mask-biased attention is a better coupling than global mask pooling: it does not collapse anchor coverage and gives a small AP-lite signal for `local_anchor`.
+- The large `local_learned_mask_biased_attn` mean is not yet robust because paired wins are weak; treat it as an instability/optimization signal, not a stable new mainline.
+- Next step: diagnose and stabilize mask-biased attention with per-seed trajectories, bias-gate schedules, and proposal-style query initialization before making a stronger claim.
 
 ### Step 4: Real Detection Dataset Path
 

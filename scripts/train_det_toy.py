@@ -39,6 +39,8 @@ MODEL_CONFIGS = {
     "local_anchor_detached_maskaux": ("local", "anchor_detached", "none", "side"),
     "local_learned_maskpooled_query": ("local", "learned", "mask_pool", "pooled"),
     "local_anchor_maskpooled_query": ("local", "anchor", "mask_pool", "pooled"),
+    "local_learned_mask_biased_attn": ("local", "learned", "mask_bias", "biased"),
+    "local_anchor_mask_biased_attn": ("local", "anchor", "mask_bias", "biased"),
 }
 
 
