@@ -107,6 +107,7 @@ def main() -> None:
 
     overlays_dir = args.out_dir / "overlays"
     overlays_dir.mkdir(parents=True, exist_ok=True)
+    clear_previous_overlays(overlays_dir)
     write_manifest(args.out_dir / "manifest.csv", selected)
     overlay_paths = []
     for rank, candidate in enumerate(selected, start=1):
@@ -481,6 +482,12 @@ def write_manifest(path: Path, selected: list[Candidate]) -> None:
                     f"{candidate.sharpness:.3f}",
                 ]
             )
+
+
+def clear_previous_overlays(path: Path) -> None:
+    for pattern in ("*.jpg", "*.jpeg", "*.png"):
+        for old_path in path.glob(pattern):
+            old_path.unlink()
 
 
 def save_overlay(candidate: Candidate, path: Path, thumb_size: int) -> None:
