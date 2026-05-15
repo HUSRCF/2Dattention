@@ -27,6 +27,8 @@ from scripts.train_det_toy import (
     mask_gate_scale,
     match_targets_by_iou,
     sample_square_detection_batch,
+    summarize_stratified_iou,
+    update_stratified_iou_lists,
 )
 
 
@@ -342,6 +344,34 @@ def test_match_targets_by_iou_rejects_more_targets_than_queries() -> None:
     except ValueError:
         return
     raise AssertionError("expected ValueError when targets exceed queries")
+
+
+def test_stratified_iou_summary_groups_size_and_offset() -> None:
+    strata = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
+    ious = torch.tensor([0.2, 0.6, 0.8])
+    boxes = torch.tensor(
+        [
+            [0.50, 0.50, 0.10, 0.10],
+            [0.80, 0.50, 0.24, 0.24],
+            [0.10, 0.10, 0.35, 0.35],
+        ]
+    )
+    update_stratified_iou_lists(strata, ious, boxes)
+    metrics = summarize_stratified_iou(strata)
+    assert torch.isclose(torch.tensor(metrics["small_iou"]), torch.tensor(0.2))
+    assert torch.isclose(torch.tensor(metrics["medium_iou"]), torch.tensor(0.6))
+    assert torch.isclose(torch.tensor(metrics["large_iou"]), torch.tensor(0.8))
+    assert torch.isclose(torch.tensor(metrics["center_iou"]), torch.tensor(0.2))
+    assert torch.isclose(torch.tensor(metrics["offcenter_iou"]), torch.tensor(0.7))
+    assert metrics["small_recall50"] == 0.0
+    assert metrics["medium_recall50"] == 1.0
+    assert metrics["large_recall50"] == 1.0
 
 
 def test_ap50_for_image_penalizes_false_positive_ordering() -> None:

@@ -691,10 +691,30 @@ Proposal-diversity interpretation:
 - This supports the mechanism that query diversity and spatial coverage are central for turning dense masks into detector queries.
 - If qualitative proposal figures are blurred or not readable, use curated clearer samples; do not rely on weak visual evidence.
 
+Stratified proposal evaluation:
+
+The detection toy now reports object-size and center/off-center strata. Size is based on bbox area, and off-center is based on bbox-center distance from the image center.
+
+Output CSV: `results/det_toy_proposal_nms_stratified_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Small IoU | Medium IoU | Large IoU | Center IoU | Off-center IoU |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor` | 0.102 | 0.236 | 0.325 | 0.174 | 0.197 |
+| `local_mask_proposal_query` | 0.231 | 0.393 | 0.443 | 0.278 | 0.344 |
+| `local_mask_proposal_nms_query` | 0.363 | 0.561 | 0.522 | 0.408 | 0.479 |
+| `anchor_mask_proposal_nms_query` | 0.351 | 0.514 | 0.512 | 0.388 | 0.455 |
+
+Stratified interpretation:
+
+- NMS proposal improves over plain top-k on small, medium, and large objects.
+- NMS proposal also improves both center and off-center targets, so the gain is not only a center-prior effect.
+- The small-object improvement is especially important: `local_mask_proposal_nms_query` raises small-object IoU from `0.231` to `0.363`.
+- For qualitative figures, use samples that make these strata visible: include small/medium/large and center/off-center cases, but replace blurry or visually ambiguous panels with clearer examples.
+
 Next detector controls:
 
-1. object-size and off-center stratified toy evaluation for proposal queries.
-2. proposal overlay visualization with curated clear examples.
+1. proposal overlay visualization with curated clear examples.
+2. connected-components or soft-NMS proposal variants.
 3. confidence-aware loss or decoder refinement for AP-lite.
 4. DET annotation loader using real boxes.
 5. RF-DETR distillation path with mask/proposal query student.

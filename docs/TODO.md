@@ -205,6 +205,22 @@ Proposal-diversity interpretation:
 - Mask IoU is slightly lower than plain top-k, but detection IoU/AP are much better; proposal diversity matters more than perfect union-mask accuracy.
 - Current strongest detection toy model is `local_mask_proposal_nms_query`.
 - Next step should add stratified diagnostics and visual proposal overlays; if overlays are blurred or uninformative, swap to clearer curated samples rather than relying on weak figures.
+- Added object-size and off-center stratified evaluation columns to detection toy CSVs.
+  - Formal result: `results/det_toy_proposal_nms_stratified_multi_distractor_300step_5seeds.csv`.
+  - `local_mask_proposal_nms_query` vs plain `local_mask_proposal_query`:
+    - small IoU `0.363` vs `0.231`;
+    - medium IoU `0.561` vs `0.393`;
+    - large IoU `0.522` vs `0.443`;
+    - center IoU `0.408` vs `0.278`;
+    - off-center IoU `0.479` vs `0.344`.
+  - `local_mask_proposal_nms_query` remains strongest across all reported strata.
+
+Clear overlay sample-selection rule:
+
+- Prefer images with object area not too tiny, visible non-overlapping objects, and enough object separation to make proposal diversity visible.
+- Include at least one small, one medium, one large, one center, and one off-center example.
+- Exclude samples whose objects are too small to see at display resolution, heavily overlapping, or visually ambiguous.
+- If generated overlay panels are blurry, replace the sample set with clearer high-area / well-separated examples instead of using weak figures.
 
 ### Step 4: Real Detection Dataset Path
 

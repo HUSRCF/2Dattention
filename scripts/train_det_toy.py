@@ -182,6 +182,16 @@ def main() -> None:
                         "eval_ap50": metrics["ap50"],
                         "eval_mask_iou": metrics["mask_iou"],
                         "eval_mask_dice": metrics["mask_dice"],
+                        "eval_small_iou": metrics["small_iou"],
+                        "eval_medium_iou": metrics["medium_iou"],
+                        "eval_large_iou": metrics["large_iou"],
+                        "eval_center_iou": metrics["center_iou"],
+                        "eval_offcenter_iou": metrics["offcenter_iou"],
+                        "eval_small_recall50": metrics["small_recall50"],
+                        "eval_medium_recall50": metrics["medium_recall50"],
+                        "eval_large_recall50": metrics["large_recall50"],
+                        "eval_center_recall50": metrics["center_recall50"],
+                        "eval_offcenter_recall50": metrics["offcenter_recall50"],
                         "best_iou": best_iou,
                         "best_step": best_step,
                         "images_per_sec": speed,
@@ -355,6 +365,13 @@ def evaluate_toy(
     aps = []
     mask_ious = []
     mask_dices = []
+    strata: dict[str, list[Tensor]] = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
     for batch_idx in range(batches):
         random.seed(seed + batch_idx)
         images, targets = sample_square_detection_batch(
@@ -377,6 +394,7 @@ def evaluate_toy(
             )
             ious.append(matched_iou.cpu())
             recalls.append((matched_iou >= 0.5).float().cpu())
+            update_stratified_iou_lists(strata, matched_iou.cpu(), target["boxes"].cpu())
             aps.append(
                 ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -389,6 +407,7 @@ def evaluate_toy(
         mask_head.train()
     all_ious = torch.cat(ious)
     all_recalls = torch.cat(recalls)
+    stratified_metrics = summarize_stratified_iou(strata)
     if mask_ious:
         mean_mask_iou = float(torch.stack(mask_ious).mean().item())
         mean_mask_dice = float(torch.stack(mask_dices).mean().item())
@@ -401,7 +420,36 @@ def evaluate_toy(
         "ap50": float(torch.stack(aps).mean().item()),
         "mask_iou": mean_mask_iou,
         "mask_dice": mean_mask_dice,
+        **stratified_metrics,
     }
+
+
+def update_stratified_iou_lists(strata: dict[str, list[Tensor]], ious: Tensor, boxes: Tensor) -> None:
+    areas = boxes[:, 2] * boxes[:, 3]
+    center_distance = ((boxes[:, 0] - 0.5).square() + (boxes[:, 1] - 0.5).square()).sqrt()
+    masks = {
+        "small": areas < 0.04,
+        "medium": (areas >= 0.04) & (areas < 0.075),
+        "large": areas >= 0.075,
+        "center": center_distance < 0.25,
+        "offcenter": center_distance >= 0.25,
+    }
+    for name, mask in masks.items():
+        if bool(mask.any()):
+            strata[name].append(ious[mask])
+
+
+def summarize_stratified_iou(strata: dict[str, list[Tensor]]) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for name, values in strata.items():
+        if values:
+            joined = torch.cat(values)
+            metrics[f"{name}_iou"] = float(joined.mean().item())
+            metrics[f"{name}_recall50"] = float((joined >= 0.5).float().mean().item())
+        else:
+            metrics[f"{name}_iou"] = 0.0
+            metrics[f"{name}_recall50"] = 0.0
+    return metrics
 
 
 def match_targets_by_iou(pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
@@ -589,6 +637,16 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
                 "eval_ap50",
                 "eval_mask_iou",
                 "eval_mask_dice",
+                "eval_small_iou",
+                "eval_medium_iou",
+                "eval_large_iou",
+                "eval_center_iou",
+                "eval_offcenter_iou",
+                "eval_small_recall50",
+                "eval_medium_recall50",
+                "eval_large_recall50",
+                "eval_center_recall50",
+                "eval_offcenter_recall50",
                 "best_iou",
                 "best_step",
                 "images_per_sec",
@@ -603,7 +661,8 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,"
-        "mask_iou_mean,mask_dice_mean,images_per_sec_mean"
+        "mask_iou_mean,mask_dice_mean,small_iou_mean,medium_iou_mean,large_iou_mean,"
+        "center_iou_mean,offcenter_iou_mean,images_per_sec_mean"
     )
     for model in sorted({str(row["model"]) for row in final_rows}):
         model_rows = [row for row in final_rows if row["model"] == model]
@@ -615,6 +674,11 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_mask_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_mask_dice']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_small_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_medium_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_large_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_center_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_offcenter_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['images_per_sec']) for row in model_rows]):.2f}"
         )
 
