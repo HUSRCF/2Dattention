@@ -604,10 +604,42 @@ Mask-biased interpretation:
 - For `local_learned`, the mean is much higher but seed wins are weak, so this is an unstable optimization signal rather than robust evidence.
 - The next useful step is to stabilize this path with bias-gate schedules and compare it with mask-proposal query initialization.
 
+Mask-bias gate controls:
+
+This control set tests whether the seed instability comes from applying the foreground bias too strongly or too early. It adds a smaller gate initialization (`0.01`) and a linear gate warmup schedule.
+
+Output CSV: `results/det_toy_mask_bias_gate_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor` | 0.192 | 0.194 | 0.048 | N/A | N/A |
+| `local_anchor_mask_biased_attn` | 0.189 | 0.189 | 0.052 | 0.978 | 0.989 |
+| `local_anchor_mask_biased_attn_gate001` | 0.188 | 0.188 | 0.041 | 0.981 | 0.990 |
+| `local_anchor_mask_biased_attn_warmup` | 0.175 | 0.181 | 0.037 | 0.977 | 0.988 |
+| `local_learned` | 0.176 | 0.181 | 0.039 | N/A | N/A |
+| `local_learned_mask_biased_attn` | 0.222 | 0.227 | 0.093 | 0.989 | 0.994 |
+| `local_learned_mask_biased_attn_gate001` | 0.224 | 0.224 | 0.097 | 0.985 | 0.992 |
+| `local_learned_mask_biased_attn_warmup` | 0.232 | 0.234 | 0.103 | 0.989 | 0.994 |
+
+Paired interpretation:
+
+- `local_anchor_mask_biased_attn_gate001` vs `local_anchor`: final IoU `-0.004` with `2/5` wins, AP50-lite `-0.007` with `1/5` wins.
+- `local_anchor_mask_biased_attn_warmup` vs `local_anchor`: final IoU `-0.017` with `1/5` wins, AP50-lite `-0.011` with `1/5` wins.
+- `local_learned_mask_biased_attn_gate001` vs `local_learned`: final IoU `+0.048` with `2/5` wins, AP50-lite `+0.058` with `3/5` wins.
+- `local_learned_mask_biased_attn_warmup` vs `local_learned`: final IoU `+0.056` with `2/5` wins, AP50-lite `+0.064` with `4/5` wins.
+- Against `local_anchor`, the learned-query gate variants improve mean IoU/AP but still win only `2/5` seeds on IoU.
+
+Gate-stability interpretation:
+
+- Smaller gate and warmup do not improve the anchor-query branch.
+- For learned queries, they preserve or slightly raise the mean, especially AP-lite, but still do not fix seed instability.
+- The high learned-query means remain driven by a subset of seeds, so this path is not yet a stable mainline.
+- The next detector step should test `mask_proposal_query_init`, where the dense mask explicitly proposes query seeds instead of only biasing attention.
+
 Next detector controls:
 
-1. mask-bias gate schedule or smaller initialization to reduce seed instability.
-2. mask proposal query initialization from top-k/connected foreground regions.
+1. mask proposal query initialization from top-k/connected foreground regions.
+2. per-seed trajectory diagnostics for learned-query mask-biased attention.
 3. confidence-aware loss or decoder refinement for AP-lite.
 4. object-size and off-center stratified toy evaluation.
 5. DET annotation loader using real boxes.

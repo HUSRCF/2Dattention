@@ -26,21 +26,25 @@ from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E
 
 
 MODEL_CONFIGS = {
-    "learned": ("anchor", "learned", "none", "none"),
-    "anchor": ("anchor", "anchor", "none", "none"),
-    "local_learned": ("local", "learned", "none", "none"),
-    "local_anchor": ("local", "anchor", "none", "none"),
-    "local_anchor_detached": ("local", "anchor_detached", "none", "none"),
-    "anchor_learned": ("anchor", "learned", "none", "none"),
-    "anchor_anchor": ("anchor", "anchor", "none", "none"),
-    "anchor_anchor_detached": ("anchor", "anchor_detached", "none", "none"),
-    "local_learned_maskaux": ("local", "learned", "none", "side"),
-    "local_anchor_maskaux": ("local", "anchor", "none", "side"),
-    "local_anchor_detached_maskaux": ("local", "anchor_detached", "none", "side"),
-    "local_learned_maskpooled_query": ("local", "learned", "mask_pool", "pooled"),
-    "local_anchor_maskpooled_query": ("local", "anchor", "mask_pool", "pooled"),
-    "local_learned_mask_biased_attn": ("local", "learned", "mask_bias", "biased"),
-    "local_anchor_mask_biased_attn": ("local", "anchor", "mask_bias", "biased"),
+    "learned": ("anchor", "learned", "none", "none", 0.1, "none"),
+    "anchor": ("anchor", "anchor", "none", "none", 0.1, "none"),
+    "local_learned": ("local", "learned", "none", "none", 0.1, "none"),
+    "local_anchor": ("local", "anchor", "none", "none", 0.1, "none"),
+    "local_anchor_detached": ("local", "anchor_detached", "none", "none", 0.1, "none"),
+    "anchor_learned": ("anchor", "learned", "none", "none", 0.1, "none"),
+    "anchor_anchor": ("anchor", "anchor", "none", "none", 0.1, "none"),
+    "anchor_anchor_detached": ("anchor", "anchor_detached", "none", "none", 0.1, "none"),
+    "local_learned_maskaux": ("local", "learned", "none", "side", 0.1, "none"),
+    "local_anchor_maskaux": ("local", "anchor", "none", "side", 0.1, "none"),
+    "local_anchor_detached_maskaux": ("local", "anchor_detached", "none", "side", 0.1, "none"),
+    "local_learned_maskpooled_query": ("local", "learned", "mask_pool", "pooled", 0.1, "none"),
+    "local_anchor_maskpooled_query": ("local", "anchor", "mask_pool", "pooled", 0.1, "none"),
+    "local_learned_mask_biased_attn": ("local", "learned", "mask_bias", "biased", 0.1, "none"),
+    "local_anchor_mask_biased_attn": ("local", "anchor", "mask_bias", "biased", 0.1, "none"),
+    "local_learned_mask_biased_attn_gate001": ("local", "learned", "mask_bias", "biased", 0.01, "none"),
+    "local_anchor_mask_biased_attn_gate001": ("local", "anchor", "mask_bias", "biased", 0.01, "none"),
+    "local_learned_mask_biased_attn_warmup": ("local", "learned", "mask_bias", "biased", 0.1, "linear"),
+    "local_anchor_mask_biased_attn_warmup": ("local", "anchor", "mask_bias", "biased", 0.1, "linear"),
 }
 
 
@@ -78,6 +82,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def mask_gate_scale(schedule: str, step: int, total_steps: int) -> float:
+    if schedule == "none":
+        return 1.0
+    if schedule == "linear":
+        return min(1.0, max(0.0, step / max(total_steps, 1)))
+    raise ValueError(f"unknown mask gate schedule: {schedule}")
+
+
 def main() -> None:
     args = parse_args()
     if args.max_objects > args.num_queries:
@@ -92,7 +104,9 @@ def main() -> None:
     for seed_idx in range(args.seeds):
         run_seed = args.seed + seed_idx
         for model_name in args.models:
-            feature_mode, query_init, query_refine, mask_aux_mode = MODEL_CONFIGS[model_name]
+            feature_mode, query_init, query_refine, mask_aux_mode, gate_init, gate_schedule = MODEL_CONFIGS[
+                model_name
+            ]
             torch.manual_seed(run_seed)
             random.seed(run_seed)
             model = TinyAnchorRegionDETR(
@@ -102,6 +116,7 @@ def main() -> None:
                 feature_mode=feature_mode,
                 query_init=query_init,
                 query_refine=query_refine,
+                query_mask_gate_init=gate_init,
             ).to(device)
             mask_head = DenseMaskAuxHead(args.embed_dim).to(device) if mask_aux_mode == "side" else None
             criterion = DetectionCriterion(num_classes=1).to(device)
@@ -123,6 +138,7 @@ def main() -> None:
                     max_objects=args.max_objects,
                     torch_seed=30_000_000 + run_seed * 100_000 + step,
                 )
+                model.set_query_mask_gate_scale(mask_gate_scale(gate_schedule, step, args.steps))
                 outputs = model(images)
                 losses = criterion(outputs, targets)
                 if mask_aux_mode != "none":

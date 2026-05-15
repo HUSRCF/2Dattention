@@ -24,6 +24,7 @@ from scripts.train_det_toy import (
     cxcywh_iou,
     dense_mask_aux_loss,
     dense_mask_targets_from_boxes,
+    mask_gate_scale,
     match_targets_by_iou,
     sample_square_detection_batch,
 )
@@ -187,7 +188,11 @@ def test_tiny_anchor_region_detr_mask_biased_attention_refine() -> None:
         feature_mode="local",
         query_init="anchor",
         query_refine="mask_bias",
+        query_mask_gate_init=0.01,
     )
+    assert torch.allclose(model.query_mask_gate.detach(), torch.tensor(0.01))
+    model.set_query_mask_gate_scale(0.25)
+    assert torch.allclose(model.query_mask_gate_scale, torch.tensor(0.25))
     criterion = DetectionCriterion(num_classes=1)
     images = torch.randn(2, 3, 32, 32)
     targets = [
@@ -215,6 +220,13 @@ def test_tiny_anchor_region_detr_mask_biased_attention_refine() -> None:
     assert torch.isfinite(model.query_mask_head.weight.grad).all()
     assert float(model.query_mask_gate.grad.detach().abs().sum()) > 0.0
     assert float(model.query_mask_head.weight.grad.detach().abs().sum()) > 0.0
+
+
+def test_mask_gate_scale_schedule() -> None:
+    assert mask_gate_scale("none", step=5, total_steps=100) == 1.0
+    assert mask_gate_scale("linear", step=0, total_steps=100) == 0.0
+    assert mask_gate_scale("linear", step=25, total_steps=100) == 0.25
+    assert mask_gate_scale("linear", step=200, total_steps=100) == 1.0
 
 
 def test_square_detection_batch_multi_modes() -> None:

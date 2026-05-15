@@ -24,6 +24,7 @@ class TinyAnchorRegionDETR(nn.Module):
         feature_mode: str = "anchor",
         query_init: str = "learned",
         query_refine: str = "none",
+        query_mask_gate_init: float = 0.1,
     ) -> None:
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
@@ -36,6 +37,7 @@ class TinyAnchorRegionDETR(nn.Module):
         self.query_init = query_init
         self.query_refine = query_refine
         self.num_queries = num_queries
+        self.register_buffer("query_mask_gate_scale", torch.tensor(1.0))
         self.patch_embed = PatchEmbed2D(in_channels, embed_dim, patch_size)
         self.coord_encoding = Coordinate2DEncoding(embed_dim)
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
@@ -43,11 +45,16 @@ class TinyAnchorRegionDETR(nn.Module):
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
-            self.query_mask_gate = nn.Parameter(torch.tensor(0.1))
+            self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
             self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
         self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
         self.head = DetectionHead(embed_dim, num_classes=num_classes)
+
+    def set_query_mask_gate_scale(self, scale: float) -> None:
+        """Set a runtime multiplier for mask-conditioned query refinement."""
+
+        self.query_mask_gate_scale.fill_(float(scale))
 
     def forward(self, x: Tensor) -> dict[str, Tensor | list[Tensor]]:
         state = self.coord_encoding(self.patch_embed(x))
@@ -75,11 +82,13 @@ class TinyAnchorRegionDETR(nn.Module):
         if self.query_refine == "mask_pool":
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             region = mask_pooled_region(spatial_state, query_mask_logits)
-            queries = queries + self.query_mask_gate * self.query_mask_proj(region).unsqueeze(1)
+            gate = self.query_mask_gate * self.query_mask_gate_scale
+            queries = queries + gate * self.query_mask_proj(region).unsqueeze(1)
         attention_bias = None
         if self.query_refine == "mask_bias":
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
-            attention_bias = mask_attention_bias(query_mask_logits, self.query_mask_gate)
+            gate = self.query_mask_gate * self.query_mask_gate_scale
+            attention_bias = mask_attention_bias(query_mask_logits, gate)
         decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
         outputs = self.head(decoded)
         if query_mask_logits is not None:

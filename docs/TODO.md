@@ -163,6 +163,20 @@ Mask-biased interpretation:
 - Mask-biased attention is a better coupling than global mask pooling: it does not collapse anchor coverage and gives a small AP-lite signal for `local_anchor`.
 - The large `local_learned_mask_biased_attn` mean is not yet robust because paired wins are weak; treat it as an instability/optimization signal, not a stable new mainline.
 - Next step: diagnose and stabilize mask-biased attention with per-seed trajectories, bias-gate schedules, and proposal-style query initialization before making a stronger claim.
+- Implemented gate-stability controls for mask-biased attention.
+  - Formal result: `results/det_toy_mask_bias_gate_multi_distractor_300step_5seeds.csv`.
+  - `local_anchor_mask_biased_attn_gate001`: final/best IoU `0.188/0.188`, AP50-lite `0.041`.
+  - `local_anchor_mask_biased_attn_warmup`: final/best IoU `0.175/0.181`, AP50-lite `0.037`.
+  - Against `local_anchor`, smaller gate and warmup do not improve the anchor-query branch.
+  - `local_learned_mask_biased_attn_gate001`: final/best IoU `0.224/0.224`, AP50-lite `0.097`.
+  - `local_learned_mask_biased_attn_warmup`: final/best IoU `0.232/0.234`, AP50-lite `0.103`.
+  - Against `local_anchor`, learned-query gate controls improve mean IoU/AP but still win only `2/5` seeds on IoU, so the signal remains unstable.
+
+Gate-stability interpretation:
+
+- Smaller gate and linear warmup do not solve the core instability.
+- For learned queries, mask bias sometimes opens a much better optimization path, but the improvement is seed-selective rather than reliable.
+- Next step should move from global foreground bias to `mask_proposal_query_init`, where dense masks explicitly seed object queries instead of only nudging attention.
 
 ### Step 4: Real Detection Dataset Path
 
