@@ -234,6 +234,11 @@ Clear overlay sample-selection rule:
   - overlays: `results/clear_det_overlay_samples_high_area/overlays/`
   - contact sheet: `results/clear_det_overlay_samples_high_area/contact_sheet.jpg`
 - Use the high-area sheet first for paper-style figures; use the balanced sheet when the figure needs explicit small/medium/large and center/off-center coverage.
+- Fixed high-area prediction overlay:
+  - selected the first 8 image ids from `results/clear_det_overlay_samples_high_area/manifest.csv`, covering medium/large and center/off-center examples.
+  - command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/visualize_bbox_mask_predictions.py --models anchor_only_no_prefill no_prefill_local_mix fpn_sum_lite --steps 1000 --mask-size 32 --display-size 192 --image-id-manifest results/clear_det_overlay_samples_high_area/manifest.csv --manifest-top-k 8 --out-dir results/fixed_high_area_bbox_mask_overlays_32x32_seed41`
+  - cross-model grid: `results/fixed_high_area_bbox_mask_overlays_32x32_seed41/comparison_grid.png`
+  - per-model panels: `results/fixed_high_area_bbox_mask_overlays_32x32_seed41/{anchor_only_no_prefill,no_prefill_local_mix,fpn_sum_lite}/`
 
 ### Step 4: Real Detection Dataset Path
 

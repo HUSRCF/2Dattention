@@ -714,6 +714,10 @@ Stratified interpretation:
   - Balanced candidate sheet: `results/clear_det_overlay_samples/contact_sheet.jpg`.
   - Higher-clarity figure candidate sheet: `results/clear_det_overlay_samples_high_area/contact_sheet.jpg`.
   - The high-area sheet should be the first choice for readable paper figures; the balanced sheet is useful when the figure needs explicit small/medium/large and center/off-center diversity.
+- Fixed high-area prediction overlays are under `results/fixed_high_area_bbox_mask_overlays_32x32_seed41/`.
+  - Main cross-model sheet: `comparison_grid.png`.
+  - Columns: original image, GT bbox mask, `anchor_only_no_prefill`, `no_prefill_local_mix`, and `fpn_sum_lite`.
+  - The grid uses original JPEGs resized for display, not enlarged 64px model inputs, so it is suitable for qualitative review.
 
 Next detector controls:
 
