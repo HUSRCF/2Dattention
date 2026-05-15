@@ -191,6 +191,20 @@ Mask-proposal interpretation:
 - The result supports the narrower mechanism claim: dense foreground masks are useful when they explicitly seed object queries.
 - It does not revive early prefill or generic memory-first claims; the supported path is mask/object-proposal-conditioned query initialization.
 - Next step should stress-test proposal queries with top-k diversity, proposal NMS/connected components, object-size stratification, and eventually real DET annotations.
+- Implemented top-k proposal diversity with spatial suppression.
+  - `local_mask_proposal_nms_query` and `anchor_mask_proposal_nms_query` greedily select high-mask cells while suppressing nearby feature-grid cells with radius `2`.
+  - Formal result: `results/det_toy_mask_proposal_nms_multi_distractor_300step_5seeds.csv`.
+  - `local_mask_proposal_nms_query`: final/best IoU `0.461/0.463`, recall50 `0.455`, AP50-lite `0.378`, mask IoU/Dice `0.979/0.989`.
+  - `anchor_mask_proposal_nms_query`: final/best IoU `0.438/0.465`, recall50 `0.394`, AP50-lite `0.313`, mask IoU/Dice `0.982/0.990`.
+  - Against plain `local_mask_proposal_query`, `local_mask_proposal_nms_query` improves final IoU by `+0.133`, best IoU by `+0.120`, AP50-lite by `+0.083`, with `5/5` IoU wins.
+  - Against plain `local_mask_proposal_query`, `anchor_mask_proposal_nms_query` improves final IoU by `+0.110`, best IoU by `+0.122`, with `5/5` IoU wins.
+
+Proposal-diversity interpretation:
+
+- Spatial suppression strongly improves query coverage, confirming that plain top-k over-selects nearby foreground peaks.
+- Mask IoU is slightly lower than plain top-k, but detection IoU/AP are much better; proposal diversity matters more than perfect union-mask accuracy.
+- Current strongest detection toy model is `local_mask_proposal_nms_query`.
+- Next step should add stratified diagnostics and visual proposal overlays; if overlays are blurred or uninformative, swap to clearer curated samples rather than relying on weak figures.
 
 ### Step 4: Real Detection Dataset Path
 

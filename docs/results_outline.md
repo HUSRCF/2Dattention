@@ -664,10 +664,37 @@ Mask-proposal interpretation:
 - The supported claim is specific: dense foreground masks help when they explicitly initialize object queries.
 - This should not be generalized to early prefill or memory-first routing.
 
+Proposal diversity with spatial suppression:
+
+Plain top-k proposal queries can over-select nearby mask peaks from the same foreground region. The NMS-style variant greedily selects high-mask cells while suppressing nearby feature-grid cells with radius `2`.
+
+Output CSV: `results/det_toy_mask_proposal_nms_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | Recall50 | AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_anchor` | 0.192 | 0.194 | 0.083 | 0.048 | N/A | N/A |
+| `local_mask_proposal_query` | 0.328 | 0.342 | 0.363 | 0.295 | 0.986 | 0.993 |
+| `local_mask_proposal_nms_query` | 0.461 | 0.463 | 0.455 | 0.378 | 0.979 | 0.989 |
+| `anchor_mask_proposal_query` | 0.321 | 0.324 | 0.341 | 0.272 | 0.990 | 0.995 |
+| `anchor_mask_proposal_nms_query` | 0.438 | 0.465 | 0.394 | 0.313 | 0.982 | 0.990 |
+
+Paired interpretation:
+
+- `local_mask_proposal_nms_query` vs `local_mask_proposal_query`: final IoU `+0.133`, best IoU `+0.120`, AP50-lite `+0.083`; final/best IoU wins are `5/5`, AP50-lite wins are `3/5`.
+- `anchor_mask_proposal_nms_query` vs `local_mask_proposal_query`: final IoU `+0.110`, best IoU `+0.122`, AP50-lite `+0.018`; final/best IoU wins are `5/5`, AP50-lite wins are `3/5`.
+- Both NMS-style proposal variants remain far above `local_anchor`.
+
+Proposal-diversity interpretation:
+
+- Spatial suppression is a major improvement over plain top-k proposal queries.
+- The mask score itself is not the limiting metric: NMS variants have slightly lower mask IoU than plain top-k but much better box IoU and AP-lite.
+- This supports the mechanism that query diversity and spatial coverage are central for turning dense masks into detector queries.
+- If qualitative proposal figures are blurred or not readable, use curated clearer samples; do not rely on weak visual evidence.
+
 Next detector controls:
 
-1. proposal diversity: top-k with spatial suppression, connected components, or soft NMS over mask logits.
-2. object-size and off-center stratified toy evaluation for proposal queries.
+1. object-size and off-center stratified toy evaluation for proposal queries.
+2. proposal overlay visualization with curated clear examples.
 3. confidence-aware loss or decoder refinement for AP-lite.
 4. DET annotation loader using real boxes.
 5. RF-DETR distillation path with mask/proposal query student.

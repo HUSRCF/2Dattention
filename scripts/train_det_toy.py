@@ -47,6 +47,8 @@ MODEL_CONFIGS = {
     "local_anchor_mask_biased_attn_warmup": ("local", "anchor", "mask_bias", "biased", 0.1, "linear"),
     "local_mask_proposal_query": ("local", "mask_proposal", "none", "proposal", 0.1, "none"),
     "anchor_mask_proposal_query": ("anchor", "mask_proposal", "none", "proposal", 0.1, "none"),
+    "local_mask_proposal_nms_query": ("local", "mask_proposal_nms", "none", "proposal", 0.1, "none"),
+    "anchor_mask_proposal_nms_query": ("anchor", "mask_proposal_nms", "none", "proposal", 0.1, "none"),
 }
 
 

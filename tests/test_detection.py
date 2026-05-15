@@ -119,7 +119,7 @@ def test_tiny_anchor_region_detr_backward() -> None:
 def test_tiny_anchor_region_detr_feature_query_modes() -> None:
     images = torch.randn(2, 3, 32, 32)
     for feature_mode in ("local", "anchor"):
-        for query_init in ("learned", "anchor", "anchor_detached", "mask_proposal"):
+        for query_init in ("learned", "anchor", "anchor_detached", "mask_proposal", "mask_proposal_nms"):
             model = TinyAnchorRegionDETR(
                 embed_dim=16,
                 num_classes=1,
@@ -172,6 +172,31 @@ def test_tiny_anchor_region_detr_mask_proposal_query_init() -> None:
     assert model.query_mask_head.weight.grad is not None
     assert torch.isfinite(model.query_mask_head.weight.grad).all()
     assert float(model.query_mask_head.weight.grad.detach().abs().sum()) > 0.0
+
+
+def test_tiny_anchor_region_detr_mask_proposal_nms_diversifies_indices() -> None:
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="mask_proposal_nms",
+    )
+    images = torch.randn(2, 3, 32, 32)
+    outputs = model(images)
+    assert outputs["pred_logits"].shape == (2, 4, 2)
+    indices = outputs["query_proposal_indices"]
+    assert indices.shape == (2, 4)
+    width = outputs["query_mask_logits"].shape[-1]
+    y = indices // width
+    x = indices % width
+    for query_idx in range(indices.shape[1]):
+        for other_idx in range(query_idx + 1, indices.shape[1]):
+            distance = torch.maximum(
+                (y[:, query_idx] - y[:, other_idx]).abs(),
+                (x[:, query_idx] - x[:, other_idx]).abs(),
+            )
+            assert bool((distance > 2).all())
 
 
 def test_tiny_anchor_region_detr_mask_pool_query_refine() -> None:

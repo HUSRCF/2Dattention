@@ -29,8 +29,11 @@ class TinyAnchorRegionDETR(nn.Module):
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
             raise ValueError("feature_mode must be 'local' or 'anchor'")
-        if query_init not in {"learned", "anchor", "anchor_detached", "mask_proposal"}:
-            raise ValueError("query_init must be 'learned', 'anchor', 'anchor_detached', or 'mask_proposal'")
+        if query_init not in {"learned", "anchor", "anchor_detached", "mask_proposal", "mask_proposal_nms"}:
+            raise ValueError(
+                "query_init must be 'learned', 'anchor', 'anchor_detached', 'mask_proposal', or "
+                "'mask_proposal_nms'"
+            )
         if query_refine not in {"none", "mask_pool", "mask_bias"}:
             raise ValueError("query_refine must be 'none', 'mask_pool', or 'mask_bias'")
         self.feature_mode = feature_mode
@@ -43,7 +46,7 @@ class TinyAnchorRegionDETR(nn.Module):
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
         self.anchor_block = AnchorOnlyMemoryReadBlock(embed_dim)
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
-        if query_init == "mask_proposal" or query_refine in {"mask_pool", "mask_bias"}:
+        if query_init in {"mask_proposal", "mask_proposal_nms"} or query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
@@ -75,12 +78,14 @@ class TinyAnchorRegionDETR(nn.Module):
         spatial_tokens = spatial_state.flatten(2).transpose(1, 2)
         query_mask_logits = None
         query_proposal_indices = None
-        if self.query_init == "mask_proposal":
+        if self.query_init in {"mask_proposal", "mask_proposal_nms"}:
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
+            proposal_suppression_radius = 2 if self.query_init == "mask_proposal_nms" else 0
             queries, query_proposal_indices = mask_proposal_queries_from_state(
                 spatial_state,
                 query_mask_logits,
                 self.num_queries,
+                suppression_radius=proposal_suppression_radius,
             )
         elif self.query_init == "anchor":
             queries = anchor_queries_from_state(spatial_state, self.num_queries)
@@ -168,18 +173,44 @@ def anchor_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
     return tokens.repeat(1, repeats, 1)[:, :num_queries]
 
 
-def mask_proposal_queries_from_state(state: Tensor, mask_logits: Tensor, num_queries: int) -> tuple[Tensor, Tensor]:
+def mask_proposal_queries_from_state(
+    state: Tensor,
+    mask_logits: Tensor,
+    num_queries: int,
+    suppression_radius: int = 0,
+) -> tuple[Tensor, Tensor]:
     """Use top-k foreground mask cells as object-query feature seeds."""
 
     tokens = state.flatten(2).transpose(1, 2)
     scores = mask_logits.flatten(1)
     if scores.shape[1] >= num_queries:
-        indices = scores.topk(num_queries, dim=1).indices
+        if suppression_radius > 0:
+            indices = spatially_suppressed_topk_indices(mask_logits, num_queries, suppression_radius)
+        else:
+            indices = scores.topk(num_queries, dim=1).indices
     else:
         repeats = (num_queries + scores.shape[1] - 1) // scores.shape[1]
         indices = scores.topk(scores.shape[1], dim=1).indices.repeat(1, repeats)[:, :num_queries]
     gather_indices = indices.unsqueeze(-1).expand(-1, -1, tokens.shape[-1])
     return tokens.gather(dim=1, index=gather_indices), indices
+
+
+def spatially_suppressed_topk_indices(mask_logits: Tensor, num_queries: int, radius: int) -> Tensor:
+    """Greedily select high-mask cells while suppressing nearby spatial neighbors."""
+
+    batch, height, width = mask_logits.shape
+    scores = mask_logits.flatten(1).clone()
+    grid_y = torch.arange(height, device=mask_logits.device).view(1, height, 1)
+    grid_x = torch.arange(width, device=mask_logits.device).view(1, 1, width)
+    selected = []
+    for _ in range(num_queries):
+        top = scores.argmax(dim=1)
+        selected.append(top)
+        y = (top // width).view(batch, 1, 1)
+        x = (top % width).view(batch, 1, 1)
+        suppress = (grid_y - y).abs().maximum((grid_x - x).abs()) <= radius
+        scores = scores.masked_fill(suppress.flatten(1), torch.finfo(scores.dtype).min)
+    return torch.stack(selected, dim=1)
 
 
 def mask_pooled_region(state: Tensor, mask_logits: Tensor) -> Tensor:
