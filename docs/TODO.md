@@ -303,7 +303,20 @@ Interpretation:
   - The 50-step `local_anchor` advantage does not remain clearly above `local_learned` after longer training; both are essentially tied on matched IoU.
   - `local_anchor_detached` is consistently weaker than `local_anchor`, so detached anchor content alone is not sufficient on real boxes. Any real-box anchor benefit likely depends on differentiable online query-feature coupling or optimization path, not just static anchor summaries.
   - `local_mask_proposal_nms_query` learns a useful dense mask but still does not produce a real-box IoU advantage. Toy proposal-NMS gains do not transfer automatically.
+- Added real DET ranking/classification diagnostics to separate localization from confidence ordering:
+  - command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_anchor local_anchor_detached local_mask_proposal_nms_query --reference-model local_learned --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --out results/det_real_mini_300step_2seed_diagnostics.csv --label-map-out results/det_real_mini_300step_diagnostics_label_map.csv --split-out results/det_real_mini_300step_diagnostics_split.csv --seeds 2`
+  - `local_learned`: matched-assignment class acc `0.390`, score-IoU corr `0.438`, pre-NMS objectness AUC `0.658`, top-k FP rate `0.719`, query assignment entropy `0.904`.
+  - `local_anchor`: matched-assignment class acc `0.390`, score-IoU corr `0.305`, pre-NMS objectness AUC `0.584`, top-k FP rate `0.819`, query assignment entropy `0.926`.
+  - `local_anchor_detached`: matched-assignment class acc `0.347`, score-IoU corr `0.194`, pre-NMS objectness AUC `0.582`, top-k FP rate `0.848`, query assignment entropy `0.897`.
+  - `local_mask_proposal_nms_query`: matched-assignment class acc `0.401`, score-IoU corr `0.380`, pre-NMS objectness AUC `0.598`, top-k FP rate `0.767`, query assignment entropy `0.994`, mask IoU/Dice `0.458/0.604`.
+- Ranking-diagnostic interpretation:
+  - In this mini setup, `local_learned` and `local_anchor` are tied on matched IoU, but `local_learned` has much better score-IoU correlation, pre-NMS objectness AUC, and top-k false-positive rate. This suggests the current anchor failure is mainly a ranking/objectness/classification problem, not pure box coverage.
+  - `local_anchor_detached` is weaker on matched-assignment class accuracy, score-IoU correlation, and top-k false positives, reinforcing that static detached anchor summaries are insufficient for real-box detection.
+  - `local_mask_proposal_nms_query` has the highest matched-assignment class accuracy and query assignment entropy, but its objectness/ranking quality still trails `local_learned`. Dense masks are learned, but proposal queries still need better score calibration and query-box refinement.
 - Next controls:
+  - add score-IoU/ranking loss or class/objectness calibration controls,
+  - test soft/gated anchor residual query initialization instead of replacing learned queries,
+  - add oracle and detached mask-proposal controls to measure whether proposal quality or query consumption is the bottleneck,
   - add proposal/box overlays on fixed clear samples,
   - add a stronger decoder or iterative box refinement,
   - improve class/objectness training before scaling beyond this subset,

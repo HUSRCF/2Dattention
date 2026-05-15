@@ -16,7 +16,7 @@ import time
 import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
-from itertools import cycle
+from itertools import cycle, permutations
 from pathlib import Path
 
 import torch
@@ -143,6 +143,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.max_objects < 1:
+        raise ValueError("--max-objects must be >= 1")
     if args.max_objects > args.num_queries:
         raise ValueError("--max-objects must be <= --num-queries")
     device = get_best_device()
@@ -161,7 +163,8 @@ def main() -> None:
     print("label_map:", args.label_map_out)
     print(
         "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
-        "eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
+        "matched_assignment_class_acc,tp50_class_acc,score_iou_corr,objectness_auc,"
+        "topk_fp_rate,eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
     )
     rows: list[dict[str, float | int | str]] = []
     split_rows: list[dict[str, int | str]] = []
@@ -273,6 +276,13 @@ def train_one_model(
                 "eval_large_iou": metrics["large_iou"],
                 "eval_center_iou": metrics["center_iou"],
                 "eval_offcenter_iou": metrics["offcenter_iou"],
+                "matched_assignment_class_acc": metrics["matched_assignment_class_acc"],
+                "tp50_class_acc": metrics["tp50_class_acc"],
+                "score_iou_corr": metrics["score_iou_corr"],
+                "objectness_auc": metrics["objectness_auc"],
+                "topk_fp_rate": metrics["topk_fp_rate"],
+                "duplicate_per_gt": metrics["duplicate_per_gt"],
+                "query_assignment_entropy": metrics["query_assignment_entropy"],
                 "best_iou": best_iou,
                 "best_step": best_step,
                 "images_per_sec": speed,
@@ -282,6 +292,9 @@ def train_one_model(
                 f"{model_name},{run_seed},{step},{last_loss:.4f},"
                 f"{metrics['iou']:.3f},{metrics['recall50']:.3f},"
                 f"{metrics['ap50']:.3f},{metrics['ap50_class']:.3f},"
+                f"{metrics['matched_assignment_class_acc']:.3f},{metrics['tp50_class_acc']:.3f},"
+                f"{metrics['score_iou_corr']:.3f},{metrics['objectness_auc']:.3f},"
+                f"{metrics['topk_fp_rate']:.3f},"
                 f"{metrics['mask_iou']:.3f},{metrics['mask_dice']:.3f},"
                 f"{best_iou:.3f},{best_step},{speed:.2f}"
             )
@@ -300,6 +313,13 @@ def evaluate_real(
     recalls = []
     aps = []
     aps_class = []
+    matched_assignment_class_correct = []
+    tp50_class_correct = []
+    score_iou_corrs = []
+    objectness_aucs = []
+    topk_fp_rates = []
+    duplicate_per_gt_values = []
+    query_assignment_counts = torch.zeros(model.num_queries, dtype=torch.float32)
     mask_ious = []
     mask_dices = []
     strata: dict[str, list[Tensor]] = {
@@ -324,8 +344,23 @@ def evaluate_real(
                 outputs["pred_boxes"][sample_idx],
                 target["boxes"],
             )
+            diagnostics = query_ranking_diagnostics(
+                pred_logits=outputs["pred_logits"][sample_idx],
+                pred_boxes=outputs["pred_boxes"][sample_idx],
+                target_boxes=target["boxes"],
+                target_labels=target["labels"],
+            )
             ious.append(matched_iou.cpu())
             recalls.append((matched_iou >= 0.5).float().cpu())
+            matched_assignment_class_correct.append(
+                diagnostics["matched_assignment_class_correct"].cpu()
+            )
+            tp50_class_correct.append(diagnostics["tp50_class_correct"].cpu())
+            score_iou_corrs.append(diagnostics["score_iou_corr"].cpu())
+            objectness_aucs.append(diagnostics["objectness_auc"].cpu())
+            topk_fp_rates.append(diagnostics["topk_fp_rate"].cpu())
+            duplicate_per_gt_values.append(diagnostics["duplicate_per_gt"].cpu())
+            query_assignment_counts += diagnostics["matched_query_counts"].cpu()
             update_stratified_iou_lists(strata, matched_iou.cpu(), target["boxes"].cpu())
             aps.append(
                 objectness_ap50_for_image(
@@ -345,6 +380,17 @@ def evaluate_real(
     model.train()
     all_ious = torch.cat(ious) if ious else torch.zeros(1)
     all_recalls = torch.cat(recalls) if recalls else torch.zeros(1)
+    all_assignment_class_correct = (
+        torch.cat(matched_assignment_class_correct)
+        if matched_assignment_class_correct
+        else torch.zeros(1)
+    )
+    all_tp50_class_correct = torch.cat(tp50_class_correct) if tp50_class_correct else torch.zeros(0)
+    tp50_class_acc = (
+        float(all_tp50_class_correct.float().mean().item())
+        if all_tp50_class_correct.numel() > 0
+        else 0.0
+    )
     if mask_ious:
         mask_iou = float(torch.stack(mask_ious).mean().item())
         mask_dice = float(torch.stack(mask_dices).mean().item())
@@ -356,6 +402,13 @@ def evaluate_real(
         "recall50": float(all_recalls.mean().item()),
         "ap50": float(torch.stack(aps).mean().item()) if aps else 0.0,
         "ap50_class": float(torch.stack(aps_class).mean().item()) if aps_class else 0.0,
+        "matched_assignment_class_acc": float(all_assignment_class_correct.float().mean().item()),
+        "tp50_class_acc": tp50_class_acc,
+        "score_iou_corr": float(torch.stack(score_iou_corrs).mean().item()) if score_iou_corrs else 0.0,
+        "objectness_auc": float(torch.stack(objectness_aucs).mean().item()) if objectness_aucs else 0.0,
+        "topk_fp_rate": float(torch.stack(topk_fp_rates).mean().item()) if topk_fp_rates else 0.0,
+        "duplicate_per_gt": float(torch.stack(duplicate_per_gt_values).mean().item()) if duplicate_per_gt_values else 0.0,
+        "query_assignment_entropy": assignment_entropy(query_assignment_counts),
         "mask_iou": mask_iou,
         "mask_dice": mask_dice,
         **summarize_stratified_iou(strata),
@@ -391,6 +444,160 @@ def objectness_ap50_for_image(pred_logits: Tensor, pred_boxes: Tensor, target_bo
     recall = tp / max(int(target_boxes.shape[0]), 1)
     precision = tp / (tp + fp).clamp_min(1e-8)
     return precision_recall_ap(recall, precision)
+
+
+def query_ranking_diagnostics(
+    pred_logits: Tensor,
+    pred_boxes: Tensor,
+    target_boxes: Tensor,
+    target_labels: Tensor,
+) -> dict[str, Tensor]:
+    objectness = pred_logits.softmax(dim=-1)[:, :-1].max(dim=-1).values
+    pred_labels = pred_logits.softmax(dim=-1)[:, :-1].argmax(dim=-1)
+    target_count = int(target_boxes.shape[0])
+    if target_count == 0:
+        return {
+            "matched_assignment_class_correct": pred_logits.new_zeros((0,)),
+            "tp50_class_correct": pred_logits.new_zeros((0,)),
+            "score_iou_corr": pred_logits.new_tensor(0.0),
+            "objectness_auc": pred_logits.new_tensor(0.5),
+            "topk_fp_rate": pred_logits.new_tensor(0.0),
+            "duplicate_per_gt": pred_logits.new_tensor(0.0),
+            "matched_query_counts": torch.zeros(
+                pred_boxes.shape[0],
+                device=pred_boxes.device,
+            ),
+        }
+    iou_matrix = box_iou(
+        box_cxcywh_to_xyxy(pred_boxes),
+        box_cxcywh_to_xyxy(target_boxes),
+    )
+    max_iou_per_query = iou_matrix.max(dim=1).values
+    matched_queries, matched_targets = best_iou_assignment_indices(iou_matrix)
+    if matched_queries.numel() == 0:
+        class_correct = pred_logits.new_zeros((0,))
+    else:
+        class_correct = (
+            pred_labels[matched_queries] == target_labels[matched_targets]
+        ).float()
+    tp50_mask = (
+        max_iou_per_query[matched_queries] >= 0.5
+        if matched_queries.numel() > 0
+        else torch.zeros(0, dtype=torch.bool, device=pred_boxes.device)
+    )
+    tp50_class_correct = class_correct[tp50_mask]
+    topk = objectness.argsort(descending=True)[:target_count]
+    topk_fp_rate = (max_iou_per_query[topk] < 0.5).float().mean()
+    duplicate_per_gt = duplicate_predictions_per_gt(iou_matrix, threshold=0.5)
+    positive = max_iou_per_query >= 0.5
+    matched_query_counts = torch.zeros(pred_boxes.shape[0], device=pred_boxes.device)
+    if matched_queries.numel() > 0:
+        matched_query_counts.scatter_add_(
+            0,
+            matched_queries,
+            torch.ones_like(matched_queries, dtype=matched_query_counts.dtype),
+        )
+    return {
+        "matched_assignment_class_correct": class_correct,
+        "tp50_class_correct": tp50_class_correct,
+        "score_iou_corr": pearson_corr(objectness, max_iou_per_query),
+        "objectness_auc": binary_auc(objectness, positive),
+        "topk_fp_rate": topk_fp_rate,
+        "duplicate_per_gt": duplicate_per_gt,
+        "matched_query_counts": matched_query_counts,
+    }
+
+
+def best_iou_assignment_indices(iou_matrix: Tensor) -> tuple[Tensor, Tensor]:
+    query_count, target_count = iou_matrix.shape
+    if target_count == 0:
+        empty = torch.empty(0, dtype=torch.long, device=iou_matrix.device)
+        return empty, empty
+    if target_count > query_count:
+        raise ValueError("target_count must be <= query_count for diagnostic assignment")
+    if query_count > 8 or target_count > 4:
+        return greedy_iou_assignment_indices(iou_matrix)
+    target_indices = torch.arange(target_count, device=iou_matrix.device)
+    best_score = None
+    best_queries = None
+    for query_indices_tuple in permutations(range(query_count), target_count):
+        query_indices = torch.tensor(query_indices_tuple, device=iou_matrix.device)
+        score = iou_matrix[query_indices, target_indices].sum()
+        if best_score is None or bool(score > best_score):
+            best_score = score
+            best_queries = query_indices
+    if best_queries is None:
+        empty = torch.empty(0, dtype=torch.long, device=iou_matrix.device)
+        return empty, empty
+    return best_queries, target_indices
+
+
+def greedy_iou_assignment_indices(iou_matrix: Tensor) -> tuple[Tensor, Tensor]:
+    """Approximate smoke-test assignment for larger query/target counts."""
+    query_count, target_count = iou_matrix.shape
+    pairs: list[tuple[float, int, int]] = []
+    for query_idx in range(query_count):
+        for target_idx in range(target_count):
+            pairs.append(
+                (
+                    float(iou_matrix[query_idx, target_idx].item()),
+                    query_idx,
+                    target_idx,
+                )
+            )
+    used_queries: set[int] = set()
+    used_targets: set[int] = set()
+    selected_queries: list[int] = []
+    selected_targets: list[int] = []
+    for _, query_idx, target_idx in sorted(pairs, reverse=True):
+        if query_idx in used_queries or target_idx in used_targets:
+            continue
+        used_queries.add(query_idx)
+        used_targets.add(target_idx)
+        selected_queries.append(query_idx)
+        selected_targets.append(target_idx)
+        if len(selected_targets) == target_count:
+            break
+    return (
+        torch.tensor(selected_queries, dtype=torch.long, device=iou_matrix.device),
+        torch.tensor(selected_targets, dtype=torch.long, device=iou_matrix.device),
+    )
+
+
+def duplicate_predictions_per_gt(iou_matrix: Tensor, threshold: float) -> Tensor:
+    if iou_matrix.shape[1] == 0:
+        return iou_matrix.new_tensor(0.0)
+    duplicates = (iou_matrix >= threshold).float().sum(dim=0).sub(1.0).clamp_min(0.0)
+    return duplicates.mean()
+
+
+def pearson_corr(x: Tensor, y: Tensor) -> Tensor:
+    x_centered = x - x.mean()
+    y_centered = y - y.mean()
+    denom = x_centered.norm() * y_centered.norm()
+    if float(denom.item()) <= 1e-12:
+        return x.new_tensor(0.0)
+    return (x_centered * y_centered).sum() / denom
+
+
+def binary_auc(scores: Tensor, positive: Tensor) -> Tensor:
+    positive_scores = scores[positive]
+    negative_scores = scores[~positive]
+    if positive_scores.numel() == 0 or negative_scores.numel() == 0:
+        return scores.new_tensor(0.5)
+    greater = positive_scores[:, None] > negative_scores[None, :]
+    equal = positive_scores[:, None] == negative_scores[None, :]
+    return greater.float().mean() + 0.5 * equal.float().mean()
+
+
+def assignment_entropy(counts: Tensor) -> float:
+    total = counts.sum()
+    if float(total.item()) <= 0.0:
+        return 0.0
+    probs = counts / total
+    entropy = -(probs * probs.clamp_min(1e-12).log()).sum()
+    denom = torch.log(torch.tensor(float(counts.numel()), dtype=counts.dtype))
+    return float((entropy / denom.clamp_min(1e-12)).item())
 
 
 def class_aware_ap50_for_image(
@@ -592,6 +799,13 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_large_iou",
         "eval_center_iou",
         "eval_offcenter_iou",
+        "matched_assignment_class_acc",
+        "tp50_class_acc",
+        "score_iou_corr",
+        "objectness_auc",
+        "topk_fp_rate",
+        "duplicate_per_gt",
+        "query_assignment_entropy",
         "best_iou",
         "best_step",
         "images_per_sec",
@@ -616,6 +830,9 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
+        "matched_assignment_class_acc_mean,tp50_class_acc_mean,"
+        "score_iou_corr_mean,objectness_auc_mean,topk_fp_rate_mean,"
+        "duplicate_per_gt_mean,query_assignment_entropy_mean,"
         "mask_iou_mean,mask_dice_mean,small_iou_mean,medium_iou_mean,large_iou_mean,"
         "center_iou_mean,offcenter_iou_mean,images_per_sec_mean"
     )
@@ -628,6 +845,13 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class']) for row in model_rows]):.3f},"
+            f"{mean([float(row['matched_assignment_class_acc']) for row in model_rows]):.3f},"
+            f"{mean([float(row['tp50_class_acc']) for row in model_rows]):.3f},"
+            f"{mean([float(row['score_iou_corr']) for row in model_rows]):.3f},"
+            f"{mean([float(row['objectness_auc']) for row in model_rows]):.3f},"
+            f"{mean([float(row['topk_fp_rate']) for row in model_rows]):.3f},"
+            f"{mean([float(row['duplicate_per_gt']) for row in model_rows]):.3f},"
+            f"{mean([float(row['query_assignment_entropy']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_mask_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_mask_dice']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_small_iou']) for row in model_rows]):.3f},"

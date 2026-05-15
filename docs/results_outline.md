@@ -804,3 +804,31 @@ Current real-box conclusion:
 - The 50-step anchor advantage should be treated as an early-training signal, not a stable detector result.
 - On real DET boxes, anchor query content appears to need differentiable coupling or a stronger decoder; static detached summaries are weaker.
 - The next engineering bottleneck is no longer dataset plumbing; it is decoder/box refinement and class/objectness training.
+
+300-step ranking/classification diagnostics:
+
+The same 300-step setup was rerun with additional diagnostics for confidence ordering and query assignment.
+
+Output artifacts:
+
+- Metrics: `results/det_real_mini_300step_2seed_diagnostics.csv`
+- Label map: `results/det_real_mini_300step_diagnostics_label_map.csv`
+- Image-level split: `results/det_real_mini_300step_diagnostics_split.csv`
+
+| Variant | Matched-assignment class acc | Score-IoU corr | Pre-NMS objectness AUC | Top-k FP rate | Duplicate / GT | Query entropy |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.390 | 0.438 | 0.658 | 0.719 | 0.252 | 0.904 |
+| `local_anchor` | 0.390 | 0.305 | 0.584 | 0.819 | 0.204 | 0.926 |
+| `local_anchor_detached` | 0.347 | 0.194 | 0.582 | 0.848 | 0.217 | 0.897 |
+| `local_mask_proposal_nms_query` | 0.401 | 0.380 | 0.598 | 0.767 | 0.283 | 0.994 |
+
+Diagnostic interpretation:
+
+- `local_anchor` matches `local_learned` on matched IoU, but its confidence ordering is worse: score-IoU correlation, pre-NMS objectness AUC, AP50-lite, and top-k false-positive rate all favor `local_learned`.
+- `local_anchor_detached` is weaker on both box coverage and ranking diagnostics, reinforcing that static detached anchor summaries are insufficient for real-box detection.
+- `local_mask_proposal_nms_query` learns a real dense mask and has the highest matched-assignment class accuracy and query assignment entropy, but its score calibration still trails `local_learned`.
+- The immediate bottleneck is not whether the model can produce boxes or masks; it is whether query scores and class predictions align with the best-localized boxes.
+
+Updated real-box conclusion:
+
+> The toy-level anchor/query and mask-proposal gains do not stably transfer to 300-step real DET mini. Anchor-like branches can match box IoU, but currently lose on ranking, objectness calibration, and class-aware AP. Future real-detector work should prioritize score-IoU alignment, query classification calibration, gated residual anchor-query initialization, oracle proposal controls, and stronger decoder refinement before scaling toward RF-DETR comparisons.
