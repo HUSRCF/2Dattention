@@ -119,7 +119,7 @@ def test_tiny_anchor_region_detr_backward() -> None:
 def test_tiny_anchor_region_detr_feature_query_modes() -> None:
     images = torch.randn(2, 3, 32, 32)
     for feature_mode in ("local", "anchor"):
-        for query_init in ("learned", "anchor", "anchor_detached"):
+        for query_init in ("learned", "anchor", "anchor_detached", "mask_proposal"):
             model = TinyAnchorRegionDETR(
                 embed_dim=16,
                 num_classes=1,
@@ -131,9 +131,47 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             assert outputs["pred_logits"].shape == (2, 4, 2)
             assert outputs["pred_boxes"].shape == (2, 4, 4)
             assert outputs["spatial_features"].ndim == 4
+            if query_init == "mask_proposal":
+                assert outputs["query_mask_logits"].shape == outputs["spatial_features"].shape[0:1] + outputs[
+                    "spatial_features"
+                ].shape[2:4]
+                assert outputs["query_proposal_indices"].shape == (2, 4)
             routing_maps = outputs["routing_maps"]
             assert isinstance(routing_maps, list)
             assert len(routing_maps) == int(feature_mode == "anchor")
+
+
+def test_tiny_anchor_region_detr_mask_proposal_query_init() -> None:
+    torch.manual_seed(13)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="mask_proposal",
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["pred_logits"].shape == (2, 4, 2)
+    assert outputs["query_proposal_indices"].shape == (2, 4)
+    losses = dense_mask_aux_loss(outputs, targets, mask_head=None, dice_weight=1.0)
+    det_losses = criterion(outputs, targets)
+    total_loss = det_losses["loss"] + 0.5 * losses["loss_mask_aux"]
+    total_loss.backward()
+    assert model.query_mask_head.weight.grad is not None
+    assert torch.isfinite(model.query_mask_head.weight.grad).all()
+    assert float(model.query_mask_head.weight.grad.detach().abs().sum()) > 0.0
 
 
 def test_tiny_anchor_region_detr_mask_pool_query_refine() -> None:

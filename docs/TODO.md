@@ -177,6 +177,20 @@ Gate-stability interpretation:
 - Smaller gate and linear warmup do not solve the core instability.
 - For learned queries, mask bias sometimes opens a much better optimization path, but the improvement is seed-selective rather than reliable.
 - Next step should move from global foreground bias to `mask_proposal_query_init`, where dense masks explicitly seed object queries instead of only nudging attention.
+- Implemented `mask_proposal_query_init`.
+  - `local_mask_proposal_query` and `anchor_mask_proposal_query` predict a dense mask, take top-k foreground cells, and gather the corresponding spatial feature tokens as object query seeds.
+  - Formal result: `results/det_toy_mask_proposal_query_multi_distractor_300step_5seeds.csv`.
+  - `local_mask_proposal_query`: final/best IoU `0.328/0.342`, recall50 `0.363`, AP50-lite `0.295`, mask IoU/Dice `0.986/0.993`.
+  - `anchor_mask_proposal_query`: final/best IoU `0.321/0.324`, recall50 `0.341`, AP50-lite `0.272`, mask IoU/Dice `0.990/0.995`.
+  - Against `local_anchor`, `local_mask_proposal_query` improves final IoU by `+0.136`, best IoU by `+0.149`, AP50-lite by `+0.247`, with `5/5` wins on all three metrics.
+  - Against `local_anchor`, `anchor_mask_proposal_query` improves final IoU by `+0.129`, best IoU by `+0.130`, AP50-lite by `+0.224`, with `5/5` wins on all three metrics.
+
+Mask-proposal interpretation:
+
+- This is the first detection toy coupling that gives a large and stable positive signal.
+- The result supports the narrower mechanism claim: dense foreground masks are useful when they explicitly seed object queries.
+- It does not revive early prefill or generic memory-first claims; the supported path is mask/object-proposal-conditioned query initialization.
+- Next step should stress-test proposal queries with top-k diversity, proposal NMS/connected components, object-size stratification, and eventually real DET annotations.
 
 ### Step 4: Real Detection Dataset Path
 

@@ -29,8 +29,8 @@ class TinyAnchorRegionDETR(nn.Module):
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
             raise ValueError("feature_mode must be 'local' or 'anchor'")
-        if query_init not in {"learned", "anchor", "anchor_detached"}:
-            raise ValueError("query_init must be 'learned', 'anchor', or 'anchor_detached'")
+        if query_init not in {"learned", "anchor", "anchor_detached", "mask_proposal"}:
+            raise ValueError("query_init must be 'learned', 'anchor', 'anchor_detached', or 'mask_proposal'")
         if query_refine not in {"none", "mask_pool", "mask_bias"}:
             raise ValueError("query_refine must be 'none', 'mask_pool', or 'mask_bias'")
         self.feature_mode = feature_mode
@@ -43,8 +43,9 @@ class TinyAnchorRegionDETR(nn.Module):
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
         self.anchor_block = AnchorOnlyMemoryReadBlock(embed_dim)
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
-        if query_refine in {"mask_pool", "mask_bias"}:
+        if query_init == "mask_proposal" or query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
+        if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
             self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
@@ -72,13 +73,21 @@ class TinyAnchorRegionDETR(nn.Module):
             spatial_state = state
 
         spatial_tokens = spatial_state.flatten(2).transpose(1, 2)
-        if self.query_init == "anchor":
+        query_mask_logits = None
+        query_proposal_indices = None
+        if self.query_init == "mask_proposal":
+            query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
+            queries, query_proposal_indices = mask_proposal_queries_from_state(
+                spatial_state,
+                query_mask_logits,
+                self.num_queries,
+            )
+        elif self.query_init == "anchor":
             queries = anchor_queries_from_state(spatial_state, self.num_queries)
         elif self.query_init == "anchor_detached":
             queries = anchor_queries_from_state(spatial_state.detach(), self.num_queries)
         else:
             queries = self.learned_queries(x.shape[0])
-        query_mask_logits = None
         if self.query_refine == "mask_pool":
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             region = mask_pooled_region(spatial_state, query_mask_logits)
@@ -93,6 +102,8 @@ class TinyAnchorRegionDETR(nn.Module):
         outputs = self.head(decoded)
         if query_mask_logits is not None:
             outputs["query_mask_logits"] = query_mask_logits
+        if query_proposal_indices is not None:
+            outputs["query_proposal_indices"] = query_proposal_indices
         outputs.update(
             {
                 "spatial_features": spatial_state,
@@ -155,6 +166,20 @@ def anchor_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
         return tokens[:, positions]
     repeats = (num_queries + tokens.shape[1] - 1) // tokens.shape[1]
     return tokens.repeat(1, repeats, 1)[:, :num_queries]
+
+
+def mask_proposal_queries_from_state(state: Tensor, mask_logits: Tensor, num_queries: int) -> tuple[Tensor, Tensor]:
+    """Use top-k foreground mask cells as object-query feature seeds."""
+
+    tokens = state.flatten(2).transpose(1, 2)
+    scores = mask_logits.flatten(1)
+    if scores.shape[1] >= num_queries:
+        indices = scores.topk(num_queries, dim=1).indices
+    else:
+        repeats = (num_queries + scores.shape[1] - 1) // scores.shape[1]
+        indices = scores.topk(scores.shape[1], dim=1).indices.repeat(1, repeats)[:, :num_queries]
+    gather_indices = indices.unsqueeze(-1).expand(-1, -1, tokens.shape[-1])
+    return tokens.gather(dim=1, index=gather_indices), indices
 
 
 def mask_pooled_region(state: Tensor, mask_logits: Tensor) -> Tensor:

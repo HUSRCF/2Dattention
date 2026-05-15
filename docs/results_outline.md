@@ -636,10 +636,38 @@ Gate-stability interpretation:
 - The high learned-query means remain driven by a subset of seeds, so this path is not yet a stable mainline.
 - The next detector step should test `mask_proposal_query_init`, where the dense mask explicitly proposes query seeds instead of only biasing attention.
 
+Mask proposal query initialization:
+
+This variant predicts a dense foreground mask, takes the top-k mask cells, and gathers those spatial feature tokens as object query seeds. This is a harder coupling than mask-biased attention: the dense mask directly controls which spatial tokens become object queries.
+
+Output CSV: `results/det_toy_mask_proposal_query_multi_distractor_300step_5seeds.csv`.
+
+| Variant | Final IoU | Best IoU | Recall50 | AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_anchor` | 0.192 | 0.194 | 0.083 | 0.048 | N/A | N/A |
+| `local_learned` | 0.176 | 0.181 | 0.059 | 0.039 | N/A | N/A |
+| `local_anchor_mask_biased_attn` | 0.189 | 0.189 | 0.091 | 0.052 | 0.978 | 0.989 |
+| `local_learned_mask_biased_attn_warmup` | 0.232 | 0.234 | 0.148 | 0.103 | 0.989 | 0.994 |
+| `local_mask_proposal_query` | 0.328 | 0.342 | 0.363 | 0.295 | 0.986 | 0.993 |
+| `anchor_mask_proposal_query` | 0.321 | 0.324 | 0.341 | 0.272 | 0.990 | 0.995 |
+
+Paired interpretation:
+
+- `local_mask_proposal_query` vs `local_anchor`: final IoU `+0.136`, best IoU `+0.149`, AP50-lite `+0.247`, with `5/5` paired wins on all three metrics.
+- `anchor_mask_proposal_query` vs `local_anchor`: final IoU `+0.129`, best IoU `+0.130`, AP50-lite `+0.224`, with `5/5` paired wins on all three metrics.
+- Proposal-query variants also outperform the best mask-biased attention variant in mean IoU, recall50, and AP50-lite.
+
+Mask-proposal interpretation:
+
+- This is the first detection toy result that strongly supports dense mask to query coupling.
+- The positive signal is stable across all five seeds and much larger than the previous mask-biased attention signal.
+- The supported claim is specific: dense foreground masks help when they explicitly initialize object queries.
+- This should not be generalized to early prefill or memory-first routing.
+
 Next detector controls:
 
-1. mask proposal query initialization from top-k/connected foreground regions.
-2. per-seed trajectory diagnostics for learned-query mask-biased attention.
+1. proposal diversity: top-k with spatial suppression, connected components, or soft NMS over mask logits.
+2. object-size and off-center stratified toy evaluation for proposal queries.
 3. confidence-aware loss or decoder refinement for AP-lite.
-4. object-size and off-center stratified toy evaluation.
-5. DET annotation loader using real boxes.
+4. DET annotation loader using real boxes.
+5. RF-DETR distillation path with mask/proposal query student.

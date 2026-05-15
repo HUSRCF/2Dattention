@@ -45,6 +45,8 @@ MODEL_CONFIGS = {
     "local_anchor_mask_biased_attn_gate001": ("local", "anchor", "mask_bias", "biased", 0.01, "none"),
     "local_learned_mask_biased_attn_warmup": ("local", "learned", "mask_bias", "biased", 0.1, "linear"),
     "local_anchor_mask_biased_attn_warmup": ("local", "anchor", "mask_bias", "biased", 0.1, "linear"),
+    "local_mask_proposal_query": ("local", "mask_proposal", "none", "proposal", 0.1, "none"),
+    "anchor_mask_proposal_query": ("anchor", "mask_proposal", "none", "proposal", 0.1, "none"),
 }
 
 
