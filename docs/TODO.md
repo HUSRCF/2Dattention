@@ -221,6 +221,19 @@ Clear overlay sample-selection rule:
 - Include at least one small, one medium, one large, one center, and one off-center example.
 - Exclude samples whose objects are too small to see at display resolution, heavily overlapping, or visually ambiguous.
 - If generated overlay panels are blurry, replace the sample set with clearer high-area / well-separated examples instead of using weak figures.
+- Implemented `scripts/select_clear_det_overlay_samples.py` to select clearer qualitative samples directly from the local ILSVRC2013 DET val images and XML annotations.
+- The selector scores samples by largest-box area, pairwise box overlap, object separation, border margin, image resolution, object count, and a lightweight image sharpness measure.
+- Default balanced output:
+  - command: `/opt/anaconda3/envs/AIAA/bin/python scripts/select_clear_det_overlay_samples.py --per-group 3 --extra-fill 6 --max-per-label 3`
+  - manifest: `results/clear_det_overlay_samples/manifest.csv`
+  - overlays: `results/clear_det_overlay_samples/overlays/`
+  - contact sheet: `results/clear_det_overlay_samples/contact_sheet.jpg`
+- Figure-ready high-area output:
+  - command: `/opt/anaconda3/envs/AIAA/bin/python scripts/select_clear_det_overlay_samples.py --per-group 2 --extra-fill 10 --min-area 0.10 --max-overlap 0.35 --min-margin 0.03 --max-per-label 3 --out-dir results/clear_det_overlay_samples_high_area`
+  - manifest: `results/clear_det_overlay_samples_high_area/manifest.csv`
+  - overlays: `results/clear_det_overlay_samples_high_area/overlays/`
+  - contact sheet: `results/clear_det_overlay_samples_high_area/contact_sheet.jpg`
+- Use the high-area sheet first for paper-style figures; use the balanced sheet when the figure needs explicit small/medium/large and center/off-center coverage.
 
 ### Step 4: Real Detection Dataset Path
 

@@ -710,6 +710,10 @@ Stratified interpretation:
 - NMS proposal also improves both center and off-center targets, so the gain is not only a center-prior effect.
 - The small-object improvement is especially important: `local_mask_proposal_nms_query` raises small-object IoU from `0.231` to `0.363`.
 - For qualitative figures, use samples that make these strata visible: include small/medium/large and center/off-center cases, but replace blurry or visually ambiguous panels with clearer examples.
+- Clear sample curation is now scripted with `scripts/select_clear_det_overlay_samples.py`.
+  - Balanced candidate sheet: `results/clear_det_overlay_samples/contact_sheet.jpg`.
+  - Higher-clarity figure candidate sheet: `results/clear_det_overlay_samples_high_area/contact_sheet.jpg`.
+  - The high-area sheet should be the first choice for readable paper figures; the balanced sheet is useful when the figure needs explicit small/medium/large and center/off-center diversity.
 
 Next detector controls:
 
