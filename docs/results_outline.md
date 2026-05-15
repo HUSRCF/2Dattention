@@ -726,3 +726,52 @@ Next detector controls:
 3. confidence-aware loss or decoder refinement for AP-lite.
 4. DET annotation loader using real boxes.
 5. RF-DETR distillation path with mask/proposal query student.
+
+Real DET mini-detector path:
+
+`scripts/train_det_real.py` now trains the tiny detector variants on real ILSVRC2013 DET XML boxes. This is an image-level dataset path: each sample contains one image with multiple boxes and labels, not one row per object. The v1 transform is direct square resize/stretch, so normalized boxes are computed from original XML coordinates and original image width/height.
+
+Smoke configuration:
+
+```text
+/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py \
+  --models local_learned local_anchor local_mask_proposal_nms_query \
+  --reference-model local_learned \
+  --top-classes 10 \
+  --max-samples 200 \
+  --max-objects 3 \
+  --num-queries 6 \
+  --steps 50 \
+  --eval-every 50 \
+  --eval-batches 4 \
+  --batch-size 16 \
+  --out results/det_real_mini_50step_2seed.csv \
+  --label-map-out results/det_real_mini_50step_label_map.csv \
+  --split-out results/det_real_mini_50step_split.csv \
+  --seeds 2
+```
+
+Output artifacts:
+
+- Metrics: `results/det_real_mini_50step_2seed.csv`
+- Label map: `results/det_real_mini_50step_label_map.csv`
+- Image-level split: `results/det_real_mini_50step_split.csv`
+
+| Variant | IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.314 | 0.229 | 0.257 | 0.077 | 0.000 | 0.000 |
+| `local_anchor` | 0.361 | 0.356 | 0.296 | 0.082 | 0.000 | 0.000 |
+| `local_mask_proposal_nms_query` | 0.306 | 0.241 | 0.255 | 0.097 | 0.400 | 0.537 |
+
+Paired interpretation:
+
+- `local_anchor` improves matched IoU over `local_learned` by `+0.047` with `2/2` seed wins.
+- `local_anchor` also improves recall50 and objectness AP50-lite, but the class-aware AP gain is small.
+- `local_mask_proposal_nms_query`, the strongest toy detection model, does not yet transfer to real-box IoU in this short run. It does learn a dense mask and has the highest class-aware AP50-lite, but its matched IoU is below `local_learned`.
+
+Current interpretation:
+
+- The real DET mini-detector path is now executable end-to-end.
+- The first real-box smoke supports the cleaner online anchor path more than the mask-proposal NMS path.
+- This should be treated as an early engineering checkpoint, not RF-DETR-level evidence.
+- Next step: run a longer 300-step real DET mini experiment including `local_anchor_detached`, then add proposal/box overlays on the fixed high-clarity image set.

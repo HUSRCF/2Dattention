@@ -1,0 +1,707 @@
+"""Train tiny DETR variants on real ILSVRC2013 DET validation boxes.
+
+This is a mini-detector path, not a full RF-DETR reproduction. It reuses the
+tiny detector controls from ``train_det_toy.py`` and replaces synthetic squares
+with real images plus XML boxes. Metrics are lightweight smoke diagnostics:
+target-matched IoU/recall and objectness AP50-lite.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import random
+import sys
+import time
+import xml.etree.ElementTree as ET
+from collections import Counter
+from dataclasses import dataclass
+from itertools import cycle
+from pathlib import Path
+
+import torch
+from PIL import Image
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, Subset
+from torchvision import transforms
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+from attention2d import get_best_device  # noqa: E402
+from attention2d.detection import DetectionCriterion, TinyAnchorRegionDETR  # noqa: E402
+from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E402
+from train_det_toy import (  # noqa: E402
+    MODEL_CONFIGS,
+    dense_mask_aux_loss,
+    dense_mask_aux_metrics,
+    mask_gate_scale,
+    match_targets_by_iou,
+    precision_recall_ap,
+    summarize_stratified_iou,
+    update_stratified_iou_lists,
+)
+
+
+@dataclass(frozen=True)
+class RealBox:
+    label: str
+    xmin: int
+    ymin: int
+    xmax: int
+    ymax: int
+
+
+@dataclass(frozen=True)
+class RealDetSample:
+    image_id: str
+    image_path: Path
+    width: int
+    height: int
+    boxes: tuple[RealBox, ...]
+
+
+class RealDetDataset(Dataset[tuple[Tensor, dict[str, Tensor]]]):
+    """ILSVRC DET image dataset with normalized cxcywh targets."""
+
+    def __init__(
+        self,
+        samples: list[RealDetSample],
+        label_to_id: dict[str, int],
+        image_size: int,
+        max_objects: int,
+    ) -> None:
+        self.samples = samples
+        self.label_to_id = label_to_id
+        self.max_objects = max_objects
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+            ]
+        )
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int) -> tuple[Tensor, dict[str, Tensor]]:
+        sample = self.samples[index]
+        with Image.open(sample.image_path) as image:
+            image = image.convert("RGB")
+            tensor = self.transform(image)
+        ranked_boxes = sorted(sample.boxes, key=lambda box: box_area(box), reverse=True)[: self.max_objects]
+        labels = []
+        boxes = []
+        for box in ranked_boxes:
+            labels.append(self.label_to_id[box.label])
+            boxes.append(normalize_box(box, sample.width, sample.height))
+        return tensor, {
+            "labels": torch.tensor(labels, dtype=torch.long),
+            "boxes": torch.tensor(boxes, dtype=torch.float32),
+        }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image-root", type=Path, default=Path("data/ILSVRC2013_DET_val"))
+    parser.add_argument(
+        "--anno-root",
+        type=Path,
+        default=Path("data/ILSVRC2013_DET_bbox_val/ILSVRC2013_DET_bbox_val"),
+    )
+    parser.add_argument("--models", nargs="+", choices=tuple(MODEL_CONFIGS), default=["local_learned"])
+    parser.add_argument("--reference-model", choices=tuple(MODEL_CONFIGS), default="local_learned")
+    parser.add_argument("--top-classes", type=int, default=20)
+    parser.add_argument("--max-samples", type=int, default=1000)
+    parser.add_argument("--max-objects", type=int, default=3)
+    parser.add_argument("--train-frac", type=float, default=0.8)
+    parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--image-size", type=int, default=64)
+    parser.add_argument("--embed-dim", type=int, default=32)
+    parser.add_argument("--num-queries", type=int, default=6)
+    parser.add_argument("--lr", type=float, default=3e-3)
+    parser.add_argument("--mask-aux-weight", type=float, default=0.5)
+    parser.add_argument("--mask-dice-weight", type=float, default=1.0)
+    parser.add_argument("--seed", type=int, default=41)
+    parser.add_argument("--seeds", type=int, default=1)
+    parser.add_argument("--eval-every", type=int, default=50)
+    parser.add_argument("--eval-batches", type=int, default=8)
+    parser.add_argument("--out", type=Path, default=Path("results/det_real_mini_compare.csv"))
+    parser.add_argument(
+        "--label-map-out",
+        type=Path,
+        default=Path("results/det_real_mini_label_map.csv"),
+    )
+    parser.add_argument("--split-out", type=Path, default=Path("results/det_real_mini_split.csv"))
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.max_objects > args.num_queries:
+        raise ValueError("--max-objects must be <= --num-queries")
+    device = get_best_device()
+    all_samples = load_real_det_samples(args.anno_root, args.image_root)
+    label_to_id = build_label_map(all_samples, top_classes=args.top_classes)
+    samples = filter_samples(all_samples, set(label_to_id), max_samples=args.max_samples)
+    if len(samples) < 2:
+        raise ValueError("not enough real DET samples after filtering")
+    write_label_map(args.label_map_out, label_to_id)
+
+    print("device:", device)
+    print("samples:", len(samples))
+    print("classes:", len(label_to_id))
+    print("max_objects:", args.max_objects)
+    print("num_queries:", args.num_queries)
+    print("label_map:", args.label_map_out)
+    print(
+        "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
+        "eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
+    )
+    rows: list[dict[str, float | int | str]] = []
+    split_rows: list[dict[str, int | str]] = []
+    for seed_idx in range(args.seeds):
+        run_seed = args.seed + seed_idx
+        train_set, eval_set, seed_split_rows = build_splits(
+            samples=samples,
+            label_to_id=label_to_id,
+            image_size=args.image_size,
+            max_objects=args.max_objects,
+            train_frac=args.train_frac,
+            seed=run_seed,
+        )
+        split_rows.extend(seed_split_rows)
+        eval_loader = DataLoader(
+            eval_set,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=0,
+            collate_fn=det_collate,
+        )
+        for model_name in args.models:
+            rows.extend(train_one_model(args, model_name, run_seed, train_set, eval_loader, device, len(label_to_id)))
+    write_rows(args.out, rows)
+    write_split_manifest(args.split_out, split_rows)
+    print("saved_csv:", args.out)
+    print("saved_split:", args.split_out)
+    print_summary(rows)
+    print_paired_summary(rows, args.reference_model)
+
+
+def train_one_model(
+    args: argparse.Namespace,
+    model_name: str,
+    run_seed: int,
+    train_set: Dataset,
+    eval_loader: DataLoader,
+    device: torch.device,
+    num_classes: int,
+) -> list[dict[str, float | int | str]]:
+    feature_mode, query_init, query_refine, mask_aux_mode, gate_init, gate_schedule = MODEL_CONFIGS[model_name]
+    torch.manual_seed(run_seed)
+    random.seed(run_seed)
+    model = TinyAnchorRegionDETR(
+        embed_dim=args.embed_dim,
+        num_classes=num_classes,
+        num_queries=args.num_queries,
+        feature_mode=feature_mode,
+        query_init=query_init,
+        query_refine=query_refine,
+        query_mask_gate_init=gate_init,
+    ).to(device)
+    criterion = DetectionCriterion(num_classes=num_classes).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
+    train_loader = DataLoader(
+        train_set,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=0,
+        collate_fn=det_collate,
+        generator=torch.Generator().manual_seed(10_000_000 + run_seed),
+    )
+    rows = []
+    loader_iter = cycle(train_loader)
+    best_iou = -1.0
+    best_step = 0
+    last_loss = 0.0
+    examples_seen = 0
+    start = time.perf_counter()
+    for step in range(1, args.steps + 1):
+        images, targets = next(loader_iter)
+        images = images.to(device)
+        targets = targets_to_device(targets, device)
+        examples_seen += int(images.shape[0])
+        model.set_query_mask_gate_scale(mask_gate_scale(gate_schedule, step, args.steps))
+        outputs = model(images)
+        losses = criterion(outputs, targets)
+        if mask_aux_mode != "none":
+            mask_losses = dense_mask_aux_loss(
+                outputs=outputs,
+                targets=targets,
+                mask_head=None,
+                dice_weight=args.mask_dice_weight,
+            )
+            losses["loss"] = losses["loss"] + args.mask_aux_weight * mask_losses["loss_mask_aux"]
+        optimizer.zero_grad(set_to_none=True)
+        losses["loss"].backward()
+        optimizer.step()
+        last_loss = float(losses["loss"].item())
+        if step % args.eval_every == 0 or step == args.steps:
+            metrics = evaluate_real(model, eval_loader, device, batches=args.eval_batches)
+            if metrics["iou"] > best_iou:
+                best_iou = metrics["iou"]
+                best_step = step
+            speed = examples_seen / max(time.perf_counter() - start, 1e-9)
+            row = {
+                "model": model_name,
+                "run_seed": run_seed,
+                "step": step,
+                "loss": last_loss,
+                "eval_iou": metrics["iou"],
+                "eval_recall50": metrics["recall50"],
+                "eval_ap50": metrics["ap50"],
+                "eval_ap50_class": metrics["ap50_class"],
+                "eval_mask_iou": metrics["mask_iou"],
+                "eval_mask_dice": metrics["mask_dice"],
+                "eval_small_iou": metrics["small_iou"],
+                "eval_medium_iou": metrics["medium_iou"],
+                "eval_large_iou": metrics["large_iou"],
+                "eval_center_iou": metrics["center_iou"],
+                "eval_offcenter_iou": metrics["offcenter_iou"],
+                "best_iou": best_iou,
+                "best_step": best_step,
+                "images_per_sec": speed,
+            }
+            rows.append(row)
+            print(
+                f"{model_name},{run_seed},{step},{last_loss:.4f},"
+                f"{metrics['iou']:.3f},{metrics['recall50']:.3f},"
+                f"{metrics['ap50']:.3f},{metrics['ap50_class']:.3f},"
+                f"{metrics['mask_iou']:.3f},{metrics['mask_dice']:.3f},"
+                f"{best_iou:.3f},{best_step},{speed:.2f}"
+            )
+    return rows
+
+
+@torch.no_grad()
+def evaluate_real(
+    model: TinyAnchorRegionDETR,
+    loader: DataLoader,
+    device: torch.device,
+    batches: int,
+) -> dict[str, float]:
+    model.eval()
+    ious = []
+    recalls = []
+    aps = []
+    aps_class = []
+    mask_ious = []
+    mask_dices = []
+    strata: dict[str, list[Tensor]] = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
+    for batch_idx, (images, targets_cpu) in enumerate(loader):
+        if batch_idx >= batches:
+            break
+        images = images.to(device)
+        targets = targets_to_device(targets_cpu, device)
+        outputs = model(images)
+        if "query_mask_logits" in outputs:
+            mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head=None)
+            mask_ious.append(mask_metrics["mask_iou"].cpu())
+            mask_dices.append(mask_metrics["mask_dice"].cpu())
+        for sample_idx, target in enumerate(targets):
+            matched_iou = match_targets_by_iou(
+                outputs["pred_boxes"][sample_idx],
+                target["boxes"],
+            )
+            ious.append(matched_iou.cpu())
+            recalls.append((matched_iou >= 0.5).float().cpu())
+            update_stratified_iou_lists(strata, matched_iou.cpu(), target["boxes"].cpu())
+            aps.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                ).cpu()
+            )
+            aps_class.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                ).cpu()
+            )
+    model.train()
+    all_ious = torch.cat(ious) if ious else torch.zeros(1)
+    all_recalls = torch.cat(recalls) if recalls else torch.zeros(1)
+    if mask_ious:
+        mask_iou = float(torch.stack(mask_ious).mean().item())
+        mask_dice = float(torch.stack(mask_dices).mean().item())
+    else:
+        mask_iou = 0.0
+        mask_dice = 0.0
+    return {
+        "iou": float(all_ious.mean().item()),
+        "recall50": float(all_recalls.mean().item()),
+        "ap50": float(torch.stack(aps).mean().item()) if aps else 0.0,
+        "ap50_class": float(torch.stack(aps_class).mean().item()) if aps_class else 0.0,
+        "mask_iou": mask_iou,
+        "mask_dice": mask_dice,
+        **summarize_stratified_iou(strata),
+    }
+
+
+def objectness_ap50_for_image(pred_logits: Tensor, pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
+    if target_boxes.numel() == 0:
+        return pred_logits.new_tensor(0.0)
+    scores = pred_logits.softmax(dim=-1)[:, :-1].max(dim=-1).values
+    order = scores.argsort(descending=True)
+    iou_matrix = box_iou(
+        box_cxcywh_to_xyxy(pred_boxes),
+        box_cxcywh_to_xyxy(target_boxes),
+    )
+    matched_targets: set[int] = set()
+    true_positives = []
+    false_positives = []
+    for query_idx_tensor in order:
+        query_idx = int(query_idx_tensor.item())
+        ious = iou_matrix[query_idx]
+        best_iou, best_target_tensor = ious.max(dim=0)
+        best_target = int(best_target_tensor.item())
+        if float(best_iou.item()) >= 0.5 and best_target not in matched_targets:
+            matched_targets.add(best_target)
+            true_positives.append(1.0)
+            false_positives.append(0.0)
+        else:
+            true_positives.append(0.0)
+            false_positives.append(1.0)
+    tp = torch.tensor(true_positives, device=pred_logits.device, dtype=pred_logits.dtype).cumsum(dim=0)
+    fp = torch.tensor(false_positives, device=pred_logits.device, dtype=pred_logits.dtype).cumsum(dim=0)
+    recall = tp / max(int(target_boxes.shape[0]), 1)
+    precision = tp / (tp + fp).clamp_min(1e-8)
+    return precision_recall_ap(recall, precision)
+
+
+def class_aware_ap50_for_image(
+    pred_logits: Tensor,
+    pred_boxes: Tensor,
+    target_boxes: Tensor,
+    target_labels: Tensor,
+) -> Tensor:
+    if target_boxes.numel() == 0:
+        return pred_logits.new_tensor(0.0)
+    class_probs = pred_logits.softmax(dim=-1)[:, :-1]
+    scores, pred_labels = class_probs.max(dim=-1)
+    order = scores.argsort(descending=True)
+    iou_matrix = box_iou(
+        box_cxcywh_to_xyxy(pred_boxes),
+        box_cxcywh_to_xyxy(target_boxes),
+    )
+    matched_targets: set[int] = set()
+    true_positives = []
+    false_positives = []
+    for query_idx_tensor in order:
+        query_idx = int(query_idx_tensor.item())
+        same_class = target_labels == pred_labels[query_idx]
+        if bool(same_class.any()):
+            masked_ious = iou_matrix[query_idx].masked_fill(~same_class, -1.0)
+            best_iou, best_target_tensor = masked_ious.max(dim=0)
+            best_target = int(best_target_tensor.item())
+        else:
+            best_iou = pred_logits.new_tensor(-1.0)
+            best_target = -1
+        if float(best_iou.item()) >= 0.5 and best_target not in matched_targets:
+            matched_targets.add(best_target)
+            true_positives.append(1.0)
+            false_positives.append(0.0)
+        else:
+            true_positives.append(0.0)
+            false_positives.append(1.0)
+    tp = torch.tensor(true_positives, device=pred_logits.device, dtype=pred_logits.dtype).cumsum(dim=0)
+    fp = torch.tensor(false_positives, device=pred_logits.device, dtype=pred_logits.dtype).cumsum(dim=0)
+    recall = tp / max(int(target_boxes.shape[0]), 1)
+    precision = tp / (tp + fp).clamp_min(1e-8)
+    return precision_recall_ap(recall, precision)
+
+
+def load_real_det_samples(anno_root: Path, image_root: Path) -> list[RealDetSample]:
+    samples = []
+    for xml_path in sorted(anno_root.glob("*.xml")):
+        root = ET.parse(xml_path).getroot()
+        image_id = required_text(root, "filename")
+        image_path = image_root / f"{image_id}.JPEG"
+        if not image_path.exists():
+            continue
+        size = root.find("size")
+        if size is None:
+            continue
+        width = int(required_text(size, "width"))
+        height = int(required_text(size, "height"))
+        boxes = []
+        for obj in root.findall("object"):
+            label = required_text(obj, "name")
+            bbox = obj.find("bndbox")
+            if bbox is None:
+                continue
+            xmin = clamp_int(required_text(bbox, "xmin"), 0, width)
+            ymin = clamp_int(required_text(bbox, "ymin"), 0, height)
+            xmax = clamp_int(required_text(bbox, "xmax"), 0, width)
+            ymax = clamp_int(required_text(bbox, "ymax"), 0, height)
+            if xmax <= xmin or ymax <= ymin:
+                continue
+            boxes.append(RealBox(label=label, xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax))
+        if boxes:
+            samples.append(RealDetSample(image_id=image_id, image_path=image_path, width=width, height=height, boxes=tuple(boxes)))
+    if not samples:
+        raise ValueError(f"no DET samples found under {anno_root}")
+    return samples
+
+
+def build_label_map(samples: list[RealDetSample], top_classes: int) -> dict[str, int]:
+    counts = Counter(box.label for sample in samples for box in sample.boxes)
+    if top_classes <= 0:
+        labels = sorted(counts)
+    else:
+        labels = [label for label, _ in counts.most_common(top_classes)]
+    return {label: idx for idx, label in enumerate(labels)}
+
+
+def filter_samples(
+    samples: list[RealDetSample],
+    selected_labels: set[str],
+    max_samples: int,
+) -> list[RealDetSample]:
+    filtered = []
+    for sample in samples:
+        boxes = tuple(box for box in sample.boxes if box.label in selected_labels)
+        if not boxes:
+            continue
+        filtered.append(
+            RealDetSample(
+                image_id=sample.image_id,
+                image_path=sample.image_path,
+                width=sample.width,
+                height=sample.height,
+                boxes=boxes,
+            )
+        )
+        if max_samples > 0 and len(filtered) >= max_samples:
+            break
+    return filtered
+
+
+def build_splits(
+    samples: list[RealDetSample],
+    label_to_id: dict[str, int],
+    image_size: int,
+    max_objects: int,
+    train_frac: float,
+    seed: int,
+) -> tuple[Subset, Subset, list[dict[str, int | str]]]:
+    dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
+    indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(seed)).tolist()
+    train_size = max(1, min(len(indices) - 1, int(len(indices) * train_frac)))
+    split_rows = []
+    for split, split_indices in (("train", indices[:train_size]), ("eval", indices[train_size:])):
+        for idx in split_indices:
+            split_rows.append(
+                {
+                    "run_seed": seed,
+                    "split": split,
+                    "index": idx,
+                    "image_id": samples[idx].image_id,
+                    "object_count": len(samples[idx].boxes),
+                }
+            )
+    return Subset(dataset, indices[:train_size]), Subset(dataset, indices[train_size:]), split_rows
+
+
+def det_collate(batch: list[tuple[Tensor, dict[str, Tensor]]]) -> tuple[Tensor, list[dict[str, Tensor]]]:
+    images = torch.stack([item[0] for item in batch])
+    targets = [item[1] for item in batch]
+    return images, targets
+
+
+def targets_to_device(targets: list[dict[str, Tensor]], device: torch.device) -> list[dict[str, Tensor]]:
+    return [{key: value.to(device) for key, value in target.items()} for target in targets]
+
+
+def normalize_box(box: RealBox, width: int, height: int) -> list[float]:
+    xmin = box.xmin / width
+    xmax = box.xmax / width
+    ymin = box.ymin / height
+    ymax = box.ymax / height
+    return [
+        (xmin + xmax) / 2.0,
+        (ymin + ymax) / 2.0,
+        max(1e-6, xmax - xmin),
+        max(1e-6, ymax - ymin),
+    ]
+
+
+def box_area(box: RealBox) -> int:
+    return max(0, box.xmax - box.xmin) * max(0, box.ymax - box.ymin)
+
+
+def required_text(root: ET.Element, tag: str) -> str:
+    child = root.find(tag)
+    if child is None or child.text is None:
+        raise ValueError(f"missing XML tag: {tag}")
+    return child.text.strip()
+
+
+def clamp_int(text: str, lower: int, upper: int) -> int:
+    return max(lower, min(upper, int(text.strip())))
+
+
+def write_label_map(path: Path, label_to_id: dict[str, int]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["label", "id"])
+        for label, idx in sorted(label_to_id.items(), key=lambda item: item[1]):
+            writer.writerow([label, idx])
+
+
+def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "model",
+        "run_seed",
+        "step",
+        "loss",
+        "eval_iou",
+        "eval_recall50",
+        "eval_ap50",
+        "eval_ap50_class",
+        "eval_mask_iou",
+        "eval_mask_dice",
+        "eval_small_iou",
+        "eval_medium_iou",
+        "eval_large_iou",
+        "eval_center_iou",
+        "eval_offcenter_iou",
+        "best_iou",
+        "best_step",
+        "images_per_sec",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def write_split_manifest(path: Path, rows: list[dict[str, int | str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["run_seed", "split", "index", "image_id", "object_count"])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def print_summary(rows: list[dict[str, float | int | str]]) -> None:
+    final_rows = final_rows_by_model_seed(rows)
+    print(
+        "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
+        "mask_iou_mean,mask_dice_mean,small_iou_mean,medium_iou_mean,large_iou_mean,"
+        "center_iou_mean,offcenter_iou_mean,images_per_sec_mean"
+    )
+    for model in sorted({str(row["model"]) for row in final_rows}):
+        model_rows = [row for row in final_rows if row["model"] == model]
+        print(
+            f"{model},"
+            f"{mean([float(row['eval_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['best_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_mask_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_mask_dice']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_small_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_medium_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_large_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_center_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_offcenter_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['images_per_sec']) for row in model_rows]):.2f}"
+        )
+
+
+def print_paired_summary(rows: list[dict[str, float | int | str]], reference_model: str) -> None:
+    final_rows = final_rows_by_model_seed(rows)
+    if reference_model not in {str(row["model"]) for row in final_rows}:
+        return
+    print(f"paired_det_real_vs,{reference_model}")
+    print(
+        "paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,"
+        "ap50_delta_mean,ap50_wins,ap50_class_delta_mean,ap50_class_wins"
+    )
+    run_seeds = sorted({int(row["run_seed"]) for row in final_rows})
+    for model in sorted({str(row["model"]) for row in final_rows}):
+        if model == reference_model:
+            continue
+        final_deltas = []
+        best_deltas = []
+        ap_deltas = []
+        ap_class_deltas = []
+        for run_seed in run_seeds:
+            ref = find_row(final_rows, model=reference_model, run_seed=run_seed)
+            cur = find_row(final_rows, model=model, run_seed=run_seed)
+            if ref is None or cur is None:
+                continue
+            final_deltas.append(float(cur["eval_iou"]) - float(ref["eval_iou"]))
+            best_deltas.append(float(cur["best_iou"]) - float(ref["best_iou"]))
+            ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
+            ap_class_deltas.append(float(cur["eval_ap50_class"]) - float(ref["eval_ap50_class"]))
+        if final_deltas:
+            print(
+                f"{model},"
+                f"{mean(final_deltas):.3f},{wins_higher(final_deltas)},"
+                f"{mean(best_deltas):.3f},{wins_higher(best_deltas)},"
+                f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)},"
+                f"{mean(ap_class_deltas):.3f},{wins_higher(ap_class_deltas)}"
+            )
+
+
+def final_rows_by_model_seed(rows: list[dict[str, float | int | str]]) -> list[dict[str, float | int | str]]:
+    latest: dict[tuple[str, int], dict[str, float | int | str]] = {}
+    for row in rows:
+        key = (str(row["model"]), int(row["run_seed"]))
+        if key not in latest or int(row["step"]) > int(latest[key]["step"]):
+            latest[key] = row
+    return list(latest.values())
+
+
+def find_row(
+    rows: list[dict[str, float | int | str]],
+    model: str,
+    run_seed: int,
+) -> dict[str, float | int | str] | None:
+    for row in rows:
+        if row["model"] == model and int(row["run_seed"]) == run_seed:
+            return row
+    return None
+
+
+def mean(values: list[float]) -> float:
+    return float(sum(values) / len(values))
+
+
+def wins_higher(values: list[float]) -> str:
+    return f"{sum(value > 0 for value in values)}/{len(values)}"
+
+
+if __name__ == "__main__":
+    main()

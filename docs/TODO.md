@@ -254,6 +254,51 @@ Success criterion:
 - A tiny detector overfits a small DET subset.
 - A 197-class DET subset can train without target-shape or matching issues.
 
+Status:
+
+- Implemented `scripts/train_det_real.py`.
+- The script builds one sample per image, not one sample per object row, avoiding object-level train/eval leakage.
+- It uses a fixed synset-to-class-id label map from the selected top classes and writes it to disk.
+- v1 transform is explicit square resize/stretch: XML boxes are normalized by original image width/height, which is correct for direct `Resize((S,S))`; random crop/flip and letterbox are not enabled.
+- Targets are truncated to the largest `--max-objects` boxes per image so the current brute-force Hungarian matcher remains valid with `max_objects <= num_queries`.
+- Metrics:
+  - class-agnostic target-matched IoU and recall50,
+  - objectness AP50-lite,
+  - class-aware AP50-lite,
+  - mask IoU/Dice when a query-mask branch exists,
+  - small/medium/large and center/off-center IoU strata.
+- Reproducibility artifacts:
+  - label map CSV,
+  - image-level train/eval split CSV,
+  - metrics CSV.
+
+MPS smoke:
+
+- Command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_anchor local_mask_proposal_nms_query --reference-model local_learned --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 50 --eval-every 50 --eval-batches 4 --batch-size 16 --out results/det_real_mini_50step_2seed.csv --label-map-out results/det_real_mini_50step_label_map.csv --split-out results/det_real_mini_50step_split.csv --seeds 2`
+- Output CSV: `results/det_real_mini_50step_2seed.csv`.
+- Label map: `results/det_real_mini_50step_label_map.csv`.
+- Split manifest: `results/det_real_mini_50step_split.csv`.
+- Device: MPS.
+- Result summary:
+  - `local_anchor`: IoU `0.361`, recall50 `0.356`, objectness AP50-lite `0.296`, class-aware AP50-lite `0.082`.
+  - `local_learned`: IoU `0.314`, recall50 `0.229`, objectness AP50-lite `0.257`, class-aware AP50-lite `0.077`.
+  - `local_mask_proposal_nms_query`: IoU `0.306`, recall50 `0.241`, objectness AP50-lite `0.255`, class-aware AP50-lite `0.097`, mask IoU/Dice `0.400/0.537`.
+- Paired vs `local_learned`:
+  - `local_anchor`: IoU delta `+0.047`, wins `2/2`; class-aware AP50-lite delta `+0.006`, wins `2/2`.
+  - `local_mask_proposal_nms_query`: IoU delta `-0.007`, wins `1/2`; class-aware AP50-lite delta `+0.020`, wins `2/2`.
+
+Interpretation:
+
+- The real DET path is now executable end-to-end on real XML boxes.
+- On this small 50-step top-10 smoke, `local_anchor` is the strongest real-box coverage/IoU model.
+- The toy-detection winner `local_mask_proposal_nms_query` does not yet transfer to real-box IoU, though it learns a dense mask and gives a small class-aware AP-lite signal.
+- This result supports continuing real-box validation, but it is not RF-DETR-level evidence and should not be reported as detector mAP.
+- Next controls:
+  - longer 300-step real DET mini run,
+  - add `local_anchor_detached` to separate anchor content vs gradient path on real boxes,
+  - proposal overlay visualization on fixed clear samples,
+  - stronger decoder/classification loss before scaling beyond this subset.
+
 ### Step 5: RF-DETR Distillation Track
 
 Use RF-DETR as a teacher rather than trying to beat it from scratch:
