@@ -775,3 +775,32 @@ Current interpretation:
 - The first real-box smoke supports the cleaner online anchor path more than the mask-proposal NMS path.
 - This should be treated as an early engineering checkpoint, not RF-DETR-level evidence.
 - Next step: run a longer 300-step real DET mini experiment including `local_anchor_detached`, then add proposal/box overlays on the fixed high-clarity image set.
+
+300-step detached-anchor follow-up:
+
+The 300-step follow-up keeps the same top-10 / 200-image / 2-seed mini setup, adds `local_anchor_detached`, and evaluates every 100 steps.
+
+Output artifacts:
+
+- Metrics: `results/det_real_mini_300step_2seed.csv`
+- Label map: `results/det_real_mini_300step_label_map.csv`
+- Image-level split: `results/det_real_mini_300step_split.csv`
+
+| Variant | Final IoU | Best IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Mask IoU | Mask Dice |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.359 | 0.367 | 0.321 | 0.310 | 0.108 | 0.000 | 0.000 |
+| `local_anchor` | 0.359 | 0.367 | 0.312 | 0.236 | 0.068 | 0.000 | 0.000 |
+| `local_anchor_detached` | 0.343 | 0.353 | 0.297 | 0.214 | 0.049 | 0.000 | 0.000 |
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.302 | 0.266 | 0.093 | 0.458 | 0.604 |
+
+Paired interpretation:
+
+- `local_anchor` no longer has a stable advantage over `local_learned` at 300 steps: final IoU delta is about `-0.001`, with `1/2` wins.
+- `local_anchor_detached` is worse than both `local_anchor` and `local_learned`, suggesting that detached anchor content alone is not enough for real-box detection.
+- `local_mask_proposal_nms_query` still learns a dense foreground mask, but the toy proposal-NMS advantage does not automatically transfer to real-box IoU.
+
+Current real-box conclusion:
+
+- The 50-step anchor advantage should be treated as an early-training signal, not a stable detector result.
+- On real DET boxes, anchor query content appears to need differentiable coupling or a stronger decoder; static detached summaries are weaker.
+- The next engineering bottleneck is no longer dataset plumbing; it is decoder/box refinement and class/objectness training.

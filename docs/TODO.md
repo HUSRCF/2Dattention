@@ -293,11 +293,21 @@ Interpretation:
 - On this small 50-step top-10 smoke, `local_anchor` is the strongest real-box coverage/IoU model.
 - The toy-detection winner `local_mask_proposal_nms_query` does not yet transfer to real-box IoU, though it learns a dense mask and gives a small class-aware AP-lite signal.
 - This result supports continuing real-box validation, but it is not RF-DETR-level evidence and should not be reported as detector mAP.
+- Follow-up 300-step real DET mini run:
+  - command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_anchor local_anchor_detached local_mask_proposal_nms_query --reference-model local_learned --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --out results/det_real_mini_300step_2seed.csv --label-map-out results/det_real_mini_300step_label_map.csv --split-out results/det_real_mini_300step_split.csv --seeds 2`
+  - `local_learned`: final/best IoU `0.359/0.367`, recall50 `0.321`, objectness AP50-lite `0.310`, class-aware AP50-lite `0.108`.
+  - `local_anchor`: final/best IoU `0.359/0.367`, recall50 `0.312`, objectness AP50-lite `0.236`, class-aware AP50-lite `0.068`.
+  - `local_anchor_detached`: final/best IoU `0.343/0.353`, recall50 `0.297`, objectness AP50-lite `0.214`, class-aware AP50-lite `0.049`.
+  - `local_mask_proposal_nms_query`: final/best IoU `0.357/0.366`, recall50 `0.302`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.093`, mask IoU/Dice `0.458/0.604`.
+- 300-step interpretation:
+  - The 50-step `local_anchor` advantage does not remain clearly above `local_learned` after longer training; both are essentially tied on matched IoU.
+  - `local_anchor_detached` is consistently weaker than `local_anchor`, so detached anchor content alone is not sufficient on real boxes. Any real-box anchor benefit likely depends on differentiable online query-feature coupling or optimization path, not just static anchor summaries.
+  - `local_mask_proposal_nms_query` learns a useful dense mask but still does not produce a real-box IoU advantage. Toy proposal-NMS gains do not transfer automatically.
 - Next controls:
-  - longer 300-step real DET mini run,
-  - add `local_anchor_detached` to separate anchor content vs gradient path on real boxes,
-  - proposal overlay visualization on fixed clear samples,
-  - stronger decoder/classification loss before scaling beyond this subset.
+  - add proposal/box overlays on fixed clear samples,
+  - add a stronger decoder or iterative box refinement,
+  - improve class/objectness training before scaling beyond this subset,
+  - only then revisit longer/larger DET or RF-DETR distillation.
 
 ### Step 5: RF-DETR Distillation Track
 
