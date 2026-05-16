@@ -1098,3 +1098,25 @@ Interpretation:
 - Longer quality-only training does not materially improve residual-anchor ranking over the 400-step run: best-q AP50 is effectively unchanged (`0.345 -> 0.344`), and raw gap closure is unchanged (`0.491 -> 0.492`).
 - The frozen quality head is therefore likely capacity/target-limited rather than simply under-trained under this mini setting.
 - The next scoring step should not just lengthen quality-only training. It should either improve calibration/target design or transfer the two-stage ranking head to the stronger proposal-query variants.
+
+Proposal-query two-stage quality-head control:
+
+This control applies the same frozen-detector quality ranking recipe to predicted and oracle proposal-query variants.
+
+Output artifact:
+
+- `results/det_real_proposal_quality_head_twostage_start301_400step_2seed.csv`
+
+| Variant | Final IoU | Best IoU | AP50 | Best-q AP50 | IoU-ref AP50 | Class AP50 |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | 0.348 | 0.366 | 0.248 | 0.248 | 0.329 | 0.090 |
+| `local_mask_proposal_nms_query_quality_head` | 0.357 | 0.366 | 0.266 | 0.291 | 0.364 | 0.093 |
+| `local_mask_proposal_oracle_nms_query` | 0.383 | 0.421 | 0.250 | 0.250 | 0.345 | 0.108 |
+| `local_mask_proposal_oracle_nms_query_quality_head` | 0.399 | 0.421 | 0.259 | 0.325 | 0.372 | 0.138 |
+
+Interpretation:
+
+- Two-stage quality ranking transfers to proposal-query variants.
+- For predicted proposal NMS, the quality-head variant modestly improves base AP50 (`0.248 -> 0.266`) and lifts post-hoc best-q AP50 to `0.291`.
+- For oracle proposal NMS, quality ranking is stronger: best-q AP50 reaches `0.325`, and class-aware AP50 improves from `0.108` to `0.138`.
+- This strengthens the proposal-query + quality-ranking direction. The remaining issue is calibration: post-hoc best-q is useful for diagnosis, but fixed-alpha or calibrated scoring is needed before this becomes a clean inference recipe.

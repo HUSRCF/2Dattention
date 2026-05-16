@@ -458,6 +458,22 @@ Interpretation:
     - Extending quality-only training from 100 to 300 steps after freeze does not materially improve residual-anchor ranking (`0.345 -> 0.344` best-q AP50; `0.491 -> 0.492` closure).
     - The quality head is likely capacity/target-limited rather than under-trained in this mini setting.
     - Do not spend more runs simply lengthening the frozen quality stage; next scoring work should change calibration or apply the same two-stage ranking head to proposal-query variants.
+- Proposal-query two-stage quality-head control:
+  - Added real-DET quality-head variants:
+    - `local_mask_proposal_nms_query_quality_head`
+    - `local_mask_proposal_oracle_nms_query_quality_head`
+  - command output: `results/det_real_proposal_quality_head_twostage_start301_400step_2seed.csv`.
+  - Predicted proposal NMS:
+    - base `local_mask_proposal_nms_query`: final/best IoU `0.348/0.366`, AP50 `0.248`, IoU-reference AP50 `0.329`.
+    - quality `local_mask_proposal_nms_query_quality_head`: final/best IoU `0.357/0.366`, AP50 `0.266`, post-hoc best-q AP50 `0.291`, IoU-reference AP50 `0.364`.
+  - Oracle proposal NMS:
+    - base `local_mask_proposal_oracle_nms_query`: final/best IoU `0.383/0.421`, AP50 `0.250`, class-aware AP50 `0.108`.
+    - quality `local_mask_proposal_oracle_nms_query_quality_head`: final/best IoU `0.399/0.421`, AP50 `0.259`, class-aware AP50 `0.138`, post-hoc best-q AP50 `0.325`, IoU-reference AP50 `0.372`.
+  - Interpretation:
+    - Two-stage quality ranking transfers to proposal-query variants.
+    - For predicted proposal NMS, quality head gives a modest base AP improvement (`0.248 -> 0.266`) and a larger post-hoc quality-ranked AP (`0.291`).
+    - For oracle proposal NMS, quality ranking is stronger: best-q AP reaches `0.325`, and class-aware AP improves from `0.108` to `0.138`.
+    - The strongest current real-mini direction is now proposal query + two-stage quality ranking, but the best-q result remains post-hoc diagnostic. Fixed-alpha or calibrated scoring is needed before treating it as a finalized inference recipe.
 
 ### Step 5: RF-DETR Distillation Track
 

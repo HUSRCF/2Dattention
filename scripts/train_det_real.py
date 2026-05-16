@@ -60,8 +60,24 @@ REAL_MODEL_CONFIGS = {
     "local_learned_quality_head": ("local", "learned", "none", "none", 0.1, "none"),
     "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
+    "local_mask_proposal_nms_query_quality_head": (
+        "local",
+        "mask_proposal_nms",
+        "none",
+        "proposal",
+        0.1,
+        "none",
+    ),
     "local_mask_proposal_oracle_query": ("local", "mask_proposal_oracle", "none", "none", 0.1, "none"),
     "local_mask_proposal_oracle_nms_query": (
+        "local",
+        "mask_proposal_oracle_nms",
+        "none",
+        "none",
+        0.1,
+        "none",
+    ),
+    "local_mask_proposal_oracle_nms_query_quality_head": (
         "local",
         "mask_proposal_oracle_nms",
         "none",
@@ -95,6 +111,8 @@ QUALITY_HEAD_MODELS = {
     "local_learned_quality_head",
     "local_anchor_quality_head",
     "local_anchor_residual_query_quality_head",
+    "local_mask_proposal_nms_query_quality_head",
+    "local_mask_proposal_oracle_nms_query_quality_head",
 }
 
 QUALITY_SCORE_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
