@@ -449,6 +449,15 @@ Interpretation:
     - train the frozen quality head longer after detector freeze;
     - try calibration regularizers or temperature scaling for the quality head;
     - test two-stage quality ranking on oracle-proposal and mask-proposal real-DET variants.
+- Longer frozen quality-head control:
+  - Tested a longer two-stage schedule: first 300 steps train the detector, then 300 additional steps train only the frozen-detector quality head.
+  - command output: `results/det_real_quality_head_twostage_alphas_oracle_start301_600step_2seed.csv`.
+  - `local_anchor_residual_query_quality_head`: AP50/base `0.266`, post-hoc best-q AP50 `0.344`, mean selected alpha `3.00`, IoU-reference AP50 `0.421`, raw gap closure `0.492`.
+  - `local_learned_quality_head`: AP50/base `0.310`, post-hoc best-q AP50 `0.328`, IoU-reference AP50 `0.363`, raw gap closure `0.240`.
+  - Interpretation:
+    - Extending quality-only training from 100 to 300 steps after freeze does not materially improve residual-anchor ranking (`0.345 -> 0.344` best-q AP50; `0.491 -> 0.492` closure).
+    - The quality head is likely capacity/target-limited rather than under-trained in this mini setting.
+    - Do not spend more runs simply lengthening the frozen quality stage; next scoring work should change calibration or apply the same two-stage ranking head to proposal-query variants.
 
 ### Step 5: RF-DETR Distillation Track
 

@@ -1079,3 +1079,22 @@ Diagnostic interpretation:
 - The post-hoc best-q value is a diagnostic selected on the eval set. Formal model comparison should still report fixed alphas such as `q^1` or a pre-registered alpha.
 - The IoU-reference score is only a diagnostic, not a strict detector upper bound: multiplying by true IoU can still leave class-score and duplicate-query errors. Treat class-aware closure as a rough calibration signal, with class-agnostic AP50 closure as the cleaner ranking-gap measure.
 - This strengthens the current scoring recipe: keep quality prediction as a frozen-detector post-ranking head, then improve its calibration rather than pushing quality loss back into detector training.
+
+Longer frozen quality-head control:
+
+The next check asks whether the frozen-detector quality head was simply under-trained. The schedule keeps the detector training unchanged for the first 300 steps, then trains only `head.quality_head` for 300 more steps.
+
+Output artifact:
+
+- `results/det_real_quality_head_twostage_alphas_oracle_start301_600step_2seed.csv`
+
+| Variant | AP50 | Post-hoc best-q AP50 | Mean selected alpha | IoU-ref AP50 | Raw gap closed |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.266 | 0.344 | 3.00 | 0.421 | 0.492 |
+| `local_learned_quality_head` | 0.310 | 0.328 | 1.12 | 0.363 | 0.240 |
+
+Interpretation:
+
+- Longer quality-only training does not materially improve residual-anchor ranking over the 400-step run: best-q AP50 is effectively unchanged (`0.345 -> 0.344`), and raw gap closure is unchanged (`0.491 -> 0.492`).
+- The frozen quality head is therefore likely capacity/target-limited rather than simply under-trained under this mini setting.
+- The next scoring step should not just lengthen quality-only training. It should either improve calibration/target design or transfer the two-stage ranking head to the stronger proposal-query variants.
