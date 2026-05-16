@@ -431,6 +431,24 @@ Interpretation:
     - The two-stage quality head closes part of this gap, reaching `0.326-0.341` depending on alpha.
     - Quality score itself tracks IoU better than class score (`0.611` vs `0.339`), and `class_prob * quality` remains much better aligned than class score alone (`0.584` vs `0.339`).
     - There is still headroom versus oracle scoring, so next work should improve quality-head calibration rather than reintroduce quality loss into detector training.
+- Quality alpha sweep and oracle-gap accounting:
+  - Expanded eval scoring to `q^0.25`, `q^0.5`, `q^1`, `q^2`, and `q^4`.
+  - Added automatic post-hoc `best-q` alpha, IoU-reference gap, gap-to-reference, and raw gap-closure ratio fields for both class-agnostic and class-aware AP.
+  - Re-ran the same two-stage quality setup:
+    - command output: `results/det_real_quality_head_twostage_alphas_oracle_start301_400step_2seed.csv`.
+    - `local_anchor_residual_query_quality_head`: AP50/base `0.266`, post-hoc best-q AP50 `0.345`, mean selected alpha `1.25`, IoU-reference AP50 `0.421`.
+    - residual-anchor closure: post-hoc best-q closes `0.491` of the class-agnostic IoU-reference ranking gap; class-aware best-q closes `0.584` of the class-aware IoU-reference gap.
+    - `local_learned_quality_head`: AP50/base `0.310`, best-q AP50 `0.328`, oracle-IoU AP50 `0.363`, closure `0.240`.
+  - Interpretation:
+    - Residual-anchor remains the better candidate for quality reranking even though its base AP is lower than learned queries.
+    - The quality head can recover roughly half of the residual-anchor oracle ranking gap without changing boxes.
+    - Learned queries have less oracle headroom and lower closure, so quality calibration is less impactful there.
+    - The `best-q` value is a post-hoc diagnostic selected on the eval set; formal comparisons should still report fixed alphas such as `q^1` or a pre-registered alpha.
+    - IoU-reference scoring is diagnostic rather than a strict detector upper bound. Class-aware IoU-reference scoring is especially not a strict upper bound, because true-IoU weighting does not fix class-wrong predictions; use class-agnostic closure as the cleaner ranking-gap measure.
+  - Next useful scoring controls:
+    - train the frozen quality head longer after detector freeze;
+    - try calibration regularizers or temperature scaling for the quality head;
+    - test two-stage quality ranking on oracle-proposal and mask-proposal real-DET variants.
 
 ### Step 5: RF-DETR Distillation Track
 

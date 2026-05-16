@@ -1046,3 +1046,36 @@ Diagnostic interpretation:
 - The two-stage quality head closes part of the ranking gap. Its best tested alpha is `q^2` for class-agnostic AP (`0.341`), while `q^0.5` and `q^2` are stronger than `q^1` for class-aware AP in this run.
 - Quality score is much more correlated with IoU than class score for residual-anchor (`0.611` vs `0.339`). The combined score remains much better aligned than class score alone (`0.584` vs `0.339`).
 - Predicted quality is not yet oracle-level. The remaining gap from `0.341` to `0.421` suggests improving quality calibration is useful, but it should remain a low-interference ranking head rather than an always-on detector loss.
+
+Quality alpha sweep and oracle-gap accounting:
+
+The previous run only exposed `q^0.5`, `q^1`, and `q^2`. The follow-up expands the eval-only alpha sweep to:
+
+```text
+q^0.25, q^0.5, q^1, q^2, q^4
+```
+
+It also records:
+
+- post-hoc best quality alpha and best quality-aware AP;
+- IoU-reference AP gap;
+- remaining gap to the IoU-reference score after best quality scoring;
+- raw fraction of the IoU-reference gap closed by quality scoring.
+
+Output artifact:
+
+- `results/det_real_quality_head_twostage_alphas_oracle_start301_400step_2seed.csv`
+
+| Variant | AP50 | Post-hoc best-q AP50 | Mean selected alpha | IoU-ref AP50 | IoU-ref gap | Raw gap closed | Class AP50 | Class best-q AP50 | Class IoU-ref AP50 | Class raw gap closed |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.266 | 0.345 | 1.25 | 0.421 | 0.155 | 0.491 | 0.135 | 0.189 | 0.227 | 0.584 |
+| `local_learned_quality_head` | 0.310 | 0.328 | 2.12 | 0.363 | 0.053 | 0.240 | 0.108 | 0.120 | 0.112 | 0.345 |
+
+Diagnostic interpretation:
+
+- Residual-anchor still has the larger ranking headroom: IoU-reference scoring can raise AP50 from `0.266` to `0.421`.
+- The two-stage quality head closes about half of that residual-anchor ranking gap while preserving the detector boxes.
+- Learned queries have higher base AP50 (`0.310`) but less oracle headroom and lower quality-gap closure, so quality reranking is less useful there.
+- The post-hoc best-q value is a diagnostic selected on the eval set. Formal model comparison should still report fixed alphas such as `q^1` or a pre-registered alpha.
+- The IoU-reference score is only a diagnostic, not a strict detector upper bound: multiplying by true IoU can still leave class-score and duplicate-query errors. Treat class-aware closure as a rough calibration signal, with class-agnostic AP50 closure as the cleaner ranking-gap measure.
+- This strengthens the current scoring recipe: keep quality prediction as a frozen-detector post-ranking head, then improve its calibration rather than pushing quality loss back into detector training.

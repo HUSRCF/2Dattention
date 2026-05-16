@@ -23,6 +23,7 @@ from scripts.train_det_real import (
     quality_head_loss_scale,
     query_quality_head_loss,
     query_ranking_diagnostics,
+    ranking_gap_closure,
     score_iou_calibration_loss,
     set_quality_head_only_trainable,
 )
@@ -282,6 +283,22 @@ def test_real_det_quality_score_can_rescue_ap_ranking() -> None:
 
     assert float(base_ap) < 0.6
     assert float(quality_ap) > 0.99
+
+
+def test_real_det_quality_score_multipliers_include_calibration_sweep() -> None:
+    quality_logits = torch.tensor([0.0])
+    scores = quality_score_multipliers(quality_logits)
+
+    assert set(scores) == {0.25, 0.5, 1.0, 2.0, 4.0}
+    assert torch.allclose(scores[1.0], torch.tensor([0.5]))
+    assert float(scores[0.25][0]) > float(scores[1.0][0]) > float(scores[4.0][0])
+
+
+def test_real_det_ranking_gap_closure_tracks_oracle_headroom() -> None:
+    assert abs(ranking_gap_closure(base_score=0.2, quality_score=0.5, oracle_score=0.8) - 0.5) < 1e-6
+    assert ranking_gap_closure(base_score=0.8, quality_score=0.7, oracle_score=0.8) == 0.0
+    assert ranking_gap_closure(base_score=0.5, quality_score=0.4, oracle_score=0.8) < 0.0
+    assert ranking_gap_closure(base_score=0.5, quality_score=0.9, oracle_score=0.8) > 1.0
 
 
 def test_real_det_oracle_iou_score_rescues_ap_ranking() -> None:

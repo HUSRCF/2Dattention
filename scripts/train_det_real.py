@@ -97,6 +97,8 @@ QUALITY_HEAD_MODELS = {
     "local_anchor_residual_query_quality_head",
 }
 
+QUALITY_SCORE_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
+
 
 @dataclass(frozen=True)
 class RealBox:
@@ -224,9 +226,10 @@ def main() -> None:
     print("label_map:", args.label_map_out)
     print(
         "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
-        "eval_ap50_q1,eval_ap50_class_q1,"
+        "eval_ap50_q_best,eval_ap50_q_best_alpha,eval_ap50_oracle_iou,"
+        "eval_ap50_q_best_oracle_closure,"
         "matched_assignment_class_acc,tp50_class_acc,score_iou_corr,objectness_auc,"
-        "quality_iou_corr,quality_auc,topk_fp_rate,"
+        "quality_iou_corr,quality_auc,combined_iou_corr,combined_auc,topk_fp_rate,"
         "eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
     )
     rows: list[dict[str, float | int | str]] = []
@@ -378,14 +381,28 @@ def train_one_model(
                 "eval_recall50": metrics["recall50"],
                 "eval_ap50": metrics["ap50"],
                 "eval_ap50_class": metrics["ap50_class"],
+                "eval_ap50_q025": metrics["ap50_q025"],
                 "eval_ap50_q05": metrics["ap50_q05"],
                 "eval_ap50_q1": metrics["ap50_q1"],
                 "eval_ap50_q2": metrics["ap50_q2"],
+                "eval_ap50_q4": metrics["ap50_q4"],
+                "eval_ap50_q_best": metrics["ap50_q_best"],
+                "eval_ap50_q_best_alpha": metrics["ap50_q_best_alpha"],
+                "eval_ap50_class_q025": metrics["ap50_class_q025"],
                 "eval_ap50_class_q05": metrics["ap50_class_q05"],
                 "eval_ap50_class_q1": metrics["ap50_class_q1"],
                 "eval_ap50_class_q2": metrics["ap50_class_q2"],
+                "eval_ap50_class_q4": metrics["ap50_class_q4"],
+                "eval_ap50_class_q_best": metrics["ap50_class_q_best"],
+                "eval_ap50_class_q_best_alpha": metrics["ap50_class_q_best_alpha"],
                 "eval_ap50_oracle_iou": metrics["ap50_oracle_iou"],
                 "eval_ap50_class_oracle_iou": metrics["ap50_class_oracle_iou"],
+                "eval_ap50_oracle_gap": metrics["ap50_oracle_gap"],
+                "eval_ap50_q_best_gap_to_oracle": metrics["ap50_q_best_gap_to_oracle"],
+                "eval_ap50_q_best_oracle_closure": metrics["ap50_q_best_oracle_closure"],
+                "eval_ap50_class_oracle_gap": metrics["ap50_class_oracle_gap"],
+                "eval_ap50_class_q_best_gap_to_oracle": metrics["ap50_class_q_best_gap_to_oracle"],
+                "eval_ap50_class_q_best_oracle_closure": metrics["ap50_class_q_best_oracle_closure"],
                 "eval_mask_iou": metrics["mask_iou"],
                 "eval_mask_dice": metrics["mask_dice"],
                 "eval_small_iou": metrics["small_iou"],
@@ -413,10 +430,12 @@ def train_one_model(
                 f"{model_name},{run_seed},{step},{last_loss:.4f},"
                 f"{metrics['iou']:.3f},{metrics['recall50']:.3f},"
                 f"{metrics['ap50']:.3f},{metrics['ap50_class']:.3f},"
-                f"{metrics['ap50_q1']:.3f},{metrics['ap50_class_q1']:.3f},"
+                f"{metrics['ap50_q_best']:.3f},{metrics['ap50_q_best_alpha']:.2f},"
+                f"{metrics['ap50_oracle_iou']:.3f},{metrics['ap50_q_best_oracle_closure']:.3f},"
                 f"{metrics['matched_assignment_class_acc']:.3f},{metrics['tp50_class_acc']:.3f},"
                 f"{metrics['score_iou_corr']:.3f},{metrics['objectness_auc']:.3f},"
                 f"{metrics['quality_iou_corr']:.3f},{metrics['quality_auc']:.3f},"
+                f"{metrics['combined_iou_corr']:.3f},{metrics['combined_auc']:.3f},"
                 f"{metrics['topk_fp_rate']:.3f},"
                 f"{metrics['mask_iou']:.3f},{metrics['mask_dice']:.3f},"
                 f"{best_iou:.3f},{best_step},{speed:.2f}"
@@ -578,12 +597,16 @@ def evaluate_real(
     recalls = []
     aps = []
     aps_class = []
+    aps_q025 = []
     aps_q05 = []
     aps_q1 = []
     aps_q2 = []
+    aps_q4 = []
+    aps_class_q025 = []
     aps_class_q05 = []
     aps_class_q1 = []
     aps_class_q2 = []
+    aps_class_q4 = []
     aps_oracle_iou = []
     aps_class_oracle_iou = []
     matched_assignment_class_correct = []
@@ -670,6 +693,14 @@ def evaluate_real(
                 outputs["pred_boxes"][sample_idx],
                 target["boxes"],
             )
+            aps_q025.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=quality_scores[0.25],
+                ).cpu()
+            )
             aps_q05.append(
                 objectness_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -692,6 +723,23 @@ def evaluate_real(
                     outputs["pred_boxes"][sample_idx],
                     target["boxes"],
                     score_multiplier=quality_scores[2.0],
+                ).cpu()
+            )
+            aps_q4.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=quality_scores[4.0],
+                ).cpu()
+            )
+            aps_class_q025.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                    score_multiplier=quality_scores[0.25],
                 ).cpu()
             )
             aps_class_q05.append(
@@ -719,6 +767,15 @@ def evaluate_real(
                     target["boxes"],
                     target["labels"],
                     score_multiplier=quality_scores[2.0],
+                ).cpu()
+            )
+            aps_class_q4.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                    score_multiplier=quality_scores[4.0],
                 ).cpu()
             )
             aps_oracle_iou.append(
@@ -758,21 +815,62 @@ def evaluate_real(
     else:
         mask_iou = 0.0
         mask_dice = 0.0
+    ap50 = float(torch.stack(aps).mean().item()) if aps else 0.0
+    ap50_class = float(torch.stack(aps_class).mean().item()) if aps_class else 0.0
+    ap50_q_by_alpha = {
+        0.25: float(torch.stack(aps_q025).mean().item()) if aps_q025 else 0.0,
+        0.5: float(torch.stack(aps_q05).mean().item()) if aps_q05 else 0.0,
+        1.0: float(torch.stack(aps_q1).mean().item()) if aps_q1 else 0.0,
+        2.0: float(torch.stack(aps_q2).mean().item()) if aps_q2 else 0.0,
+        4.0: float(torch.stack(aps_q4).mean().item()) if aps_q4 else 0.0,
+    }
+    ap50_class_q_by_alpha = {
+        0.25: float(torch.stack(aps_class_q025).mean().item()) if aps_class_q025 else 0.0,
+        0.5: float(torch.stack(aps_class_q05).mean().item()) if aps_class_q05 else 0.0,
+        1.0: float(torch.stack(aps_class_q1).mean().item()) if aps_class_q1 else 0.0,
+        2.0: float(torch.stack(aps_class_q2).mean().item()) if aps_class_q2 else 0.0,
+        4.0: float(torch.stack(aps_class_q4).mean().item()) if aps_class_q4 else 0.0,
+    }
+    ap50_oracle_iou = float(torch.stack(aps_oracle_iou).mean().item()) if aps_oracle_iou else 0.0
+    ap50_class_oracle_iou = (
+        float(torch.stack(aps_class_oracle_iou).mean().item()) if aps_class_oracle_iou else 0.0
+    )
+    best_q_alpha, best_q_ap50 = max(ap50_q_by_alpha.items(), key=lambda item: item[1])
+    best_class_q_alpha, best_class_q_ap50 = max(ap50_class_q_by_alpha.items(), key=lambda item: item[1])
+    if not use_quality_scores:
+        best_q_alpha = 0.0
+        best_class_q_alpha = 0.0
     return {
         "iou": float(all_ious.mean().item()),
         "recall50": float(all_recalls.mean().item()),
-        "ap50": float(torch.stack(aps).mean().item()) if aps else 0.0,
-        "ap50_class": float(torch.stack(aps_class).mean().item()) if aps_class else 0.0,
-        "ap50_q05": float(torch.stack(aps_q05).mean().item()) if aps_q05 else 0.0,
-        "ap50_q1": float(torch.stack(aps_q1).mean().item()) if aps_q1 else 0.0,
-        "ap50_q2": float(torch.stack(aps_q2).mean().item()) if aps_q2 else 0.0,
-        "ap50_class_q05": float(torch.stack(aps_class_q05).mean().item()) if aps_class_q05 else 0.0,
-        "ap50_class_q1": float(torch.stack(aps_class_q1).mean().item()) if aps_class_q1 else 0.0,
-        "ap50_class_q2": float(torch.stack(aps_class_q2).mean().item()) if aps_class_q2 else 0.0,
-        "ap50_oracle_iou": float(torch.stack(aps_oracle_iou).mean().item()) if aps_oracle_iou else 0.0,
-        "ap50_class_oracle_iou": float(torch.stack(aps_class_oracle_iou).mean().item())
-        if aps_class_oracle_iou
-        else 0.0,
+        "ap50": ap50,
+        "ap50_class": ap50_class,
+        "ap50_q025": ap50_q_by_alpha[0.25],
+        "ap50_q05": ap50_q_by_alpha[0.5],
+        "ap50_q1": ap50_q_by_alpha[1.0],
+        "ap50_q2": ap50_q_by_alpha[2.0],
+        "ap50_q4": ap50_q_by_alpha[4.0],
+        "ap50_q_best": best_q_ap50,
+        "ap50_q_best_alpha": best_q_alpha,
+        "ap50_class_q025": ap50_class_q_by_alpha[0.25],
+        "ap50_class_q05": ap50_class_q_by_alpha[0.5],
+        "ap50_class_q1": ap50_class_q_by_alpha[1.0],
+        "ap50_class_q2": ap50_class_q_by_alpha[2.0],
+        "ap50_class_q4": ap50_class_q_by_alpha[4.0],
+        "ap50_class_q_best": best_class_q_ap50,
+        "ap50_class_q_best_alpha": best_class_q_alpha,
+        "ap50_oracle_iou": ap50_oracle_iou,
+        "ap50_class_oracle_iou": ap50_class_oracle_iou,
+        "ap50_oracle_gap": ap50_oracle_iou - ap50,
+        "ap50_q_best_gap_to_oracle": ap50_oracle_iou - best_q_ap50,
+        "ap50_q_best_oracle_closure": ranking_gap_closure(ap50, best_q_ap50, ap50_oracle_iou),
+        "ap50_class_oracle_gap": ap50_class_oracle_iou - ap50_class,
+        "ap50_class_q_best_gap_to_oracle": ap50_class_oracle_iou - best_class_q_ap50,
+        "ap50_class_q_best_oracle_closure": ranking_gap_closure(
+            ap50_class,
+            best_class_q_ap50,
+            ap50_class_oracle_iou,
+        ),
         "matched_assignment_class_acc": float(all_assignment_class_correct.float().mean().item()),
         "tp50_class_acc": tp50_class_acc,
         "score_iou_corr": float(torch.stack(score_iou_corrs).mean().item()) if score_iou_corrs else 0.0,
@@ -794,9 +892,18 @@ def quality_score_multipliers(quality_logits: Tensor | None) -> dict[float, Tens
     """Return quality score multipliers for AP ranking."""
 
     if quality_logits is None:
-        return {0.5: None, 1.0: None, 2.0: None}
+        return {alpha: None for alpha in QUALITY_SCORE_ALPHAS}
     quality = quality_logits.sigmoid().clamp(0.0, 1.0)
-    return {0.5: quality.sqrt(), 1.0: quality, 2.0: quality.square()}
+    return {alpha: quality.pow(alpha) for alpha in QUALITY_SCORE_ALPHAS}
+
+
+def ranking_gap_closure(base_score: float, quality_score: float, oracle_score: float) -> float:
+    """Return raw, unclamped fraction of the IoU-reference ranking gap closed."""
+
+    gap = oracle_score - base_score
+    if gap <= 1e-8:
+        return 0.0
+    return (quality_score - base_score) / gap
 
 
 def oracle_iou_score_multiplier(pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
@@ -1216,14 +1323,28 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_recall50",
         "eval_ap50",
         "eval_ap50_class",
+        "eval_ap50_q025",
         "eval_ap50_q05",
         "eval_ap50_q1",
         "eval_ap50_q2",
+        "eval_ap50_q4",
+        "eval_ap50_q_best",
+        "eval_ap50_q_best_alpha",
+        "eval_ap50_class_q025",
         "eval_ap50_class_q05",
         "eval_ap50_class_q1",
         "eval_ap50_class_q2",
+        "eval_ap50_class_q4",
+        "eval_ap50_class_q_best",
+        "eval_ap50_class_q_best_alpha",
         "eval_ap50_oracle_iou",
         "eval_ap50_class_oracle_iou",
+        "eval_ap50_oracle_gap",
+        "eval_ap50_q_best_gap_to_oracle",
+        "eval_ap50_q_best_oracle_closure",
+        "eval_ap50_class_oracle_gap",
+        "eval_ap50_class_q_best_gap_to_oracle",
+        "eval_ap50_class_q_best_oracle_closure",
         "eval_mask_iou",
         "eval_mask_dice",
         "eval_small_iou",
@@ -1266,9 +1387,14 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
-        "ap50_q05_mean,ap50_q1_mean,ap50_q2_mean,"
-        "ap50_class_q05_mean,ap50_class_q1_mean,ap50_class_q2_mean,"
-        "ap50_oracle_iou_mean,ap50_class_oracle_iou_mean,"
+        "ap50_q025_mean,ap50_q05_mean,ap50_q1_mean,ap50_q2_mean,ap50_q4_mean,"
+        "ap50_q_best_mean,ap50_q_selected_alpha_mean,"
+        "ap50_class_q025_mean,ap50_class_q05_mean,ap50_class_q1_mean,ap50_class_q2_mean,"
+        "ap50_class_q4_mean,ap50_class_q_best_mean,ap50_class_q_selected_alpha_mean,"
+        "ap50_iou_reference_mean,ap50_class_iou_reference_mean,ap50_iou_reference_gap_mean,"
+        "ap50_q_best_gap_to_iou_reference_mean,ap50_q_best_raw_iou_reference_closure_mean,"
+        "ap50_class_iou_reference_gap_mean,ap50_class_q_best_gap_to_iou_reference_mean,"
+        "ap50_class_q_best_raw_iou_reference_closure_mean,"
         "matched_assignment_class_acc_mean,tp50_class_acc_mean,"
         "score_iou_corr_mean,objectness_auc_mean,quality_iou_corr_mean,quality_auc_mean,"
         "combined_iou_corr_mean,combined_auc_mean,topk_fp_rate_mean,"
@@ -1285,14 +1411,28 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q025']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q05']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q1']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q2']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q4']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_best']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_best_alpha']) for row in model_rows]):.2f},"
+            f"{mean([float(row['eval_ap50_class_q025']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q05']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q1']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q2']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q4']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_best']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_best_alpha']) for row in model_rows]):.2f},"
             f"{mean([float(row['eval_ap50_oracle_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_oracle_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_oracle_gap']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_best_gap_to_oracle']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_best_oracle_closure']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_oracle_gap']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_best_gap_to_oracle']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_best_oracle_closure']) for row in model_rows]):.3f},"
             f"{mean([float(row['matched_assignment_class_acc']) for row in model_rows]):.3f},"
             f"{mean([float(row['tp50_class_acc']) for row in model_rows]):.3f},"
             f"{mean([float(row['score_iou_corr']) for row in model_rows]):.3f},"
@@ -1323,9 +1463,12 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
     print(
         "paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,"
         "ap50_delta_mean,ap50_wins,ap50_class_delta_mean,ap50_class_wins,"
-        "ap50_q1_delta_mean,ap50_q1_wins,ap50_class_q1_delta_mean,ap50_class_q1_wins,"
+        "ap50_q1_delta_mean,ap50_q1_wins,ap50_q_best_delta_mean,ap50_q_best_wins,"
+        "ap50_class_q1_delta_mean,ap50_class_q1_wins,"
+        "ap50_class_q_best_delta_mean,ap50_class_q_best_wins,"
         "ap50_oracle_iou_delta_mean,ap50_oracle_iou_wins,"
-        "ap50_class_oracle_iou_delta_mean,ap50_class_oracle_iou_wins"
+        "ap50_class_oracle_iou_delta_mean,ap50_class_oracle_iou_wins,"
+        "ap50_q_best_closure_delta_mean,ap50_class_q_best_closure_delta_mean"
     )
     run_seeds = sorted({int(row["run_seed"]) for row in final_rows})
     for model in sorted({str(row["model"]) for row in final_rows}):
@@ -1336,9 +1479,13 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
         ap_deltas = []
         ap_class_deltas = []
         ap_q1_deltas = []
+        ap_q_best_deltas = []
         ap_class_q1_deltas = []
+        ap_class_q_best_deltas = []
         ap_oracle_deltas = []
         ap_class_oracle_deltas = []
+        closure_deltas = []
+        class_closure_deltas = []
         for run_seed in run_seeds:
             ref = find_row(final_rows, model=reference_model, run_seed=run_seed)
             cur = find_row(final_rows, model=model, run_seed=run_seed)
@@ -1349,10 +1496,22 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
             ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
             ap_class_deltas.append(float(cur["eval_ap50_class"]) - float(ref["eval_ap50_class"]))
             ap_q1_deltas.append(float(cur["eval_ap50_q1"]) - float(ref["eval_ap50_q1"]))
+            ap_q_best_deltas.append(float(cur["eval_ap50_q_best"]) - float(ref["eval_ap50_q_best"]))
             ap_class_q1_deltas.append(float(cur["eval_ap50_class_q1"]) - float(ref["eval_ap50_class_q1"]))
+            ap_class_q_best_deltas.append(
+                float(cur["eval_ap50_class_q_best"]) - float(ref["eval_ap50_class_q_best"])
+            )
             ap_oracle_deltas.append(float(cur["eval_ap50_oracle_iou"]) - float(ref["eval_ap50_oracle_iou"]))
             ap_class_oracle_deltas.append(
                 float(cur["eval_ap50_class_oracle_iou"]) - float(ref["eval_ap50_class_oracle_iou"])
+            )
+            closure_deltas.append(
+                float(cur["eval_ap50_q_best_oracle_closure"])
+                - float(ref["eval_ap50_q_best_oracle_closure"])
+            )
+            class_closure_deltas.append(
+                float(cur["eval_ap50_class_q_best_oracle_closure"])
+                - float(ref["eval_ap50_class_q_best_oracle_closure"])
             )
         if final_deltas:
             print(
@@ -1362,9 +1521,12 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
                 f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)},"
                 f"{mean(ap_class_deltas):.3f},{wins_higher(ap_class_deltas)},"
                 f"{mean(ap_q1_deltas):.3f},{wins_higher(ap_q1_deltas)},"
+                f"{mean(ap_q_best_deltas):.3f},{wins_higher(ap_q_best_deltas)},"
                 f"{mean(ap_class_q1_deltas):.3f},{wins_higher(ap_class_q1_deltas)},"
+                f"{mean(ap_class_q_best_deltas):.3f},{wins_higher(ap_class_q_best_deltas)},"
                 f"{mean(ap_oracle_deltas):.3f},{wins_higher(ap_oracle_deltas)},"
-                f"{mean(ap_class_oracle_deltas):.3f},{wins_higher(ap_class_oracle_deltas)}"
+                f"{mean(ap_class_oracle_deltas):.3f},{wins_higher(ap_class_oracle_deltas)},"
+                f"{mean(closure_deltas):.3f},{mean(class_closure_deltas):.3f}"
             )
 
 
