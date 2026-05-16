@@ -16,6 +16,7 @@ from scripts.train_det_real import (
     matcher_aware_quality_classification_loss,
     objectness_logits,
     objectness_ap50_for_image,
+    oracle_iou_score_multiplier,
     oracle_query_mask_logits,
     pearson_corr,
     quality_score_multipliers,
@@ -281,6 +282,66 @@ def test_real_det_quality_score_can_rescue_ap_ranking() -> None:
 
     assert float(base_ap) < 0.6
     assert float(quality_ap) > 0.99
+
+
+def test_real_det_oracle_iou_score_rescues_ap_ranking() -> None:
+    target_boxes = torch.tensor([[0.50, 0.50, 0.40, 0.40]])
+    pred_boxes = torch.tensor(
+        [
+            [0.10, 0.10, 0.10, 0.10],
+            [0.50, 0.50, 0.40, 0.40],
+        ]
+    )
+    pred_logits = torch.tensor(
+        [
+            [4.0, -2.0],
+            [2.0, -2.0],
+        ]
+    )
+
+    base_ap = objectness_ap50_for_image(pred_logits, pred_boxes, target_boxes)
+    oracle_scores = oracle_iou_score_multiplier(pred_boxes, target_boxes)
+    oracle_ap = objectness_ap50_for_image(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        score_multiplier=oracle_scores,
+    )
+
+    assert torch.allclose(oracle_scores, torch.tensor([0.0, 1.0]))
+    assert float(base_ap) < 0.6
+    assert float(oracle_ap) > 0.99
+
+
+def test_real_det_query_ranking_diagnostics_include_combined_score_corr() -> None:
+    pred_logits = torch.tensor(
+        [
+            [4.0, -2.0],
+            [2.0, -2.0],
+            [3.0, -2.0],
+        ]
+    )
+    pred_boxes = torch.tensor(
+        [
+            [0.10, 0.10, 0.10, 0.10],
+            [0.50, 0.50, 0.40, 0.40],
+            [0.20, 0.20, 0.10, 0.10],
+        ]
+    )
+    target_boxes = torch.tensor([[0.50, 0.50, 0.40, 0.40]])
+    target_labels = torch.tensor([0])
+    quality_logits = torch.tensor([-4.0, 4.0, -4.0])
+
+    diagnostics = query_ranking_diagnostics(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        target_labels,
+        quality_logits=quality_logits,
+    )
+
+    assert float(diagnostics["combined_iou_corr"]) > float(diagnostics["score_iou_corr"])
+    assert float(diagnostics["combined_auc"]) >= float(diagnostics["objectness_auc"])
 
 
 def test_real_det_quality_head_loss_scale_supports_late_start_and_warmup() -> None:

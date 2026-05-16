@@ -1011,3 +1011,38 @@ Two-stage interpretation:
 Updated scoring conclusion:
 
 > The most reliable scoring path is now two-stage query quality: train the detector normally, freeze the detector, then train an independent query-quality head for score re-ranking. This preserves the residual-anchor detector while improving quality-aware AP. Always-on quality supervision remains useful diagnostically, but should not be the main training recipe.
+
+Oracle scoring and correlation diagnostics:
+
+The next diagnostic asks whether AP is limited by boxes or by ranking. It evaluates an oracle score multiplier using each query's true max IoU to any GT box:
+
+```text
+score = class_prob * true_max_iou
+```
+
+It also reports correlation with matched IoU for three scores:
+
+- `class_score`: max foreground class probability;
+- `quality_score`: predicted query quality;
+- `combined_score`: `class_score * quality_score`.
+
+Output artifact:
+
+- `results/det_real_quality_head_twostage_oracle_start301_400step_2seed.csv`
+
+| Variant | AP50 | AP50 q^0.5 | AP50 q^1 | AP50 q^2 | Oracle-IoU AP50 | Class AP50 | Class AP50 q^1 | Class Oracle AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.266 | 0.329 | 0.326 | 0.341 | 0.421 | 0.135 | 0.167 | 0.227 |
+| `local_learned_quality_head` | 0.310 | 0.315 | 0.310 | 0.317 | 0.363 | 0.108 | 0.109 | 0.112 |
+
+| Variant | Score-IoU corr | Quality-IoU corr | Combined-IoU corr | Objectness AUC | Quality AUC | Combined AUC |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.339 | 0.611 | 0.584 | 0.602 | 0.686 | 0.683 |
+| `local_learned_quality_head` | 0.438 | 0.567 | 0.557 | 0.658 | 0.680 | 0.683 |
+
+Diagnostic interpretation:
+
+- For residual-anchor, oracle-IoU scoring raises AP50 from `0.266` to `0.421`. This confirms that ranking/scoring is a major bottleneck: the boxes contain more usable AP than class scores expose.
+- The two-stage quality head closes part of the ranking gap. Its best tested alpha is `q^2` for class-agnostic AP (`0.341`), while `q^0.5` and `q^2` are stronger than `q^1` for class-aware AP in this run.
+- Quality score is much more correlated with IoU than class score for residual-anchor (`0.611` vs `0.339`). The combined score remains much better aligned than class score alone (`0.584` vs `0.339`).
+- Predicted quality is not yet oracle-level. The remaining gap from `0.341` to `0.421` suggests improving quality calibration is useful, but it should remain a low-interference ranking head rather than an always-on detector loss.

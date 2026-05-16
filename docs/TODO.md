@@ -418,6 +418,19 @@ Interpretation:
   - Do not use always-on quality-head auxiliary as the main path because it perturbs detector training.
   - Promote the two-stage quality head as the current scoring/ranking direction: train the detector first, then freeze it and learn query quality for score re-ranking.
   - Next useful controls: train quality-only for longer after start, sweep alpha at eval, and test whether the same two-stage quality head improves oracle-proposal and mask-proposal variants.
+- Oracle scoring and correlation diagnostics:
+  - Added eval-only oracle scoring: `score = class_prob * true_max_iou_to_any_gt`.
+  - Added `combined_iou_corr` / `combined_auc` for `class_prob * predicted_quality`.
+  - Re-ran two-stage quality head with these diagnostics:
+    - command output: `results/det_real_quality_head_twostage_oracle_start301_400step_2seed.csv`.
+    - `local_anchor_residual_query_quality_head`: final/best IoU `0.376/0.376`, AP50-lite `0.266`, AP50 q^0.5/q^1/q^2 `0.329/0.326/0.341`, oracle-IoU AP50 `0.421`.
+    - class-aware AP50 base/q^0.5/q^1/q^2/oracle `0.135/0.179/0.167/0.185/0.227`.
+    - correlation: `score_iou_corr 0.339`, `quality_iou_corr 0.611`, `combined_iou_corr 0.584`.
+  - Interpretation:
+    - The ranking bottleneck is real: oracle-IoU scoring raises AP50 from `0.266` to `0.421`.
+    - The two-stage quality head closes part of this gap, reaching `0.326-0.341` depending on alpha.
+    - Quality score itself tracks IoU better than class score (`0.611` vs `0.339`), and `class_prob * quality` remains much better aligned than class score alone (`0.584` vs `0.339`).
+    - There is still headroom versus oracle scoring, so next work should improve quality-head calibration rather than reintroduce quality loss into detector training.
 
 ### Step 5: RF-DETR Distillation Track
 
