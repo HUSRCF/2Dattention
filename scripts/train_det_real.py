@@ -57,6 +57,9 @@ REAL_MODEL_CONFIGS = {
     "local_learned_matchqual": ("local", "learned", "none", "none", 0.1, "none"),
     "local_anchor_matchqual": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_matchqual": ("local", "anchor_residual", "none", "none", 0.01, "none"),
+    "local_learned_quality_head": ("local", "learned", "none", "none", 0.1, "none"),
+    "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
+    "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_mask_proposal_oracle_query": ("local", "mask_proposal_oracle", "none", "none", 0.1, "none"),
     "local_mask_proposal_oracle_nms_query": (
         "local",
@@ -86,6 +89,12 @@ MATCH_QUALITY_MODELS = {
     "local_learned_matchqual",
     "local_anchor_matchqual",
     "local_anchor_residual_query_matchqual",
+}
+
+QUALITY_HEAD_MODELS = {
+    "local_learned_quality_head",
+    "local_anchor_quality_head",
+    "local_anchor_residual_query_quality_head",
 }
 
 
@@ -171,6 +180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask-dice-weight", type=float, default=1.0)
     parser.add_argument("--score-iou-weight", type=float, default=0.5)
     parser.add_argument("--quality-cls-weight", type=float, default=1.0)
+    parser.add_argument("--quality-head-weight", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
@@ -207,8 +217,10 @@ def main() -> None:
     print("label_map:", args.label_map_out)
     print(
         "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
+        "eval_ap50_q1,eval_ap50_class_q1,"
         "matched_assignment_class_acc,tp50_class_acc,score_iou_corr,objectness_auc,"
-        "topk_fp_rate,eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
+        "quality_iou_corr,quality_auc,topk_fp_rate,"
+        "eval_mask_iou,eval_mask_dice,best_iou,best_step,images_per_sec"
     )
     rows: list[dict[str, float | int | str]] = []
     split_rows: list[dict[str, int | str]] = []
@@ -290,10 +302,15 @@ def train_one_model(
         losses = criterion(outputs, targets)
         loss_score_iou = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_cls = outputs["pred_logits"].new_tensor(0.0)
+        loss_quality_head = outputs["pred_logits"].new_tensor(0.0)
         if model_name in CALIBRATED_MODELS:
             loss_score_iou = score_iou_calibration_loss(outputs, targets)
             losses["loss_score_iou"] = loss_score_iou
             losses["loss"] = losses["loss"] + args.score_iou_weight * loss_score_iou
+        if model_name in QUALITY_HEAD_MODELS:
+            loss_quality_head = query_quality_head_loss(outputs, targets, criterion)
+            losses["loss_quality_head"] = loss_quality_head
+            losses["loss"] = losses["loss"] + args.quality_head_weight * loss_quality_head
         if model_name in MATCH_QUALITY_MODELS:
             loss_quality_cls = matcher_aware_quality_classification_loss(
                 outputs,
@@ -315,7 +332,13 @@ def train_one_model(
         optimizer.step()
         last_loss = float(losses["loss"].item())
         if step % args.eval_every == 0 or step == args.steps:
-            metrics = evaluate_real(model, eval_loader, device, batches=args.eval_batches)
+            metrics = evaluate_real(
+                model,
+                eval_loader,
+                device,
+                batches=args.eval_batches,
+                use_quality_scores=model_name in QUALITY_HEAD_MODELS,
+            )
             if metrics["iou"] > best_iou:
                 best_iou = metrics["iou"]
                 best_step = step
@@ -327,10 +350,17 @@ def train_one_model(
                 "loss": last_loss,
                 "loss_score_iou": float(loss_score_iou.detach().item()),
                 "loss_quality_cls": float(loss_quality_cls.detach().item()),
+                "loss_quality_head": float(loss_quality_head.detach().item()),
                 "eval_iou": metrics["iou"],
                 "eval_recall50": metrics["recall50"],
                 "eval_ap50": metrics["ap50"],
                 "eval_ap50_class": metrics["ap50_class"],
+                "eval_ap50_q05": metrics["ap50_q05"],
+                "eval_ap50_q1": metrics["ap50_q1"],
+                "eval_ap50_q2": metrics["ap50_q2"],
+                "eval_ap50_class_q05": metrics["ap50_class_q05"],
+                "eval_ap50_class_q1": metrics["ap50_class_q1"],
+                "eval_ap50_class_q2": metrics["ap50_class_q2"],
                 "eval_mask_iou": metrics["mask_iou"],
                 "eval_mask_dice": metrics["mask_dice"],
                 "eval_small_iou": metrics["small_iou"],
@@ -342,6 +372,8 @@ def train_one_model(
                 "tp50_class_acc": metrics["tp50_class_acc"],
                 "score_iou_corr": metrics["score_iou_corr"],
                 "objectness_auc": metrics["objectness_auc"],
+                "quality_iou_corr": metrics["quality_iou_corr"],
+                "quality_auc": metrics["quality_auc"],
                 "topk_fp_rate": metrics["topk_fp_rate"],
                 "duplicate_per_gt": metrics["duplicate_per_gt"],
                 "query_assignment_entropy": metrics["query_assignment_entropy"],
@@ -354,8 +386,10 @@ def train_one_model(
                 f"{model_name},{run_seed},{step},{last_loss:.4f},"
                 f"{metrics['iou']:.3f},{metrics['recall50']:.3f},"
                 f"{metrics['ap50']:.3f},{metrics['ap50_class']:.3f},"
+                f"{metrics['ap50_q1']:.3f},{metrics['ap50_class_q1']:.3f},"
                 f"{metrics['matched_assignment_class_acc']:.3f},{metrics['tp50_class_acc']:.3f},"
                 f"{metrics['score_iou_corr']:.3f},{metrics['objectness_auc']:.3f},"
+                f"{metrics['quality_iou_corr']:.3f},{metrics['quality_auc']:.3f},"
                 f"{metrics['topk_fp_rate']:.3f},"
                 f"{metrics['mask_iou']:.3f},{metrics['mask_dice']:.3f},"
                 f"{best_iou:.3f},{best_step},{speed:.2f}"
@@ -452,6 +486,30 @@ def matcher_aware_quality_classification_loss(
     return F.binary_cross_entropy_with_logits(pred_logits[:, :, :-1], quality_targets)
 
 
+def query_quality_head_loss(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+) -> Tensor:
+    """Train an independent query-quality head with matched IoU targets."""
+
+    pred_quality_logits = outputs["pred_quality_logits"]
+    pred_boxes = outputs["pred_boxes"]
+    quality_targets = torch.zeros_like(pred_quality_logits)
+    matches = criterion.matcher(outputs, targets)
+    for batch_idx, (src_idx, target_idx) in enumerate(matches):
+        if src_idx.numel() == 0:
+            continue
+        target_boxes = targets[batch_idx]["boxes"][target_idx].to(pred_boxes.device)
+        with torch.no_grad():
+            matched_iou = box_iou(
+                box_cxcywh_to_xyxy(pred_boxes[batch_idx, src_idx].detach()),
+                box_cxcywh_to_xyxy(target_boxes),
+            ).diag().clamp(0.0, 1.0)
+        quality_targets[batch_idx, src_idx] = matched_iou
+    return F.binary_cross_entropy_with_logits(pred_quality_logits, quality_targets)
+
+
 def objectness_logits(pred_logits: Tensor) -> Tensor:
     """Return object-vs-no-object logits from DETR class logits."""
 
@@ -466,16 +524,25 @@ def evaluate_real(
     loader: DataLoader,
     device: torch.device,
     batches: int,
+    use_quality_scores: bool = False,
 ) -> dict[str, float]:
     model.eval()
     ious = []
     recalls = []
     aps = []
     aps_class = []
+    aps_q05 = []
+    aps_q1 = []
+    aps_q2 = []
+    aps_class_q05 = []
+    aps_class_q1 = []
+    aps_class_q2 = []
     matched_assignment_class_correct = []
     tp50_class_correct = []
     score_iou_corrs = []
     objectness_aucs = []
+    quality_iou_corrs = []
+    quality_aucs = []
     topk_fp_rates = []
     duplicate_per_gt_values = []
     query_assignment_counts = torch.zeros(model.num_queries, dtype=torch.float32)
@@ -508,6 +575,9 @@ def evaluate_real(
                 pred_boxes=outputs["pred_boxes"][sample_idx],
                 target_boxes=target["boxes"],
                 target_labels=target["labels"],
+                quality_logits=outputs["pred_quality_logits"][sample_idx]
+                if use_quality_scores and "pred_quality_logits" in outputs
+                else None,
             )
             ious.append(matched_iou.cpu())
             recalls.append((matched_iou >= 0.5).float().cpu())
@@ -517,6 +587,8 @@ def evaluate_real(
             tp50_class_correct.append(diagnostics["tp50_class_correct"].cpu())
             score_iou_corrs.append(diagnostics["score_iou_corr"].cpu())
             objectness_aucs.append(diagnostics["objectness_auc"].cpu())
+            quality_iou_corrs.append(diagnostics["quality_iou_corr"].cpu())
+            quality_aucs.append(diagnostics["quality_auc"].cpu())
             topk_fp_rates.append(diagnostics["topk_fp_rate"].cpu())
             duplicate_per_gt_values.append(diagnostics["duplicate_per_gt"].cpu())
             query_assignment_counts += diagnostics["matched_query_counts"].cpu()
@@ -534,6 +606,62 @@ def evaluate_real(
                     outputs["pred_boxes"][sample_idx],
                     target["boxes"],
                     target["labels"],
+                ).cpu()
+            )
+            quality_scores = quality_score_multipliers(
+                outputs["pred_quality_logits"][sample_idx]
+                if use_quality_scores and "pred_quality_logits" in outputs
+                else None,
+            )
+            aps_q05.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=quality_scores[0.5],
+                ).cpu()
+            )
+            aps_q1.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=quality_scores[1.0],
+                ).cpu()
+            )
+            aps_q2.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=quality_scores[2.0],
+                ).cpu()
+            )
+            aps_class_q05.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                    score_multiplier=quality_scores[0.5],
+                ).cpu()
+            )
+            aps_class_q1.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                    score_multiplier=quality_scores[1.0],
+                ).cpu()
+            )
+            aps_class_q2.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                    score_multiplier=quality_scores[2.0],
                 ).cpu()
             )
     model.train()
@@ -561,10 +689,18 @@ def evaluate_real(
         "recall50": float(all_recalls.mean().item()),
         "ap50": float(torch.stack(aps).mean().item()) if aps else 0.0,
         "ap50_class": float(torch.stack(aps_class).mean().item()) if aps_class else 0.0,
+        "ap50_q05": float(torch.stack(aps_q05).mean().item()) if aps_q05 else 0.0,
+        "ap50_q1": float(torch.stack(aps_q1).mean().item()) if aps_q1 else 0.0,
+        "ap50_q2": float(torch.stack(aps_q2).mean().item()) if aps_q2 else 0.0,
+        "ap50_class_q05": float(torch.stack(aps_class_q05).mean().item()) if aps_class_q05 else 0.0,
+        "ap50_class_q1": float(torch.stack(aps_class_q1).mean().item()) if aps_class_q1 else 0.0,
+        "ap50_class_q2": float(torch.stack(aps_class_q2).mean().item()) if aps_class_q2 else 0.0,
         "matched_assignment_class_acc": float(all_assignment_class_correct.float().mean().item()),
         "tp50_class_acc": tp50_class_acc,
         "score_iou_corr": float(torch.stack(score_iou_corrs).mean().item()) if score_iou_corrs else 0.0,
         "objectness_auc": float(torch.stack(objectness_aucs).mean().item()) if objectness_aucs else 0.0,
+        "quality_iou_corr": float(torch.stack(quality_iou_corrs).mean().item()) if quality_iou_corrs else 0.0,
+        "quality_auc": float(torch.stack(quality_aucs).mean().item()) if quality_aucs else 0.0,
         "topk_fp_rate": float(torch.stack(topk_fp_rates).mean().item()) if topk_fp_rates else 0.0,
         "duplicate_per_gt": float(torch.stack(duplicate_per_gt_values).mean().item()) if duplicate_per_gt_values else 0.0,
         "query_assignment_entropy": assignment_entropy(query_assignment_counts),
@@ -574,10 +710,26 @@ def evaluate_real(
     }
 
 
-def objectness_ap50_for_image(pred_logits: Tensor, pred_boxes: Tensor, target_boxes: Tensor) -> Tensor:
+def quality_score_multipliers(quality_logits: Tensor | None) -> dict[float, Tensor | None]:
+    """Return quality score multipliers for AP ranking."""
+
+    if quality_logits is None:
+        return {0.5: None, 1.0: None, 2.0: None}
+    quality = quality_logits.sigmoid().clamp(0.0, 1.0)
+    return {0.5: quality.sqrt(), 1.0: quality, 2.0: quality.square()}
+
+
+def objectness_ap50_for_image(
+    pred_logits: Tensor,
+    pred_boxes: Tensor,
+    target_boxes: Tensor,
+    score_multiplier: Tensor | None = None,
+) -> Tensor:
     if target_boxes.numel() == 0:
         return pred_logits.new_tensor(0.0)
     scores = pred_logits.softmax(dim=-1)[:, :-1].max(dim=-1).values
+    if score_multiplier is not None:
+        scores = scores * score_multiplier
     order = scores.argsort(descending=True)
     iou_matrix = box_iou(
         box_cxcywh_to_xyxy(pred_boxes),
@@ -610,8 +762,10 @@ def query_ranking_diagnostics(
     pred_boxes: Tensor,
     target_boxes: Tensor,
     target_labels: Tensor,
+    quality_logits: Tensor | None = None,
 ) -> dict[str, Tensor]:
     objectness = pred_logits.softmax(dim=-1)[:, :-1].max(dim=-1).values
+    quality_scores = quality_logits.sigmoid() if quality_logits is not None else None
     pred_labels = pred_logits.softmax(dim=-1)[:, :-1].argmax(dim=-1)
     target_count = int(target_boxes.shape[0])
     if target_count == 0:
@@ -620,6 +774,8 @@ def query_ranking_diagnostics(
             "tp50_class_correct": pred_logits.new_zeros((0,)),
             "score_iou_corr": pred_logits.new_tensor(0.0),
             "objectness_auc": pred_logits.new_tensor(0.5),
+            "quality_iou_corr": pred_logits.new_tensor(0.0),
+            "quality_auc": pred_logits.new_tensor(0.5),
             "topk_fp_rate": pred_logits.new_tensor(0.0),
             "duplicate_per_gt": pred_logits.new_tensor(0.0),
             "matched_query_counts": torch.zeros(
@@ -661,6 +817,12 @@ def query_ranking_diagnostics(
         "tp50_class_correct": tp50_class_correct,
         "score_iou_corr": pearson_corr(objectness, max_iou_per_query),
         "objectness_auc": binary_auc(objectness, positive),
+        "quality_iou_corr": pearson_corr(quality_scores, max_iou_per_query)
+        if quality_scores is not None
+        else pred_logits.new_tensor(0.0),
+        "quality_auc": binary_auc(quality_scores, positive)
+        if quality_scores is not None
+        else pred_logits.new_tensor(0.5),
         "topk_fp_rate": topk_fp_rate,
         "duplicate_per_gt": duplicate_per_gt,
         "matched_query_counts": matched_query_counts,
@@ -764,11 +926,14 @@ def class_aware_ap50_for_image(
     pred_boxes: Tensor,
     target_boxes: Tensor,
     target_labels: Tensor,
+    score_multiplier: Tensor | None = None,
 ) -> Tensor:
     if target_boxes.numel() == 0:
         return pred_logits.new_tensor(0.0)
     class_probs = pred_logits.softmax(dim=-1)[:, :-1]
     scores, pred_labels = class_probs.max(dim=-1)
+    if score_multiplier is not None:
+        scores = scores * score_multiplier
     order = scores.argsort(descending=True)
     iou_matrix = box_iou(
         box_cxcywh_to_xyxy(pred_boxes),
@@ -949,10 +1114,17 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "loss",
         "loss_score_iou",
         "loss_quality_cls",
+        "loss_quality_head",
         "eval_iou",
         "eval_recall50",
         "eval_ap50",
         "eval_ap50_class",
+        "eval_ap50_q05",
+        "eval_ap50_q1",
+        "eval_ap50_q2",
+        "eval_ap50_class_q05",
+        "eval_ap50_class_q1",
+        "eval_ap50_class_q2",
         "eval_mask_iou",
         "eval_mask_dice",
         "eval_small_iou",
@@ -964,6 +1136,8 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "tp50_class_acc",
         "score_iou_corr",
         "objectness_auc",
+        "quality_iou_corr",
+        "quality_auc",
         "topk_fp_rate",
         "duplicate_per_gt",
         "query_assignment_entropy",
@@ -991,8 +1165,10 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
+        "ap50_q05_mean,ap50_q1_mean,ap50_q2_mean,"
+        "ap50_class_q05_mean,ap50_class_q1_mean,ap50_class_q2_mean,"
         "matched_assignment_class_acc_mean,tp50_class_acc_mean,"
-        "score_iou_corr_mean,objectness_auc_mean,topk_fp_rate_mean,"
+        "score_iou_corr_mean,objectness_auc_mean,quality_iou_corr_mean,quality_auc_mean,topk_fp_rate_mean,"
         "duplicate_per_gt_mean,query_assignment_entropy_mean,"
         "mask_iou_mean,mask_dice_mean,small_iou_mean,medium_iou_mean,large_iou_mean,"
         "center_iou_mean,offcenter_iou_mean,images_per_sec_mean"
@@ -1006,10 +1182,18 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q05']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q1']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q2']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q05']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q1']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q2']) for row in model_rows]):.3f},"
             f"{mean([float(row['matched_assignment_class_acc']) for row in model_rows]):.3f},"
             f"{mean([float(row['tp50_class_acc']) for row in model_rows]):.3f},"
             f"{mean([float(row['score_iou_corr']) for row in model_rows]):.3f},"
             f"{mean([float(row['objectness_auc']) for row in model_rows]):.3f},"
+            f"{mean([float(row['quality_iou_corr']) for row in model_rows]):.3f},"
+            f"{mean([float(row['quality_auc']) for row in model_rows]):.3f},"
             f"{mean([float(row['topk_fp_rate']) for row in model_rows]):.3f},"
             f"{mean([float(row['duplicate_per_gt']) for row in model_rows]):.3f},"
             f"{mean([float(row['query_assignment_entropy']) for row in model_rows]):.3f},"
@@ -1031,7 +1215,8 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
     print(f"paired_det_real_vs,{reference_model}")
     print(
         "paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,"
-        "ap50_delta_mean,ap50_wins,ap50_class_delta_mean,ap50_class_wins"
+        "ap50_delta_mean,ap50_wins,ap50_class_delta_mean,ap50_class_wins,"
+        "ap50_q1_delta_mean,ap50_q1_wins,ap50_class_q1_delta_mean,ap50_class_q1_wins"
     )
     run_seeds = sorted({int(row["run_seed"]) for row in final_rows})
     for model in sorted({str(row["model"]) for row in final_rows}):
@@ -1041,6 +1226,8 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
         best_deltas = []
         ap_deltas = []
         ap_class_deltas = []
+        ap_q1_deltas = []
+        ap_class_q1_deltas = []
         for run_seed in run_seeds:
             ref = find_row(final_rows, model=reference_model, run_seed=run_seed)
             cur = find_row(final_rows, model=model, run_seed=run_seed)
@@ -1050,13 +1237,17 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
             best_deltas.append(float(cur["best_iou"]) - float(ref["best_iou"]))
             ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
             ap_class_deltas.append(float(cur["eval_ap50_class"]) - float(ref["eval_ap50_class"]))
+            ap_q1_deltas.append(float(cur["eval_ap50_q1"]) - float(ref["eval_ap50_q1"]))
+            ap_class_q1_deltas.append(float(cur["eval_ap50_class_q1"]) - float(ref["eval_ap50_class_q1"]))
         if final_deltas:
             print(
                 f"{model},"
                 f"{mean(final_deltas):.3f},{wins_higher(final_deltas)},"
                 f"{mean(best_deltas):.3f},{wins_higher(best_deltas)},"
                 f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)},"
-                f"{mean(ap_class_deltas):.3f},{wins_higher(ap_class_deltas)}"
+                f"{mean(ap_class_deltas):.3f},{wins_higher(ap_class_deltas)},"
+                f"{mean(ap_q1_deltas):.3f},{wins_higher(ap_q1_deltas)},"
+                f"{mean(ap_class_q1_deltas):.3f},{wins_higher(ap_class_q1_deltas)}"
             )
 
 

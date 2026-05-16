@@ -381,7 +381,22 @@ Interpretation:
   - Matcher-aware quality classification avoids the duplicate-positive problem of all-query max-IoU BCE, but the current BCE-on-foreground-class-logits implementation still does not improve residual-anchor final AP.
   - At weight `1.0`, it improves residual-anchor best IoU and objectness AP50-lite, but lowers final IoU and class-aware AP50-lite. At weight `0.25`, the effect is smaller but still not positive.
   - For learned queries, matcher-aware quality classification is worse than both the base learned model and the naive max-IoU calibration.
-  - The next scoring path should not be another weight sweep. Prefer a separate quality/objectness head, or quality-modulated CE where matched class CE is weighted by IoU but unmatched background CE remains standard.
+  - The next scoring path should not be another weight sweep. It should separate semantic class prediction from localization-quality prediction.
+- Separate quality/objectness head follow-up:
+  - Implemented `pred_quality_logits` in `DetectionHead`, trained only for `*_quality_head` variants.
+  - The quality head uses Hungarian matches: matched queries regress detached matched IoU; unmatched queries target `0`.
+  - Evaluation now reports quality-aware AP with `score = class_prob * quality^alpha` for `alpha = 0.5, 1.0, 2.0`, plus quality-IoU correlation and quality AUC.
+  - Command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_learned_quality_head local_anchor_residual_query local_anchor_residual_query_quality_head --reference-model local_anchor_residual_query --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --quality-head-weight 1.0 --out results/det_real_quality_head_300step_2seed.csv --label-map-out results/det_real_quality_head_label_map.csv --split-out results/det_real_quality_head_split.csv --seeds 2`
+  - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, AP50-lite `0.266`, class-aware AP50-lite `0.135`; quality-aware AP fields are intentionally equal to base AP because this model does not train the quality head.
+  - `local_anchor_residual_query_quality_head`: final/best IoU `0.359/0.367`, AP50-lite `0.262`, class-aware AP50-lite `0.134`, quality-aware AP50-lite at alpha=1 `0.330`, quality-aware class AP50-lite at alpha=1 `0.175`.
+  - `local_learned`: final/best IoU `0.359/0.367`, AP50-lite `0.310`, class-aware AP50-lite `0.108`.
+  - `local_learned_quality_head`: final/best IoU `0.374/0.374`, AP50-lite `0.263`, class-aware AP50-lite `0.082`, quality-aware AP50-lite at alpha=1 `0.306`.
+- Quality-head interpretation:
+  - The separate head validates the scoring diagnosis: for residual-anchor, the learned quality score improves ranking when used at inference (`ap50_q1 +0.064` vs the residual-anchor base AP, `2/2` wins).
+  - It also improves residual-anchor class-aware quality AP (`ap50_class_q1 +0.040` vs the residual-anchor base class-aware AP), but the gain is not paired-clean on both seeds.
+  - The quality head does not improve base AP without quality scoring, and it lowers residual-anchor final IoU. This means query-quality scoring helps ranking, but the current auxiliary loss still perturbs localization/semantic learning.
+  - For learned queries, the quality head does not beat the simpler `local_learned` AP reference.
+  - Next scoring step should keep the separate-head design but reduce interference: try lower quality-head weights, stop-gradient or late-start quality training, and/or use the quality score only for inference ranking after a base detector is trained.
 
 ### Step 5: RF-DETR Distillation Track
 

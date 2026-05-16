@@ -37,6 +37,7 @@ def test_detection_head_shapes() -> None:
     output = head(torch.randn(2, 5, 16))
     assert output["pred_logits"].shape == (2, 5, 4)
     assert output["pred_boxes"].shape == (2, 5, 4)
+    assert output["pred_quality_logits"].shape == (2, 5)
     assert float(output["pred_boxes"].detach().min()) >= 0.0
     assert float(output["pred_boxes"].detach().max()) <= 1.0
 
@@ -103,6 +104,7 @@ def test_tiny_anchor_region_detr_backward() -> None:
     outputs = model(images)
     assert outputs["pred_logits"].shape == (2, 5, 3)
     assert outputs["pred_boxes"].shape == (2, 5, 4)
+    assert outputs["pred_quality_logits"].shape == (2, 5)
     targets = [
         {
             "labels": torch.tensor([0]),
@@ -140,6 +142,7 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             outputs = model(images)
             assert outputs["pred_logits"].shape == (2, 4, 2)
             assert outputs["pred_boxes"].shape == (2, 4, 4)
+            assert outputs["pred_quality_logits"].shape == (2, 4)
             assert outputs["spatial_features"].ndim == 4
             if query_init == "mask_proposal":
                 assert outputs["query_mask_logits"].shape == outputs["spatial_features"].shape[0:1] + outputs[

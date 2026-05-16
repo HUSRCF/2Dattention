@@ -944,3 +944,34 @@ Matcher-aware interpretation:
 Updated scoring conclusion:
 
 > Matcher-aware quality classification is conceptually cleaner, but this implementation is not yet the right scoring fix. The next scoring path should avoid further weight sweeps and instead test either a separate quality/objectness head or a quality-modulated CE design where matched class CE is weighted by IoU while unmatched background CE remains standard.
+
+Separate query-quality head:
+
+The next scoring control decouples semantic class prediction from localization-quality scoring. `DetectionHead` now emits an independent `pred_quality_logits` tensor. The quality head is trained only for `*_quality_head` variants: Hungarian matched queries receive detached matched IoU targets, while unmatched queries receive target `0`. Standard DETR CE remains unchanged for class logits.
+
+Output artifacts:
+
+- Metrics: `results/det_real_quality_head_300step_2seed.csv`
+- Label map: `results/det_real_quality_head_label_map.csv`
+- Image-level split: `results/det_real_quality_head_split.csv`
+
+| Variant | Final IoU | Best IoU | AP50-lite | Class-aware AP50-lite | AP50 q^1 | Class AP50 q^1 | Quality-IoU corr | Quality AUC |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.266 | 0.135 | 0.266 | 0.135 | 0.000 | 0.500 |
+| `local_anchor_residual_query_quality_head` | 0.359 | 0.367 | 0.262 | 0.134 | 0.330 | 0.175 | 0.619 | 0.701 |
+| `local_learned` | 0.359 | 0.367 | 0.310 | 0.108 | 0.310 | 0.108 | 0.000 | 0.500 |
+| `local_learned_quality_head` | 0.374 | 0.374 | 0.263 | 0.082 | 0.306 | 0.094 | 0.559 | 0.666 |
+
+Paired against `local_anchor_residual_query`:
+
+- `local_anchor_residual_query_quality_head`: final IoU `-0.017`, best IoU `-0.010`, AP50-lite `-0.004`, class-aware AP50-lite `-0.001`, but quality-aware AP50 q^1 `+0.064` with `2/2` wins.
+- `local_learned`: AP50-lite `+0.044` with `2/2` wins, but final IoU `-0.016`.
+- `local_learned_quality_head`: final IoU `-0.001`, AP50-lite `-0.003`, quality-aware AP50 q^1 `+0.044` with `2/2` wins.
+
+Quality-head interpretation:
+
+- The separate quality head is the right direction for score calibration because it no longer forces IoU targets into class logits.
+- For residual-anchor, quality scores meaningfully improve ranking when used in inference scoring: `AP50 q^1` rises to `0.330`, above the residual-anchor base AP `0.266`.
+- However, the auxiliary quality training also lowers residual-anchor final IoU and does not improve the base class-probability AP. Therefore, this is a ranking signal, not yet a detector-level improvement.
+- For learned queries, the quality head does not beat the simpler `local_learned` AP reference.
+- The next scoring step should reduce interference rather than change the target semantics: lower quality-head weight, late-start quality training, or train the quality head after freezing a base detector.

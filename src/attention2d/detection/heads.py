@@ -33,17 +33,19 @@ class MLP(nn.Module):
 
 
 class DetectionHead(nn.Module):
-    """Class and box heads for object-query features."""
+    """Class, box, and query-quality heads for object-query features."""
 
     def __init__(self, dim: int, num_classes: int) -> None:
         super().__init__()
         self.class_head = nn.Linear(dim, num_classes + 1)
         self.box_head = MLP(dim, dim, 4, num_layers=3)
+        self.quality_head = nn.Linear(dim, 1)
 
     def forward(self, queries: Tensor) -> dict[str, Tensor]:
         return {
             "pred_logits": self.class_head(queries),
             "pred_boxes": self.box_head(queries).sigmoid(),
+            "pred_quality_logits": self.quality_head(queries).squeeze(-1),
         }
 
 

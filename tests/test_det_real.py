@@ -15,8 +15,11 @@ from scripts.train_det_real import (
     load_real_det_samples,
     matcher_aware_quality_classification_loss,
     objectness_logits,
+    objectness_ap50_for_image,
     oracle_query_mask_logits,
     pearson_corr,
+    quality_score_multipliers,
+    query_quality_head_loss,
     query_ranking_diagnostics,
     score_iou_calibration_loss,
 )
@@ -211,3 +214,67 @@ def test_real_det_matcher_aware_quality_loss_uses_class_logits_only() -> None:
     assert pred_logits.grad is not None
     assert float(pred_logits.grad.abs().sum()) > 0.0
     assert pred_boxes.grad is None
+
+
+def test_real_det_query_quality_head_loss_uses_quality_logits_only() -> None:
+    pred_logits = torch.tensor(
+        [[[2.0, -2.0, -1.0], [-2.0, 2.0, -1.0]]],
+        requires_grad=True,
+    )
+    pred_boxes = torch.tensor(
+        [[[0.50, 0.50, 0.40, 0.40], [0.10, 0.10, 0.10, 0.10]]],
+        requires_grad=True,
+    )
+    pred_quality_logits = torch.tensor([[0.0, 0.0]], requires_grad=True)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.40, 0.40]]),
+        }
+    ]
+    criterion = DetectionCriterion(num_classes=2)
+    loss = query_quality_head_loss(
+        {
+            "pred_logits": pred_logits,
+            "pred_boxes": pred_boxes,
+            "pred_quality_logits": pred_quality_logits,
+        },
+        targets,
+        criterion,
+    )
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert pred_quality_logits.grad is not None
+    assert float(pred_quality_logits.grad.abs().sum()) > 0.0
+    assert pred_logits.grad is None
+    assert pred_boxes.grad is None
+
+
+def test_real_det_quality_score_can_rescue_ap_ranking() -> None:
+    target_boxes = torch.tensor([[0.50, 0.50, 0.40, 0.40]])
+    pred_boxes = torch.tensor(
+        [
+            [0.10, 0.10, 0.10, 0.10],
+            [0.50, 0.50, 0.40, 0.40],
+        ]
+    )
+    pred_logits = torch.tensor(
+        [
+            [4.0, -2.0],
+            [2.0, -2.0],
+        ]
+    )
+    quality_logits = torch.tensor([-4.0, 4.0])
+
+    base_ap = objectness_ap50_for_image(pred_logits, pred_boxes, target_boxes)
+    quality_scores = quality_score_multipliers(quality_logits)
+    quality_ap = objectness_ap50_for_image(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        score_multiplier=quality_scores[1.0],
+    )
+
+    assert float(base_ap) < 0.6
+    assert float(quality_ap) > 0.99
