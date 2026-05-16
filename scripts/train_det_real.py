@@ -181,6 +181,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--score-iou-weight", type=float, default=0.5)
     parser.add_argument("--quality-cls-weight", type=float, default=1.0)
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
+    parser.add_argument("--quality-head-start-step", type=int, default=1)
+    parser.add_argument("--quality-head-warmup-steps", type=int, default=0)
+    parser.add_argument(
+        "--quality-head-only-after-start",
+        action="store_true",
+        help="After quality-head start, freeze the detector and train only the query quality head.",
+    )
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
@@ -292,7 +299,16 @@ def train_one_model(
     last_loss = 0.0
     examples_seen = 0
     start = time.perf_counter()
+    quality_only_enabled = False
     for step in range(1, args.steps + 1):
+        if (
+            model_name in QUALITY_HEAD_MODELS
+            and args.quality_head_only_after_start
+            and not quality_only_enabled
+            and step >= args.quality_head_start_step
+        ):
+            set_quality_head_only_trainable(model)
+            quality_only_enabled = True
         images, targets = next(loader_iter)
         images = images.to(device)
         targets = targets_to_device(targets, device)
@@ -303,6 +319,11 @@ def train_one_model(
         loss_score_iou = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_cls = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_head = outputs["pred_logits"].new_tensor(0.0)
+        quality_head_scale = quality_head_loss_scale(
+            step=step,
+            start_step=args.quality_head_start_step,
+            warmup_steps=args.quality_head_warmup_steps,
+        )
         if model_name in CALIBRATED_MODELS:
             loss_score_iou = score_iou_calibration_loss(outputs, targets)
             losses["loss_score_iou"] = loss_score_iou
@@ -310,7 +331,8 @@ def train_one_model(
         if model_name in QUALITY_HEAD_MODELS:
             loss_quality_head = query_quality_head_loss(outputs, targets, criterion)
             losses["loss_quality_head"] = loss_quality_head
-            losses["loss"] = losses["loss"] + args.quality_head_weight * loss_quality_head
+            scaled_quality_loss = args.quality_head_weight * quality_head_scale * loss_quality_head
+            losses["loss"] = scaled_quality_loss if quality_only_enabled else losses["loss"] + scaled_quality_loss
         if model_name in MATCH_QUALITY_MODELS:
             loss_quality_cls = matcher_aware_quality_classification_loss(
                 outputs,
@@ -351,6 +373,7 @@ def train_one_model(
                 "loss_score_iou": float(loss_score_iou.detach().item()),
                 "loss_quality_cls": float(loss_quality_cls.detach().item()),
                 "loss_quality_head": float(loss_quality_head.detach().item()),
+                "quality_head_scale": quality_head_scale,
                 "eval_iou": metrics["iou"],
                 "eval_recall50": metrics["recall50"],
                 "eval_ap50": metrics["ap50"],
@@ -508,6 +531,26 @@ def query_quality_head_loss(
             ).diag().clamp(0.0, 1.0)
         quality_targets[batch_idx, src_idx] = matched_iou
     return F.binary_cross_entropy_with_logits(pred_quality_logits, quality_targets)
+
+
+def quality_head_loss_scale(step: int, start_step: int, warmup_steps: int) -> float:
+    """Return the runtime multiplier for late-start quality-head training."""
+
+    if step < start_step:
+        return 0.0
+    if warmup_steps <= 0:
+        return 1.0
+    progress = (step - start_step + 1) / float(warmup_steps)
+    return max(0.0, min(1.0, progress))
+
+
+def set_quality_head_only_trainable(model: TinyAnchorRegionDETR) -> None:
+    """Freeze the detector and leave only the query quality head trainable."""
+
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    for parameter in model.head.quality_head.parameters():
+        parameter.requires_grad_(True)
 
 
 def objectness_logits(pred_logits: Tensor) -> Tensor:
@@ -1115,6 +1158,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "loss_score_iou",
         "loss_quality_cls",
         "loss_quality_head",
+        "quality_head_scale",
         "eval_iou",
         "eval_recall50",
         "eval_ap50",

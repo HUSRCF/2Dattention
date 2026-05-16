@@ -19,11 +19,14 @@ from scripts.train_det_real import (
     oracle_query_mask_logits,
     pearson_corr,
     quality_score_multipliers,
+    quality_head_loss_scale,
     query_quality_head_loss,
     query_ranking_diagnostics,
     score_iou_calibration_loss,
+    set_quality_head_only_trainable,
 )
 from attention2d.detection import DetectionCriterion
+from attention2d.detection import TinyAnchorRegionDETR
 
 
 def test_real_det_dataset_parses_xml_and_normalizes_boxes(tmp_path: Path) -> None:
@@ -278,3 +281,20 @@ def test_real_det_quality_score_can_rescue_ap_ranking() -> None:
 
     assert float(base_ap) < 0.6
     assert float(quality_ap) > 0.99
+
+
+def test_real_det_quality_head_loss_scale_supports_late_start_and_warmup() -> None:
+    assert quality_head_loss_scale(step=50, start_step=100, warmup_steps=0) == 0.0
+    assert quality_head_loss_scale(step=100, start_step=100, warmup_steps=0) == 1.0
+    assert quality_head_loss_scale(step=100, start_step=100, warmup_steps=50) == 0.02
+    assert quality_head_loss_scale(step=124, start_step=100, warmup_steps=50) == 0.5
+    assert quality_head_loss_scale(step=200, start_step=100, warmup_steps=50) == 1.0
+
+
+def test_real_det_set_quality_head_only_trainable_freezes_detector() -> None:
+    model = TinyAnchorRegionDETR(embed_dim=16, num_classes=2, num_queries=4)
+    set_quality_head_only_trainable(model)
+
+    trainable = [name for name, parameter in model.named_parameters() if parameter.requires_grad]
+    assert trainable
+    assert all(name.startswith("head.quality_head.") for name in trainable)

@@ -392,11 +392,32 @@ Interpretation:
   - `local_learned`: final/best IoU `0.359/0.367`, AP50-lite `0.310`, class-aware AP50-lite `0.108`.
   - `local_learned_quality_head`: final/best IoU `0.374/0.374`, AP50-lite `0.263`, class-aware AP50-lite `0.082`, quality-aware AP50-lite at alpha=1 `0.306`.
 - Quality-head interpretation:
-  - The separate head validates the scoring diagnosis: for residual-anchor, the learned quality score improves ranking when used at inference (`ap50_q1 +0.064` vs the residual-anchor base AP, `2/2` wins).
+  - The separate head supports the ranking-side diagnosis: for residual-anchor, the learned quality score improves ranking when used at inference (`ap50_q1 +0.064` vs the residual-anchor base AP, `2/2` wins).
   - It also improves residual-anchor class-aware quality AP (`ap50_class_q1 +0.040` vs the residual-anchor base class-aware AP), but the gain is not paired-clean on both seeds.
   - The quality head does not improve base AP without quality scoring, and it lowers residual-anchor final IoU. This means query-quality scoring helps ranking, but the current auxiliary loss still perturbs localization/semantic learning.
   - For learned queries, the quality head does not beat the simpler `local_learned` AP reference.
   - Next scoring step should keep the separate-head design but reduce interference: try lower quality-head weights, stop-gradient or late-start quality training, and/or use the quality score only for inference ranking after a base detector is trained.
+- Low-interference quality-head follow-up:
+  - Added `--quality-head-start-step`, `--quality-head-warmup-steps`, and `--quality-head-only-after-start`.
+  - Lower weight `0.5`, command output `results/det_real_quality_head_w05_300step_2seed.csv`:
+    - `local_anchor_residual_query_quality_head`: final/best IoU `0.362/0.367`, AP50-lite `0.266`, class-aware AP50-lite `0.090`, quality-aware AP50-lite at alpha=1 `0.335`.
+    - Interpretation: qAP signal remains, but residual-anchor IoU is still below base and class-aware scoring is worse.
+  - Lower weight `0.25`, command output `results/det_real_quality_head_w025_300step_2seed.csv`:
+    - `local_anchor_residual_query_quality_head`: final/best IoU `0.347/0.361`, AP50-lite `0.232`, class-aware AP50-lite `0.104`, quality-aware AP50-lite at alpha=1 `0.278`.
+    - Interpretation: too weak/unstable; it loses both IoU and most qAP benefit.
+  - Late-start + warmup, command output `results/det_real_quality_head_late151_warm50_300step_2seed.csv`:
+    - setting: `--quality-head-start-step 151 --quality-head-warmup-steps 50 --quality-head-weight 1.0`.
+    - `local_anchor_residual_query_quality_head`: final/best IoU `0.357/0.374`, AP50-lite `0.274`, class-aware AP50-lite `0.127`, quality-aware AP50-lite at alpha=1 `0.305`.
+    - Interpretation: less disruptive than always-on `weight=1.0`, but still does not preserve final IoU.
+  - Two-stage quality-only, command output `results/det_real_quality_head_twostage_start301_400step_2seed.csv`:
+    - setting: `--steps 400 --quality-head-start-step 301 --quality-head-only-after-start`; first 300 steps train detector normally, final 100 steps freeze detector and train only `head.quality_head`.
+    - `local_anchor_residual_query_quality_head`: final/best IoU `0.376/0.376`, AP50-lite `0.266`, class-aware AP50-lite `0.135`, quality-aware AP50-lite at alpha=1 `0.326`, quality-aware class AP50-lite at alpha=1 `0.167`.
+    - Interpretation: this is the best current quality-head path. It preserves residual-anchor localization and base AP while improving ranking when quality is used for inference scoring.
+- Updated scoring decision:
+  - Do not keep tuning quality targets inside class logits.
+  - Do not use always-on quality-head auxiliary as the main path because it perturbs detector training.
+  - Promote the two-stage quality head as the current scoring/ranking direction: train the detector first, then freeze it and learn query quality for score re-ranking.
+  - Next useful controls: train quality-only for longer after start, sweep alpha at eval, and test whether the same two-stage quality head improves oracle-proposal and mask-proposal variants.
 
 ### Step 5: RF-DETR Distillation Track
 

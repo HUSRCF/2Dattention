@@ -943,7 +943,7 @@ Matcher-aware interpretation:
 
 Updated scoring conclusion:
 
-> Matcher-aware quality classification is conceptually cleaner, but this implementation is not yet the right scoring fix. The next scoring path should avoid further weight sweeps and instead test either a separate quality/objectness head or a quality-modulated CE design where matched class CE is weighted by IoU while unmatched background CE remains standard.
+> Matcher-aware quality classification is conceptually cleaner than all-query max-IoU BCE, but this implementation is not the right scoring fix because it still mixes localization quality into class logits. The current path moves quality calibration into a separate query-level quality/objectness head.
 
 Separate query-quality head:
 
@@ -975,3 +975,39 @@ Quality-head interpretation:
 - However, the auxiliary quality training also lowers residual-anchor final IoU and does not improve the base class-probability AP. Therefore, this is a ranking signal, not yet a detector-level improvement.
 - For learned queries, the quality head does not beat the simpler `local_learned` AP reference.
 - The next scoring step should reduce interference rather than change the target semantics: lower quality-head weight, late-start quality training, or train the quality head after freezing a base detector.
+
+Low-interference quality-head controls:
+
+Three controls test whether the quality head can keep its ranking benefit without disturbing box/class learning.
+
+| Control | Residual-anchor final IoU | Residual-anchor AP50 | AP50 q^1 | Class AP50 q^1 | Interpretation |
+|---|---:|---:|---:|---:|---|
+| Base `local_anchor_residual_query` | 0.376 | 0.266 | 0.266 | 0.135 | No quality scoring. |
+| Always-on quality, weight 1.0 | 0.359 | 0.262 | 0.330 | 0.175 | Strong qAP signal, but hurts localization. |
+| Always-on quality, weight 0.5 | 0.362 | 0.266 | 0.335 | 0.105 | Keeps qAP, still hurts IoU and class-aware quality. |
+| Always-on quality, weight 0.25 | 0.347 | 0.232 | 0.278 | 0.113 | Too weak/unstable. |
+| Late start 151 + warmup 50 | 0.357 | 0.274 | 0.305 | 0.129 | Less disruptive, but still loses final IoU. |
+| Two-stage quality-only after step 300 | 0.376 | 0.266 | 0.326 | 0.167 | Preserves detector, improves ranking. |
+
+Two-stage setting:
+
+```text
+--steps 400
+--quality-head-start-step 301
+--quality-head-only-after-start
+```
+
+Output artifact:
+
+- `results/det_real_quality_head_twostage_start301_400step_2seed.csv`
+
+Two-stage interpretation:
+
+- Freezing the detector after 300 steps and training only `head.quality_head` removes the main interference observed in always-on quality training.
+- Residual-anchor box localization is preserved: final/best IoU remains `0.376/0.376`.
+- Quality-aware AP improves from base AP `0.266` to `0.326`; quality-aware class AP improves from `0.135` to `0.167`.
+- This supports a narrower and cleaner claim: query quality is useful as a post-detector ranking head, but coupling it into detector training from the start can hurt localization and semantic learning.
+
+Updated scoring conclusion:
+
+> The most reliable scoring path is now two-stage query quality: train the detector normally, freeze the detector, then train an independent query-quality head for score re-ranking. This preserves the residual-anchor detector while improving quality-aware AP. Always-on quality supervision remains useful diagnostically, but should not be the main training recipe.
