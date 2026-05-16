@@ -1120,3 +1120,32 @@ Interpretation:
 - For predicted proposal NMS, the quality-head variant modestly improves base AP50 (`0.248 -> 0.266`) and lifts post-hoc best-q AP50 to `0.291`.
 - For oracle proposal NMS, quality ranking is stronger: best-q AP50 reaches `0.325`, and class-aware AP50 improves from `0.108` to `0.138`.
 - This strengthens the proposal-query + quality-ranking direction. The remaining issue is calibration: post-hoc best-q is useful for diagnosis, but fixed-alpha or calibrated scoring is needed before this becomes a clean inference recipe.
+
+Fixed-alpha and temperature-calibrated scoring:
+
+The next change separates fixed scoring from post-hoc best-q diagnostics. `train_det_real.py` now accepts:
+
+```text
+--fixed-quality-alpha
+--quality-score-temperature
+```
+
+and writes fixed-score AP, alpha, temperature, fixed gap-to-IoU-reference, and fixed raw closure fields to the CSV.
+
+Temperature-calibrated control:
+
+- `results/det_real_proposal_quality_head_fixed_alpha2_temp2_400step_2seed.csv`
+- fixed `alpha=2.0`
+- temperature `2.0`
+
+| Variant | AP50 | Fixed AP50 | Post-hoc best-q AP50 | IoU-ref AP50 | Fixed raw gap closed |
+|---|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query_quality_head` | 0.266 | 0.283 | 0.291 | 0.364 | 0.210 |
+| `local_mask_proposal_oracle_nms_query_quality_head` | 0.259 | 0.312 | 0.325 | 0.372 | 0.485 |
+
+Interpretation:
+
+- Fixed-alpha scoring is now a first-class metric and should be used for formal comparisons instead of post-hoc best-q.
+- Temperature `2.0` does not improve the oracle-proposal path over the untemperatured `q^2` score from the same run (`0.312` fixed-temp vs `0.325` q^2/best-q).
+- For predicted proposals, temp-scaled fixed scoring is useful but still trails the best fixed alpha in the sweep.
+- Current practical recommendation: report fixed `q^2` with temperature `1.0` as the pre-registered quality score unless a separate calibration split justifies changing alpha/temperature.

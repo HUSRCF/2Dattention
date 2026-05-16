@@ -204,6 +204,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--quality-head-start-step", type=int, default=1)
     parser.add_argument("--quality-head-warmup-steps", type=int, default=0)
     parser.add_argument(
+        "--fixed-quality-alpha",
+        type=float,
+        default=2.0,
+        help="Pre-registered quality-score exponent used for fixed, non-post-hoc AP reporting.",
+    )
+    parser.add_argument(
+        "--quality-score-temperature",
+        type=float,
+        default=1.0,
+        help="Temperature applied to quality logits before sigmoid for fixed/calibrated scoring.",
+    )
+    parser.add_argument(
         "--quality-head-only-after-start",
         action="store_true",
         help="After quality-head start, freeze the detector and train only the query quality head.",
@@ -228,6 +240,10 @@ def main() -> None:
         raise ValueError("--max-objects must be >= 1")
     if args.max_objects > args.num_queries:
         raise ValueError("--max-objects must be <= --num-queries")
+    if args.fixed_quality_alpha < 0:
+        raise ValueError("--fixed-quality-alpha must be >= 0")
+    if args.quality_score_temperature <= 0:
+        raise ValueError("--quality-score-temperature must be > 0")
     device = get_best_device()
     all_samples = load_real_det_samples(args.anno_root, args.image_root)
     label_to_id = build_label_map(all_samples, top_classes=args.top_classes)
@@ -381,6 +397,8 @@ def train_one_model(
                 device,
                 batches=args.eval_batches,
                 use_quality_scores=model_name in QUALITY_HEAD_MODELS,
+                fixed_quality_alpha=args.fixed_quality_alpha,
+                quality_score_temperature=args.quality_score_temperature,
             )
             if metrics["iou"] > best_iou:
                 best_iou = metrics["iou"]
@@ -404,6 +422,9 @@ def train_one_model(
                 "eval_ap50_q1": metrics["ap50_q1"],
                 "eval_ap50_q2": metrics["ap50_q2"],
                 "eval_ap50_q4": metrics["ap50_q4"],
+                "eval_ap50_q_fixed": metrics["ap50_q_fixed"],
+                "eval_ap50_q_fixed_alpha": metrics["ap50_q_fixed_alpha"],
+                "eval_ap50_q_fixed_temperature": metrics["ap50_q_fixed_temperature"],
                 "eval_ap50_q_best": metrics["ap50_q_best"],
                 "eval_ap50_q_best_alpha": metrics["ap50_q_best_alpha"],
                 "eval_ap50_class_q025": metrics["ap50_class_q025"],
@@ -411,14 +432,19 @@ def train_one_model(
                 "eval_ap50_class_q1": metrics["ap50_class_q1"],
                 "eval_ap50_class_q2": metrics["ap50_class_q2"],
                 "eval_ap50_class_q4": metrics["ap50_class_q4"],
+                "eval_ap50_class_q_fixed": metrics["ap50_class_q_fixed"],
                 "eval_ap50_class_q_best": metrics["ap50_class_q_best"],
                 "eval_ap50_class_q_best_alpha": metrics["ap50_class_q_best_alpha"],
                 "eval_ap50_oracle_iou": metrics["ap50_oracle_iou"],
                 "eval_ap50_class_oracle_iou": metrics["ap50_class_oracle_iou"],
                 "eval_ap50_oracle_gap": metrics["ap50_oracle_gap"],
+                "eval_ap50_q_fixed_gap_to_oracle": metrics["ap50_q_fixed_gap_to_oracle"],
+                "eval_ap50_q_fixed_oracle_closure": metrics["ap50_q_fixed_oracle_closure"],
                 "eval_ap50_q_best_gap_to_oracle": metrics["ap50_q_best_gap_to_oracle"],
                 "eval_ap50_q_best_oracle_closure": metrics["ap50_q_best_oracle_closure"],
                 "eval_ap50_class_oracle_gap": metrics["ap50_class_oracle_gap"],
+                "eval_ap50_class_q_fixed_gap_to_oracle": metrics["ap50_class_q_fixed_gap_to_oracle"],
+                "eval_ap50_class_q_fixed_oracle_closure": metrics["ap50_class_q_fixed_oracle_closure"],
                 "eval_ap50_class_q_best_gap_to_oracle": metrics["ap50_class_q_best_gap_to_oracle"],
                 "eval_ap50_class_q_best_oracle_closure": metrics["ap50_class_q_best_oracle_closure"],
                 "eval_mask_iou": metrics["mask_iou"],
@@ -609,6 +635,8 @@ def evaluate_real(
     device: torch.device,
     batches: int,
     use_quality_scores: bool = False,
+    fixed_quality_alpha: float = 2.0,
+    quality_score_temperature: float = 1.0,
 ) -> dict[str, float]:
     model.eval()
     ious = []
@@ -620,11 +648,13 @@ def evaluate_real(
     aps_q1 = []
     aps_q2 = []
     aps_q4 = []
+    aps_q_fixed = []
     aps_class_q025 = []
     aps_class_q05 = []
     aps_class_q1 = []
     aps_class_q2 = []
     aps_class_q4 = []
+    aps_class_q_fixed = []
     aps_oracle_iou = []
     aps_class_oracle_iou = []
     matched_assignment_class_correct = []
@@ -707,6 +737,13 @@ def evaluate_real(
                 if use_quality_scores and "pred_quality_logits" in outputs
                 else None,
             )
+            fixed_quality_scores = fixed_quality_score_multiplier(
+                outputs["pred_quality_logits"][sample_idx]
+                if use_quality_scores and "pred_quality_logits" in outputs
+                else None,
+                alpha=fixed_quality_alpha,
+                temperature=quality_score_temperature,
+            )
             oracle_iou_scores = oracle_iou_score_multiplier(
                 outputs["pred_boxes"][sample_idx],
                 target["boxes"],
@@ -749,6 +786,14 @@ def evaluate_real(
                     outputs["pred_boxes"][sample_idx],
                     target["boxes"],
                     score_multiplier=quality_scores[4.0],
+                ).cpu()
+            )
+            aps_q_fixed.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=fixed_quality_scores,
                 ).cpu()
             )
             aps_class_q025.append(
@@ -794,6 +839,15 @@ def evaluate_real(
                     target["boxes"],
                     target["labels"],
                     score_multiplier=quality_scores[4.0],
+                ).cpu()
+            )
+            aps_class_q_fixed.append(
+                class_aware_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    target["labels"],
+                    score_multiplier=fixed_quality_scores,
                 ).cpu()
             )
             aps_oracle_iou.append(
@@ -842,6 +896,7 @@ def evaluate_real(
         2.0: float(torch.stack(aps_q2).mean().item()) if aps_q2 else 0.0,
         4.0: float(torch.stack(aps_q4).mean().item()) if aps_q4 else 0.0,
     }
+    ap50_q_fixed = float(torch.stack(aps_q_fixed).mean().item()) if aps_q_fixed else 0.0
     ap50_class_q_by_alpha = {
         0.25: float(torch.stack(aps_class_q025).mean().item()) if aps_class_q025 else 0.0,
         0.5: float(torch.stack(aps_class_q05).mean().item()) if aps_class_q05 else 0.0,
@@ -849,6 +904,7 @@ def evaluate_real(
         2.0: float(torch.stack(aps_class_q2).mean().item()) if aps_class_q2 else 0.0,
         4.0: float(torch.stack(aps_class_q4).mean().item()) if aps_class_q4 else 0.0,
     }
+    ap50_class_q_fixed = float(torch.stack(aps_class_q_fixed).mean().item()) if aps_class_q_fixed else 0.0
     ap50_oracle_iou = float(torch.stack(aps_oracle_iou).mean().item()) if aps_oracle_iou else 0.0
     ap50_class_oracle_iou = (
         float(torch.stack(aps_class_oracle_iou).mean().item()) if aps_class_oracle_iou else 0.0
@@ -868,6 +924,9 @@ def evaluate_real(
         "ap50_q1": ap50_q_by_alpha[1.0],
         "ap50_q2": ap50_q_by_alpha[2.0],
         "ap50_q4": ap50_q_by_alpha[4.0],
+        "ap50_q_fixed": ap50_q_fixed,
+        "ap50_q_fixed_alpha": fixed_quality_alpha if use_quality_scores else 0.0,
+        "ap50_q_fixed_temperature": quality_score_temperature if use_quality_scores else 0.0,
         "ap50_q_best": best_q_ap50,
         "ap50_q_best_alpha": best_q_alpha,
         "ap50_class_q025": ap50_class_q_by_alpha[0.25],
@@ -875,14 +934,23 @@ def evaluate_real(
         "ap50_class_q1": ap50_class_q_by_alpha[1.0],
         "ap50_class_q2": ap50_class_q_by_alpha[2.0],
         "ap50_class_q4": ap50_class_q_by_alpha[4.0],
+        "ap50_class_q_fixed": ap50_class_q_fixed,
         "ap50_class_q_best": best_class_q_ap50,
         "ap50_class_q_best_alpha": best_class_q_alpha,
         "ap50_oracle_iou": ap50_oracle_iou,
         "ap50_class_oracle_iou": ap50_class_oracle_iou,
         "ap50_oracle_gap": ap50_oracle_iou - ap50,
+        "ap50_q_fixed_gap_to_oracle": ap50_oracle_iou - ap50_q_fixed,
+        "ap50_q_fixed_oracle_closure": ranking_gap_closure(ap50, ap50_q_fixed, ap50_oracle_iou),
         "ap50_q_best_gap_to_oracle": ap50_oracle_iou - best_q_ap50,
         "ap50_q_best_oracle_closure": ranking_gap_closure(ap50, best_q_ap50, ap50_oracle_iou),
         "ap50_class_oracle_gap": ap50_class_oracle_iou - ap50_class,
+        "ap50_class_q_fixed_gap_to_oracle": ap50_class_oracle_iou - ap50_class_q_fixed,
+        "ap50_class_q_fixed_oracle_closure": ranking_gap_closure(
+            ap50_class,
+            ap50_class_q_fixed,
+            ap50_class_oracle_iou,
+        ),
         "ap50_class_q_best_gap_to_oracle": ap50_class_oracle_iou - best_class_q_ap50,
         "ap50_class_q_best_oracle_closure": ranking_gap_closure(
             ap50_class,
@@ -913,6 +981,23 @@ def quality_score_multipliers(quality_logits: Tensor | None) -> dict[float, Tens
         return {alpha: None for alpha in QUALITY_SCORE_ALPHAS}
     quality = quality_logits.sigmoid().clamp(0.0, 1.0)
     return {alpha: quality.pow(alpha) for alpha in QUALITY_SCORE_ALPHAS}
+
+
+def fixed_quality_score_multiplier(
+    quality_logits: Tensor | None,
+    alpha: float,
+    temperature: float,
+) -> Tensor | None:
+    """Return pre-registered temperature-scaled quality score multipliers."""
+
+    if quality_logits is None:
+        return None
+    if temperature <= 0:
+        raise ValueError("temperature must be > 0")
+    if alpha < 0:
+        raise ValueError("alpha must be >= 0")
+    quality = (quality_logits / temperature).sigmoid().clamp(0.0, 1.0)
+    return quality.pow(alpha)
 
 
 def ranking_gap_closure(base_score: float, quality_score: float, oracle_score: float) -> float:
@@ -1346,6 +1431,9 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_ap50_q1",
         "eval_ap50_q2",
         "eval_ap50_q4",
+        "eval_ap50_q_fixed",
+        "eval_ap50_q_fixed_alpha",
+        "eval_ap50_q_fixed_temperature",
         "eval_ap50_q_best",
         "eval_ap50_q_best_alpha",
         "eval_ap50_class_q025",
@@ -1353,14 +1441,19 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_ap50_class_q1",
         "eval_ap50_class_q2",
         "eval_ap50_class_q4",
+        "eval_ap50_class_q_fixed",
         "eval_ap50_class_q_best",
         "eval_ap50_class_q_best_alpha",
         "eval_ap50_oracle_iou",
         "eval_ap50_class_oracle_iou",
         "eval_ap50_oracle_gap",
+        "eval_ap50_q_fixed_gap_to_oracle",
+        "eval_ap50_q_fixed_oracle_closure",
         "eval_ap50_q_best_gap_to_oracle",
         "eval_ap50_q_best_oracle_closure",
         "eval_ap50_class_oracle_gap",
+        "eval_ap50_class_q_fixed_gap_to_oracle",
+        "eval_ap50_class_q_fixed_oracle_closure",
         "eval_ap50_class_q_best_gap_to_oracle",
         "eval_ap50_class_q_best_oracle_closure",
         "eval_mask_iou",
@@ -1406,12 +1499,17 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
         "ap50_q025_mean,ap50_q05_mean,ap50_q1_mean,ap50_q2_mean,ap50_q4_mean,"
+        "ap50_q_fixed_mean,ap50_q_fixed_alpha_mean,ap50_q_fixed_temperature_mean,"
         "ap50_q_best_mean,ap50_q_selected_alpha_mean,"
         "ap50_class_q025_mean,ap50_class_q05_mean,ap50_class_q1_mean,ap50_class_q2_mean,"
-        "ap50_class_q4_mean,ap50_class_q_best_mean,ap50_class_q_selected_alpha_mean,"
+        "ap50_class_q4_mean,ap50_class_q_fixed_mean,ap50_class_q_best_mean,"
+        "ap50_class_q_selected_alpha_mean,"
         "ap50_iou_reference_mean,ap50_class_iou_reference_mean,ap50_iou_reference_gap_mean,"
+        "ap50_q_fixed_gap_to_iou_reference_mean,ap50_q_fixed_raw_iou_reference_closure_mean,"
         "ap50_q_best_gap_to_iou_reference_mean,ap50_q_best_raw_iou_reference_closure_mean,"
-        "ap50_class_iou_reference_gap_mean,ap50_class_q_best_gap_to_iou_reference_mean,"
+        "ap50_class_iou_reference_gap_mean,ap50_class_q_fixed_gap_to_iou_reference_mean,"
+        "ap50_class_q_fixed_raw_iou_reference_closure_mean,"
+        "ap50_class_q_best_gap_to_iou_reference_mean,"
         "ap50_class_q_best_raw_iou_reference_closure_mean,"
         "matched_assignment_class_acc_mean,tp50_class_acc_mean,"
         "score_iou_corr_mean,objectness_auc_mean,quality_iou_corr_mean,quality_auc_mean,"
@@ -1434,6 +1532,9 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_ap50_q1']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q2']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q4']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_fixed']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_fixed_alpha']) for row in model_rows]):.2f},"
+            f"{mean([float(row['eval_ap50_q_fixed_temperature']) for row in model_rows]):.2f},"
             f"{mean([float(row['eval_ap50_q_best']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q_best_alpha']) for row in model_rows]):.2f},"
             f"{mean([float(row['eval_ap50_class_q025']) for row in model_rows]):.3f},"
@@ -1441,14 +1542,19 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_ap50_class_q1']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q2']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q4']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_fixed']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q_best']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q_best_alpha']) for row in model_rows]):.2f},"
             f"{mean([float(row['eval_ap50_oracle_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_oracle_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_oracle_gap']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_fixed_gap_to_oracle']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_q_fixed_oracle_closure']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q_best_gap_to_oracle']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q_best_oracle_closure']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_oracle_gap']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_fixed_gap_to_oracle']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap50_class_q_fixed_oracle_closure']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q_best_gap_to_oracle']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class_q_best_oracle_closure']) for row in model_rows]):.3f},"
             f"{mean([float(row['matched_assignment_class_acc']) for row in model_rows]):.3f},"
@@ -1481,8 +1587,10 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
     print(
         "paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,"
         "ap50_delta_mean,ap50_wins,ap50_class_delta_mean,ap50_class_wins,"
-        "ap50_q1_delta_mean,ap50_q1_wins,ap50_q_best_delta_mean,ap50_q_best_wins,"
+        "ap50_q1_delta_mean,ap50_q1_wins,ap50_q_fixed_delta_mean,ap50_q_fixed_wins,"
+        "ap50_q_best_delta_mean,ap50_q_best_wins,"
         "ap50_class_q1_delta_mean,ap50_class_q1_wins,"
+        "ap50_class_q_fixed_delta_mean,ap50_class_q_fixed_wins,"
         "ap50_class_q_best_delta_mean,ap50_class_q_best_wins,"
         "ap50_oracle_iou_delta_mean,ap50_oracle_iou_wins,"
         "ap50_class_oracle_iou_delta_mean,ap50_class_oracle_iou_wins,"
@@ -1497,8 +1605,10 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
         ap_deltas = []
         ap_class_deltas = []
         ap_q1_deltas = []
+        ap_q_fixed_deltas = []
         ap_q_best_deltas = []
         ap_class_q1_deltas = []
+        ap_class_q_fixed_deltas = []
         ap_class_q_best_deltas = []
         ap_oracle_deltas = []
         ap_class_oracle_deltas = []
@@ -1514,8 +1624,12 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
             ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
             ap_class_deltas.append(float(cur["eval_ap50_class"]) - float(ref["eval_ap50_class"]))
             ap_q1_deltas.append(float(cur["eval_ap50_q1"]) - float(ref["eval_ap50_q1"]))
+            ap_q_fixed_deltas.append(float(cur["eval_ap50_q_fixed"]) - float(ref["eval_ap50_q_fixed"]))
             ap_q_best_deltas.append(float(cur["eval_ap50_q_best"]) - float(ref["eval_ap50_q_best"]))
             ap_class_q1_deltas.append(float(cur["eval_ap50_class_q1"]) - float(ref["eval_ap50_class_q1"]))
+            ap_class_q_fixed_deltas.append(
+                float(cur["eval_ap50_class_q_fixed"]) - float(ref["eval_ap50_class_q_fixed"])
+            )
             ap_class_q_best_deltas.append(
                 float(cur["eval_ap50_class_q_best"]) - float(ref["eval_ap50_class_q_best"])
             )
@@ -1539,8 +1653,10 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
                 f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)},"
                 f"{mean(ap_class_deltas):.3f},{wins_higher(ap_class_deltas)},"
                 f"{mean(ap_q1_deltas):.3f},{wins_higher(ap_q1_deltas)},"
+                f"{mean(ap_q_fixed_deltas):.3f},{wins_higher(ap_q_fixed_deltas)},"
                 f"{mean(ap_q_best_deltas):.3f},{wins_higher(ap_q_best_deltas)},"
                 f"{mean(ap_class_q1_deltas):.3f},{wins_higher(ap_class_q1_deltas)},"
+                f"{mean(ap_class_q_fixed_deltas):.3f},{wins_higher(ap_class_q_fixed_deltas)},"
                 f"{mean(ap_class_q_best_deltas):.3f},{wins_higher(ap_class_q_best_deltas)},"
                 f"{mean(ap_oracle_deltas):.3f},{wins_higher(ap_oracle_deltas)},"
                 f"{mean(ap_class_oracle_deltas):.3f},{wins_higher(ap_class_oracle_deltas)},"

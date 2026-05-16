@@ -12,6 +12,7 @@ from scripts.train_det_real import (
     det_collate,
     duplicate_predictions_per_gt,
     filter_samples,
+    fixed_quality_score_multiplier,
     load_real_det_samples,
     matcher_aware_quality_classification_loss,
     objectness_logits,
@@ -292,6 +293,19 @@ def test_real_det_quality_score_multipliers_include_calibration_sweep() -> None:
     assert set(scores) == {0.25, 0.5, 1.0, 2.0, 4.0}
     assert torch.allclose(scores[1.0], torch.tensor([0.5]))
     assert float(scores[0.25][0]) > float(scores[1.0][0]) > float(scores[4.0][0])
+
+
+def test_real_det_fixed_quality_score_multiplier_supports_temperature() -> None:
+    quality_logits = torch.tensor([2.0])
+    standard = fixed_quality_score_multiplier(quality_logits, alpha=2.0, temperature=1.0)
+    softened = fixed_quality_score_multiplier(quality_logits, alpha=2.0, temperature=2.0)
+    identity = fixed_quality_score_multiplier(quality_logits, alpha=0.0, temperature=1.0)
+
+    assert standard is not None
+    assert softened is not None
+    assert identity is not None
+    assert float(standard[0]) > float(softened[0])
+    assert torch.allclose(identity, torch.ones_like(identity))
 
 
 def test_real_det_ranking_gap_closure_tracks_oracle_headroom() -> None:

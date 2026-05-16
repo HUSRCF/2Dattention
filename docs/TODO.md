@@ -474,6 +474,21 @@ Interpretation:
     - For predicted proposal NMS, quality head gives a modest base AP improvement (`0.248 -> 0.266`) and a larger post-hoc quality-ranked AP (`0.291`).
     - For oracle proposal NMS, quality ranking is stronger: best-q AP reaches `0.325`, and class-aware AP improves from `0.108` to `0.138`.
     - The strongest current real-mini direction is now proposal query + two-stage quality ranking, but the best-q result remains post-hoc diagnostic. Fixed-alpha or calibrated scoring is needed before treating it as a finalized inference recipe.
+- Fixed-alpha / calibrated scoring follow-up:
+  - Added CLI fields:
+    - `--fixed-quality-alpha`, default `2.0`;
+    - `--quality-score-temperature`, default `1.0`.
+  - CSV/summary now report fixed quality AP, fixed alpha, temperature, fixed gap-to-IoU-reference, and fixed raw closure separately from post-hoc `best-q`.
+  - Temperature-calibrated control:
+    - command output: `results/det_real_proposal_quality_head_fixed_alpha2_temp2_400step_2seed.csv`.
+    - setting: fixed `alpha=2.0`, temperature `2.0`.
+    - `local_mask_proposal_nms_query_quality_head`: base AP50 `0.266`, fixed AP50 `0.283`, post-hoc best-q AP50 `0.291`, IoU-reference AP50 `0.364`.
+    - `local_mask_proposal_oracle_nms_query_quality_head`: base AP50 `0.259`, fixed AP50 `0.312`, post-hoc best-q AP50 `0.325`, IoU-reference AP50 `0.372`.
+  - Interpretation:
+    - Fixed-alpha scoring is now separated from post-hoc best-q and should be used for formal comparisons.
+    - Temperature `2.0` does not improve over the untemperatured `q^2` score for oracle proposals (`0.312` fixed-temp vs `0.325` q^2/best-q).
+    - For predicted proposals, temp-scaled fixed score is useful but not better than the best fixed alpha already in the sweep (`q^1`/best-q).
+    - Current recommendation: report fixed `q^2` with temperature `1.0` for proposal-quality ranking unless a calibration split, not eval post-hoc selection, justifies another setting.
 
 ### Step 5: RF-DETR Distillation Track
 
