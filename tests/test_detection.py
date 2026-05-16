@@ -121,7 +121,15 @@ def test_tiny_anchor_region_detr_backward() -> None:
 def test_tiny_anchor_region_detr_feature_query_modes() -> None:
     images = torch.randn(2, 3, 32, 32)
     for feature_mode in ("local", "anchor"):
-        for query_init in ("learned", "anchor", "anchor_detached", "mask_proposal", "mask_proposal_nms"):
+        for query_init in (
+            "learned",
+            "anchor",
+            "anchor_detached",
+            "anchor_residual",
+            "anchor_residual_detached",
+            "mask_proposal",
+            "mask_proposal_nms",
+        ):
             model = TinyAnchorRegionDETR(
                 embed_dim=16,
                 num_classes=1,
@@ -174,6 +182,76 @@ def test_tiny_anchor_region_detr_mask_proposal_query_init() -> None:
     assert model.query_mask_head.weight.grad is not None
     assert torch.isfinite(model.query_mask_head.weight.grad).all()
     assert float(model.query_mask_head.weight.grad.detach().abs().sum()) > 0.0
+
+
+def test_tiny_anchor_region_detr_anchor_residual_query_init() -> None:
+    torch.manual_seed(17)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor_residual",
+        query_mask_gate_init=0.01,
+    )
+    assert torch.allclose(model.anchor_query_gate.detach(), torch.tensor(0.01))
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    losses = criterion(outputs, targets)
+    losses["loss"].backward()
+    assert model.anchor_query_gate.grad is not None
+    assert torch.isfinite(model.anchor_query_gate.grad).all()
+    assert float(model.anchor_query_gate.grad.detach().abs().sum()) > 0.0
+
+
+def test_tiny_anchor_region_detr_oracle_mask_proposal_query_init() -> None:
+    torch.manual_seed(19)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="mask_proposal_oracle_nms",
+    )
+    images = torch.randn(2, 3, 32, 32)
+    with torch.no_grad():
+        feature_shape = model.coord_encoding(model.patch_embed(images)).shape[-2:]
+    oracle_logits = torch.full((2, feature_shape[0], feature_shape[1]), -8.0)
+    oracle_logits[:, 2:5, 2:5] = 8.0
+    outputs = model(images, query_mask_logits_override=oracle_logits)
+
+    assert outputs["pred_logits"].shape == (2, 4, 2)
+    assert torch.allclose(outputs["query_mask_logits"], oracle_logits)
+    assert outputs["query_proposal_indices"].shape == (2, 4)
+
+
+def test_tiny_anchor_region_detr_oracle_requires_mask_override() -> None:
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="mask_proposal_oracle_nms",
+    )
+    images = torch.randn(2, 3, 32, 32)
+
+    try:
+        model(images)
+    except ValueError as exc:
+        assert "query_mask_logits_override" in str(exc)
+        return
+    raise AssertionError("expected oracle query init to require mask override")
 
 
 def test_tiny_anchor_region_detr_mask_proposal_nms_diversifies_indices() -> None:

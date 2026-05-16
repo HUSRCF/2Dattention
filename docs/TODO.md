@@ -321,6 +321,24 @@ Interpretation:
   - add a stronger decoder or iterative box refinement,
   - improve class/objectness training before scaling beyond this subset,
   - only then revisit longer/larger DET or RF-DETR distillation.
+- P0 follow-up: oracle proposal and gated residual anchor controls:
+  - command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_anchor local_anchor_residual_query local_anchor_residual_detached_query local_mask_proposal_nms_query local_mask_proposal_oracle_nms_query --reference-model local_learned --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --out results/det_real_p0_oracle_anchor_residual_300step_2seed.csv --label-map-out results/det_real_p0_oracle_anchor_residual_label_map.csv --split-out results/det_real_p0_oracle_anchor_residual_split.csv --seeds 2`
+  - `local_learned`: final/best IoU `0.359/0.367`, recall50 `0.321`, objectness AP50-lite `0.310`, class-aware AP50-lite `0.108`.
+  - `local_anchor`: final/best IoU `0.359/0.367`, recall50 `0.312`, objectness AP50-lite `0.236`, class-aware AP50-lite `0.068`.
+  - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, recall50 `0.371`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.135`.
+  - `local_anchor_residual_detached_query`: final/best IoU `0.367/0.378`, recall50 `0.320`, objectness AP50-lite `0.256`, class-aware AP50-lite `0.076`.
+  - `local_mask_proposal_nms_query`: final/best IoU `0.357/0.366`, recall50 `0.302`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.093`, mask IoU/Dice `0.458/0.604`.
+  - `local_mask_proposal_oracle_nms_query`: final/best IoU `0.399/0.421`, recall50 `0.340`, objectness AP50-lite `0.259`, class-aware AP50-lite `0.138`, oracle mask IoU/Dice `1.000/1.000`.
+- P0 interpretation:
+  - In this mini DET setting, oracle NMS proposal queries improve box coverage substantially over `local_learned`: final IoU `+0.040`, best IoU `+0.054`, best-IoU wins `2/2`. This indicates foreground-union proposal quality/extraction is a real coverage bottleneck for the predicted-mask proposal branch.
+  - Oracle proposal still does not improve objectness AP50-lite, and its score-IoU correlation/objectness AUC remain weak. Therefore query scoring/calibration is a second bottleneck even when proposal locations are idealized.
+  - `local_anchor_residual_query` is stronger than replacement-style `local_anchor` on final IoU, recall50, and class-aware AP50-lite. Soft residual anchor bias is a better real-DET direction than replacing learned queries with anchor queries.
+  - `local_anchor_residual_query` also beats the detached residual version on final IoU and class-aware AP, so differentiable anchor-feature coupling still matters.
+- Updated next controls:
+  - prioritize `local_anchor_residual_query` as the real-DET anchor path, not `local_anchor`;
+  - add score-IoU/objectness calibration loss for residual-anchor and oracle-proposal variants;
+  - improve predicted proposal quality toward oracle proposal, then retest whether AP follows;
+  - add oracle proposal with learned scoring/box refinement decoupled from oracle query locations.
 
 ### Step 5: RF-DETR Distillation Track
 

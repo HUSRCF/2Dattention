@@ -13,6 +13,7 @@ from scripts.train_det_real import (
     duplicate_predictions_per_gt,
     filter_samples,
     load_real_det_samples,
+    oracle_query_mask_logits,
     pearson_corr,
     query_ranking_diagnostics,
 )
@@ -111,3 +112,28 @@ def test_real_det_ranking_diagnostics_handle_empty_targets() -> None:
     assert diagnostics["tp50_class_correct"].numel() == 0
     assert float(diagnostics["topk_fp_rate"]) == 0.0
     assert float(diagnostics["duplicate_per_gt"]) == 0.0
+
+
+def test_real_det_oracle_query_mask_logits_from_targets() -> None:
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    logits = oracle_query_mask_logits(
+        targets=targets,
+        feature_height=8,
+        feature_width=8,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+
+    assert logits.shape == (2, 8, 8)
+    assert float(logits.max()) == 8.0
+    assert float(logits.min()) == -8.0
+    assert int((logits[0] > 0).sum().item()) > int((logits[1] > 0).sum().item())

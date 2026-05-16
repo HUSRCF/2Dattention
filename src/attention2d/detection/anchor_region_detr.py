@@ -29,10 +29,20 @@ class TinyAnchorRegionDETR(nn.Module):
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
             raise ValueError("feature_mode must be 'local' or 'anchor'")
-        if query_init not in {"learned", "anchor", "anchor_detached", "mask_proposal", "mask_proposal_nms"}:
+        if query_init not in {
+            "learned",
+            "anchor",
+            "anchor_detached",
+            "anchor_residual",
+            "anchor_residual_detached",
+            "mask_proposal",
+            "mask_proposal_nms",
+            "mask_proposal_oracle",
+            "mask_proposal_oracle_nms",
+        }:
             raise ValueError(
-                "query_init must be 'learned', 'anchor', 'anchor_detached', 'mask_proposal', or "
-                "'mask_proposal_nms'"
+                "query_init must be a supported learned, anchor, residual-anchor, "
+                "mask-proposal, or oracle mask-proposal mode"
             )
         if query_refine not in {"none", "mask_pool", "mask_bias"}:
             raise ValueError("query_refine must be 'none', 'mask_pool', or 'mask_bias'")
@@ -48,6 +58,8 @@ class TinyAnchorRegionDETR(nn.Module):
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
         if query_init in {"mask_proposal", "mask_proposal_nms"} or query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
+        if query_init in {"anchor_residual", "anchor_residual_detached"}:
+            self.anchor_query_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
@@ -60,7 +72,11 @@ class TinyAnchorRegionDETR(nn.Module):
 
         self.query_mask_gate_scale.fill_(float(scale))
 
-    def forward(self, x: Tensor) -> dict[str, Tensor | list[Tensor]]:
+    def forward(
+        self,
+        x: Tensor,
+        query_mask_logits_override: Tensor | None = None,
+    ) -> dict[str, Tensor | list[Tensor]]:
         state = self.coord_encoding(self.patch_embed(x))
         memories = [state]
         for block in self.local_blocks:
@@ -78,9 +94,24 @@ class TinyAnchorRegionDETR(nn.Module):
         spatial_tokens = spatial_state.flatten(2).transpose(1, 2)
         query_mask_logits = None
         query_proposal_indices = None
-        if self.query_init in {"mask_proposal", "mask_proposal_nms"}:
-            query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
-            proposal_suppression_radius = 2 if self.query_init == "mask_proposal_nms" else 0
+        if self.query_init in {
+            "mask_proposal",
+            "mask_proposal_nms",
+            "mask_proposal_oracle",
+            "mask_proposal_oracle_nms",
+        }:
+            if self.query_init in {"mask_proposal_oracle", "mask_proposal_oracle_nms"}:
+                if query_mask_logits_override is None:
+                    raise ValueError("oracle mask-proposal query init requires query_mask_logits_override")
+                query_mask_logits = query_mask_logits_override.to(
+                    device=spatial_state.device,
+                    dtype=spatial_state.dtype,
+                )
+            else:
+                query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
+            proposal_suppression_radius = (
+                2 if self.query_init in {"mask_proposal_nms", "mask_proposal_oracle_nms"} else 0
+            )
             queries, query_proposal_indices = mask_proposal_queries_from_state(
                 spatial_state,
                 query_mask_logits,
@@ -91,6 +122,16 @@ class TinyAnchorRegionDETR(nn.Module):
             queries = anchor_queries_from_state(spatial_state, self.num_queries)
         elif self.query_init == "anchor_detached":
             queries = anchor_queries_from_state(spatial_state.detach(), self.num_queries)
+        elif self.query_init == "anchor_residual":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
+                spatial_state,
+                self.num_queries,
+            )
+        elif self.query_init == "anchor_residual_detached":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
+                spatial_state.detach(),
+                self.num_queries,
+            )
         else:
             queries = self.learned_queries(x.shape[0])
         if self.query_refine == "mask_pool":

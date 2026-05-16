@@ -832,3 +832,42 @@ Diagnostic interpretation:
 Updated real-box conclusion:
 
 > The toy-level anchor/query and mask-proposal gains do not stably transfer to 300-step real DET mini. Anchor-like branches can match box IoU, but currently lose on ranking, objectness calibration, and class-aware AP. Future real-detector work should prioritize score-IoU alignment, query classification calibration, gated residual anchor-query initialization, oracle proposal controls, and stronger decoder refinement before scaling toward RF-DETR comparisons.
+
+P0 oracle proposal and gated residual anchor follow-up:
+
+The follow-up directly tests two bottlenecks:
+
+- proposal quality vs query consumption, using GT foreground-union mask oracle proposal queries;
+- anchor content vs learned-query replacement, using a small gated anchor residual added to learned queries.
+
+Output artifacts:
+
+- Metrics: `results/det_real_p0_oracle_anchor_residual_300step_2seed.csv`
+- Label map: `results/det_real_p0_oracle_anchor_residual_label_map.csv`
+- Image-level split: `results/det_real_p0_oracle_anchor_residual_split.csv`
+
+| Variant | Final IoU | Best IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Score-IoU corr | Objectness AUC | Mask IoU |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.359 | 0.367 | 0.321 | 0.310 | 0.108 | 0.438 | 0.658 | 0.000 |
+| `local_anchor` | 0.359 | 0.367 | 0.312 | 0.236 | 0.068 | 0.305 | 0.584 | 0.000 |
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.371 | 0.266 | 0.135 | 0.339 | 0.602 | 0.000 |
+| `local_anchor_residual_detached_query` | 0.367 | 0.378 | 0.320 | 0.256 | 0.076 | 0.404 | 0.597 | 0.000 |
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.302 | 0.266 | 0.093 | 0.380 | 0.598 | 0.458 |
+| `local_mask_proposal_oracle_nms_query` | 0.399 | 0.421 | 0.340 | 0.259 | 0.138 | 0.182 | 0.537 | 1.000 |
+
+Paired against `local_learned`:
+
+- `local_anchor_residual_query`: final IoU `+0.016`, best IoU `+0.009`, class-aware AP50-lite `+0.027`, all `2/2` wins except objectness AP.
+- `local_anchor_residual_detached_query`: final IoU `+0.007`, best IoU `+0.011`, but class-aware AP50-lite `-0.032`.
+- `local_mask_proposal_oracle_nms_query`: final IoU `+0.040`, best IoU `+0.054`, best-IoU wins `2/2`, but objectness AP50-lite `-0.051`.
+
+Interpretation:
+
+- In this mini DET setting, oracle NMS proposal queries recover a clear box-coverage gain. This means predicted foreground-union proposal quality/extraction is a real bottleneck for the mask-proposal path.
+- Oracle proposals still do not fix AP/ranking. Even with idealized union-mask proposal locations, objectness calibration and score-IoU alignment remain weak.
+- Gated residual anchor initialization is a better real-DET anchor path than replacing learned queries with anchor queries. It improves final IoU, recall50, and class-aware AP50-lite over both `local_learned` and replacement-style `local_anchor`.
+- Detached residual anchors are weaker than differentiable residual anchors on final IoU and class-aware AP, so query-feature coupling still matters.
+
+Updated real-DET P0 conclusion:
+
+> Real DET P0 now separates two bottlenecks in the current mini setup. Box coverage can improve when foreground-union proposal locations are idealized or when anchor information is added as a soft residual to learned queries. However, AP remains limited by query scoring and class/objectness calibration. The next real-detector step should combine residual anchor queries with score-IoU/objectness calibration and improve predicted proposal quality toward the oracle proposal upper bound.

@@ -36,15 +36,38 @@ from attention2d import get_best_device  # noqa: E402
 from attention2d.detection import DetectionCriterion, TinyAnchorRegionDETR  # noqa: E402
 from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E402
 from train_det_toy import (  # noqa: E402
-    MODEL_CONFIGS,
+    MODEL_CONFIGS as BASE_MODEL_CONFIGS,
     dense_mask_aux_loss,
     dense_mask_aux_metrics,
+    dense_mask_targets_from_boxes,
     mask_gate_scale,
     match_targets_by_iou,
     precision_recall_ap,
     summarize_stratified_iou,
     update_stratified_iou_lists,
 )
+
+
+REAL_MODEL_CONFIGS = {
+    **BASE_MODEL_CONFIGS,
+    "local_mask_proposal_oracle_query": ("local", "mask_proposal_oracle", "none", "none", 0.1, "none"),
+    "local_mask_proposal_oracle_nms_query": (
+        "local",
+        "mask_proposal_oracle_nms",
+        "none",
+        "none",
+        0.1,
+        "none",
+    ),
+    "anchor_mask_proposal_oracle_nms_query": (
+        "anchor",
+        "mask_proposal_oracle_nms",
+        "none",
+        "none",
+        0.1,
+        "none",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -113,8 +136,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/ILSVRC2013_DET_bbox_val/ILSVRC2013_DET_bbox_val"),
     )
-    parser.add_argument("--models", nargs="+", choices=tuple(MODEL_CONFIGS), default=["local_learned"])
-    parser.add_argument("--reference-model", choices=tuple(MODEL_CONFIGS), default="local_learned")
+    parser.add_argument("--models", nargs="+", choices=tuple(REAL_MODEL_CONFIGS), default=["local_learned"])
+    parser.add_argument("--reference-model", choices=tuple(REAL_MODEL_CONFIGS), default="local_learned")
     parser.add_argument("--top-classes", type=int, default=20)
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--max-objects", type=int, default=3)
@@ -205,7 +228,9 @@ def train_one_model(
     device: torch.device,
     num_classes: int,
 ) -> list[dict[str, float | int | str]]:
-    feature_mode, query_init, query_refine, mask_aux_mode, gate_init, gate_schedule = MODEL_CONFIGS[model_name]
+    feature_mode, query_init, query_refine, mask_aux_mode, gate_init, gate_schedule = REAL_MODEL_CONFIGS[model_name]
+    if "oracle" in query_init and mask_aux_mode != "none":
+        raise ValueError("oracle proposal controls must not use mask auxiliary loss")
     torch.manual_seed(run_seed)
     random.seed(run_seed)
     model = TinyAnchorRegionDETR(
@@ -240,7 +265,7 @@ def train_one_model(
         targets = targets_to_device(targets, device)
         examples_seen += int(images.shape[0])
         model.set_query_mask_gate_scale(mask_gate_scale(gate_schedule, step, args.steps))
-        outputs = model(images)
+        outputs = forward_real_detector(model, images, targets)
         losses = criterion(outputs, targets)
         if mask_aux_mode != "none":
             mask_losses = dense_mask_aux_loss(
@@ -301,6 +326,46 @@ def train_one_model(
     return rows
 
 
+def forward_real_detector(
+    model: TinyAnchorRegionDETR,
+    images: Tensor,
+    targets: list[dict[str, Tensor]],
+) -> dict[str, Tensor | list[Tensor]]:
+    """Run real DET variants, injecting GT mask proposals only for oracle controls."""
+
+    if model.query_init in {"mask_proposal_oracle", "mask_proposal_oracle_nms"}:
+        mask_logits = oracle_query_mask_logits(
+            targets=targets,
+            feature_height=images.shape[-2] // model.patch_embed.proj.stride[0],
+            feature_width=images.shape[-1] // model.patch_embed.proj.stride[1],
+            device=images.device,
+            dtype=images.dtype,
+        )
+        return model(images, query_mask_logits_override=mask_logits)
+    return model(images)
+
+
+def oracle_query_mask_logits(
+    targets: list[dict[str, Tensor]],
+    feature_height: int,
+    feature_width: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    logit_abs: float = 8.0,
+) -> Tensor:
+    """Build high-confidence GT union-mask logits for oracle proposal-query controls."""
+
+    masks = dense_mask_targets_from_boxes(
+        targets=targets,
+        height=feature_height,
+        width=feature_width,
+        device=device,
+    ).to(dtype=dtype)
+    positive = torch.full_like(masks, float(logit_abs))
+    negative = torch.full_like(masks, -float(logit_abs))
+    return torch.where(masks >= 0.5, positive, negative)
+
+
 @torch.no_grad()
 def evaluate_real(
     model: TinyAnchorRegionDETR,
@@ -334,7 +399,7 @@ def evaluate_real(
             break
         images = images.to(device)
         targets = targets_to_device(targets_cpu, device)
-        outputs = model(images)
+        outputs = forward_real_detector(model, images, targets)
         if "query_mask_logits" in outputs:
             mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head=None)
             mask_ious.append(mask_metrics["mask_iou"].cpu())
