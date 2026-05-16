@@ -44,8 +44,8 @@ class TinyAnchorRegionDETR(nn.Module):
                 "query_init must be a supported learned, anchor, residual-anchor, "
                 "mask-proposal, or oracle mask-proposal mode"
             )
-        if query_refine not in {"none", "mask_pool", "mask_bias"}:
-            raise ValueError("query_refine must be 'none', 'mask_pool', or 'mask_bias'")
+        if query_refine not in {"none", "mask_pool", "mask_bias", "query_mask"}:
+            raise ValueError("query_refine must be 'none', 'mask_pool', 'mask_bias', or 'query_mask'")
         self.feature_mode = feature_mode
         self.query_init = query_init
         self.query_refine = query_refine
@@ -64,6 +64,9 @@ class TinyAnchorRegionDETR(nn.Module):
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
             self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
+        if query_refine == "query_mask":
+            self.query_mask_query_proj = nn.Linear(embed_dim, embed_dim)
+            self.query_mask_feature_proj = nn.Conv2d(embed_dim, embed_dim, kernel_size=1)
         self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
         self.head = DetectionHead(embed_dim, num_classes=num_classes)
 
@@ -146,6 +149,13 @@ class TinyAnchorRegionDETR(nn.Module):
             attention_bias = mask_attention_bias(query_mask_logits, gate)
         decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
         outputs = self.head(decoded)
+        if self.query_refine == "query_mask":
+            outputs["query_mask_logits_per_query"] = query_conditioned_mask_logits(
+                decoded,
+                spatial_state,
+                self.query_mask_query_proj,
+                self.query_mask_feature_proj,
+            )
         if query_mask_logits is not None:
             outputs["query_mask_logits"] = query_mask_logits
         if query_proposal_indices is not None:
@@ -268,3 +278,17 @@ def mask_attention_bias(mask_logits: Tensor, gate: Tensor) -> Tensor:
 
     bias = torch.nn.functional.logsigmoid(mask_logits).flatten(1).unsqueeze(1)
     return gate * bias
+
+
+def query_conditioned_mask_logits(
+    queries: Tensor,
+    state: Tensor,
+    query_proj: nn.Linear,
+    feature_proj: nn.Conv2d,
+) -> Tensor:
+    """Predict one dense spatial mask per object query."""
+
+    projected_queries = query_proj(queries)
+    projected_features = feature_proj(state)
+    logits = torch.einsum("bqc,bchw->bqhw", projected_queries, projected_features)
+    return logits * (queries.shape[-1] ** -0.5)

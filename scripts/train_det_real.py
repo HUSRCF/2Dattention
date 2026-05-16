@@ -44,6 +44,8 @@ from train_det_toy import (  # noqa: E402
     mask_gate_scale,
     match_targets_by_iou,
     precision_recall_ap,
+    query_mask_aux_loss,
+    query_mask_aux_metrics,
     summarize_stratified_iou,
     update_stratified_iou_lists,
 )
@@ -60,6 +62,16 @@ REAL_MODEL_CONFIGS = {
     "local_learned_quality_head": ("local", "learned", "none", "none", 0.1, "none"),
     "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
+    "local_learned_querymask": ("local", "learned", "query_mask", "query", 0.1, "none"),
+    "local_anchor_residual_query_querymask": ("local", "anchor_residual", "query_mask", "query", 0.01, "none"),
+    "local_anchor_residual_query_querymask_quality_head": (
+        "local",
+        "anchor_residual",
+        "query_mask",
+        "query",
+        0.01,
+        "none",
+    ),
     "local_mask_proposal_nms_query_quality_head": (
         "local",
         "mask_proposal_nms",
@@ -111,6 +123,7 @@ QUALITY_HEAD_MODELS = {
     "local_learned_quality_head",
     "local_anchor_quality_head",
     "local_anchor_residual_query_quality_head",
+    "local_anchor_residual_query_querymask_quality_head",
     "local_mask_proposal_nms_query_quality_head",
     "local_mask_proposal_oracle_nms_query_quality_head",
 }
@@ -378,7 +391,15 @@ def train_one_model(
             )
             losses["loss_quality_cls"] = loss_quality_cls
             losses["loss"] = losses["loss"] + args.quality_cls_weight * loss_quality_cls
-        if mask_aux_mode != "none":
+        if mask_aux_mode == "query":
+            mask_losses = query_mask_aux_loss(
+                outputs=outputs,
+                targets=targets,
+                criterion=criterion,
+                dice_weight=args.mask_dice_weight,
+            )
+            losses["loss"] = losses["loss"] + args.mask_aux_weight * mask_losses["loss_mask_aux"]
+        elif mask_aux_mode != "none":
             mask_losses = dense_mask_aux_loss(
                 outputs=outputs,
                 targets=targets,
@@ -396,6 +417,7 @@ def train_one_model(
                 eval_loader,
                 device,
                 batches=args.eval_batches,
+                criterion=criterion,
                 use_quality_scores=model_name in QUALITY_HEAD_MODELS,
                 fixed_quality_alpha=args.fixed_quality_alpha,
                 quality_score_temperature=args.quality_score_temperature,
@@ -634,6 +656,7 @@ def evaluate_real(
     loader: DataLoader,
     device: torch.device,
     batches: int,
+    criterion: DetectionCriterion,
     use_quality_scores: bool = False,
     fixed_quality_alpha: float = 2.0,
     quality_score_temperature: float = 1.0,
@@ -683,7 +706,11 @@ def evaluate_real(
         images = images.to(device)
         targets = targets_to_device(targets_cpu, device)
         outputs = forward_real_detector(model, images, targets)
-        if "query_mask_logits" in outputs:
+        if "query_mask_logits_per_query" in outputs:
+            mask_metrics = query_mask_aux_metrics(outputs, targets, criterion)
+            mask_ious.append(mask_metrics["mask_iou"].cpu())
+            mask_dices.append(mask_metrics["mask_dice"].cpu())
+        elif "query_mask_logits" in outputs:
             mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head=None)
             mask_ious.append(mask_metrics["mask_iou"].cpu())
             mask_dices.append(mask_metrics["mask_dice"].cpu())

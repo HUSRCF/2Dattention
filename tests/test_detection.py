@@ -26,6 +26,8 @@ from scripts.train_det_toy import (
     dense_mask_targets_from_boxes,
     mask_gate_scale,
     match_targets_by_iou,
+    query_mask_aux_loss,
+    query_mask_aux_metrics,
     sample_square_detection_batch,
     summarize_stratified_iou,
     update_stratified_iou_lists,
@@ -216,6 +218,44 @@ def test_tiny_anchor_region_detr_anchor_residual_query_init() -> None:
     assert model.anchor_query_gate.grad is not None
     assert torch.isfinite(model.anchor_query_gate.grad).all()
     assert float(model.anchor_query_gate.grad.detach().abs().sum()) > 0.0
+
+
+def test_tiny_anchor_region_detr_query_conditioned_mask_aux() -> None:
+    torch.manual_seed(18)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor_residual",
+        query_refine="query_mask",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["query_mask_logits_per_query"].shape == (2, 4, 8, 8)
+    mask_losses = query_mask_aux_loss(outputs, targets, criterion, dice_weight=1.0)
+    det_losses = criterion(outputs, targets)
+    total_loss = det_losses["loss"] + 0.5 * mask_losses["loss_mask_aux"]
+    total_loss.backward()
+    metrics = query_mask_aux_metrics(outputs, targets, criterion)
+
+    assert torch.isfinite(mask_losses["loss_mask_aux"])
+    assert torch.isfinite(metrics["mask_iou"])
+    assert model.query_mask_query_proj.weight.grad is not None
+    assert model.query_mask_feature_proj.weight.grad is not None
+    assert float(model.query_mask_query_proj.weight.grad.detach().abs().sum()) > 0.0
 
 
 def test_tiny_anchor_region_detr_oracle_mask_proposal_query_init() -> None:

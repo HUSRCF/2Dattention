@@ -59,6 +59,8 @@ MODEL_CONFIGS = {
     "anchor_mask_proposal_query": ("anchor", "mask_proposal", "none", "proposal", 0.1, "none"),
     "local_mask_proposal_nms_query": ("local", "mask_proposal_nms", "none", "proposal", 0.1, "none"),
     "anchor_mask_proposal_nms_query": ("anchor", "mask_proposal_nms", "none", "proposal", 0.1, "none"),
+    "local_learned_querymask": ("local", "learned", "query_mask", "query", 0.1, "none"),
+    "local_anchor_residual_query_querymask": ("local", "anchor_residual", "query_mask", "query", 0.01, "none"),
 }
 
 
@@ -155,7 +157,15 @@ def main() -> None:
                 model.set_query_mask_gate_scale(mask_gate_scale(gate_schedule, step, args.steps))
                 outputs = model(images)
                 losses = criterion(outputs, targets)
-                if mask_aux_mode != "none":
+                if mask_aux_mode == "query":
+                    mask_losses = query_mask_aux_loss(
+                        outputs=outputs,
+                        targets=targets,
+                        criterion=criterion,
+                        dice_weight=args.mask_dice_weight,
+                    )
+                    losses["loss"] = losses["loss"] + args.mask_aux_weight * mask_losses["loss_mask_aux"]
+                elif mask_aux_mode != "none":
                     mask_losses = dense_mask_aux_loss(
                         outputs=outputs,
                         targets=targets,
@@ -176,6 +186,7 @@ def main() -> None:
                         toy_mode=args.toy_mode,
                         max_objects=args.max_objects,
                         mask_head=mask_head,
+                        criterion=criterion,
                         seed=20_000_000 + run_seed,
                     )
                     if metrics["iou"] > best_iou:
@@ -364,6 +375,7 @@ def evaluate_toy(
     toy_mode: str = "single",
     max_objects: int = 3,
     mask_head: nn.Module | None = None,
+    criterion: DetectionCriterion | None = None,
     batches: int = 8,
     seed: int = 0,
 ) -> dict[str, float]:
@@ -393,7 +405,13 @@ def evaluate_toy(
             torch_seed=seed + batch_idx,
         )
         outputs = model(images)
-        if mask_head is not None or "query_mask_logits" in outputs:
+        if "query_mask_logits_per_query" in outputs:
+            if criterion is None:
+                raise ValueError("criterion is required for query-mask metrics")
+            mask_metrics = query_mask_aux_metrics(outputs, targets, criterion)
+            mask_ious.append(mask_metrics["mask_iou"].cpu())
+            mask_dices.append(mask_metrics["mask_dice"].cpu())
+        elif mask_head is not None or "query_mask_logits" in outputs:
             mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head)
             mask_ious.append(mask_metrics["mask_iou"].cpu())
             mask_dices.append(mask_metrics["mask_dice"].cpu())
@@ -566,6 +584,28 @@ def dense_mask_aux_loss(
     }
 
 
+def query_mask_aux_loss(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+    dice_weight: float,
+) -> dict[str, Tensor]:
+    """Supervise each Hungarian-matched query with its matched bbox mask."""
+
+    logits = outputs["query_mask_logits_per_query"]
+    matched_logits, matched_targets = matched_query_mask_tensors(outputs, targets, criterion)
+    if matched_logits.numel() == 0:
+        zero = logits.sum() * 0.0
+        return {"loss_mask_aux": zero, "loss_mask_bce": zero, "loss_mask_dice": zero}
+    loss_bce = F.binary_cross_entropy_with_logits(matched_logits, matched_targets)
+    loss_dice = 1.0 - soft_dice_score(matched_logits.sigmoid(), matched_targets)
+    return {
+        "loss_mask_aux": loss_bce + dice_weight * loss_dice,
+        "loss_mask_bce": loss_bce,
+        "loss_mask_dice": loss_dice,
+    }
+
+
 @torch.no_grad()
 def dense_mask_aux_metrics(
     outputs: dict[str, Tensor | list[Tensor]],
@@ -592,6 +632,67 @@ def dense_mask_aux_metrics(
         "mask_iou": (intersection / union).mean(),
         "mask_dice": dice,
     }
+
+
+@torch.no_grad()
+def query_mask_aux_metrics(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+    threshold: float = 0.5,
+) -> dict[str, Tensor]:
+    """Evaluate matched query-specific masks against matched bbox masks."""
+
+    logits = outputs["query_mask_logits_per_query"]
+    matched_logits, matched_targets = matched_query_mask_tensors(outputs, targets, criterion)
+    if matched_logits.numel() == 0:
+        zero = logits.new_tensor(0.0)
+        return {"mask_iou": zero, "mask_dice": zero}
+    pred = matched_logits.sigmoid() >= threshold
+    target_bool = matched_targets >= 0.5
+    intersection = (pred & target_bool).float().flatten(1).sum(dim=1)
+    union = (pred | target_bool).float().flatten(1).sum(dim=1).clamp_min(1e-8)
+    pred_sum = pred.float().flatten(1).sum(dim=1)
+    target_sum = target_bool.float().flatten(1).sum(dim=1)
+    dice = (2 * intersection / (pred_sum + target_sum).clamp_min(1e-8)).mean()
+    return {
+        "mask_iou": (intersection / union).mean(),
+        "mask_dice": dice,
+    }
+
+
+def matched_query_mask_tensors(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+) -> tuple[Tensor, Tensor]:
+    """Return matched per-query mask logits and matched bbox mask targets."""
+
+    logits = outputs["query_mask_logits_per_query"]
+    matches = criterion.matcher(outputs, targets)
+    matched_logits = []
+    matched_masks = []
+    height, width = logits.shape[-2:]
+    for batch_idx, (src_idx, target_idx) in enumerate(matches):
+        if src_idx.numel() == 0:
+            continue
+        matched_logits.append(logits[batch_idx, src_idx])
+        matched_target = [
+            {"boxes": targets[batch_idx]["boxes"][target_id].unsqueeze(0)}
+            for target_id in target_idx
+        ]
+        matched_masks.append(
+            dense_mask_targets_from_boxes(
+                targets=matched_target,
+                height=height,
+                width=width,
+                device=logits.device,
+            )
+        )
+    if not matched_logits:
+        empty_logits = logits.new_zeros((0, height, width))
+        return empty_logits, empty_logits
+    return torch.cat(matched_logits, dim=0), torch.cat(matched_masks, dim=0)
 
 
 def dense_mask_logits(

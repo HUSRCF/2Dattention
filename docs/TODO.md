@@ -501,6 +501,29 @@ Interpretation:
     - Official fixed scoring keeps `local_anchor_residual_query_quality_head` as the current best AP50 route (`0.341`).
     - Oracle proposal quality gives the strongest localization coverage but still trails residual-anchor quality in fixed-q2 AP (`0.325` vs `0.341`).
     - Proposal/query improvement and quality ranking are both useful, but the current best real-mini recipe is still residual-anchor detector + two-stage fixed-q2 quality ranking.
+- Query-conditioned mask auxiliary:
+  - Implemented per-query dense mask logits: `query_mask_logits_per_query` with shape `[B, Q, H, W]`.
+  - Added matched-query mask loss: run Hungarian matching, supervise each matched query with its matched bbox rectangle mask via BCE + Dice; unmatched queries are not mask-supervised.
+  - Added toy/real variants:
+    - `local_learned_querymask`
+    - `local_anchor_residual_query_querymask`
+    - `local_anchor_residual_query_querymask_quality_head`
+  - Toy smoke:
+    - command output: `results/det_toy_querymask_smoke.csv`.
+    - In a 40-step multi-distractor sanity check, `local_anchor_residual_query_querymask` learns matched masks (`mask IoU 0.429`) and improves final IoU/AP over `local_anchor_residual_query`. This only validates wiring, not a formal toy benchmark.
+  - Real DET mini querymask:
+    - command output: `results/det_real_querymask_300step_2seed.csv`.
+    - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, AP50 `0.266`, class AP50 `0.135`.
+    - `local_anchor_residual_query_querymask`: final/best IoU `0.357/0.357`, AP50 `0.257`, class AP50 `0.058`, matched mask IoU/Dice `0.354/0.477`.
+  - Real DET mini querymask + two-stage quality:
+    - command output: `results/det_real_querymask_quality_head_400step_2seed.csv`.
+    - non-quality `local_anchor_residual_query_querymask` trained to 400 steps: final/best IoU `0.364/0.367`, AP50 `0.288`, class AP50 `0.125`, matched mask IoU/Dice `0.341/0.451`.
+    - `local_anchor_residual_query_querymask_quality_head`: final/best IoU `0.357/0.357`, base AP50 `0.257`, fixed-q2 AP50 `0.286`, best-q AP50 `0.290`, matched mask IoU/Dice `0.354/0.477`.
+  - Interpretation:
+    - Query-conditioned masks are learnable and correctly tied to Hungarian query identity.
+    - As an auxiliary loss alone, querymask does not beat the residual-anchor detector on real DET mini box/AP at 300 steps.
+    - Two-stage quality ranking gives only a small q-score recovery for querymask and does not make it competitive with residual-anchor quality.
+    - This supports the next architectural step: use query masks for box refinement or query refinement, not merely as auxiliary supervision.
 
 ### Step 5: RF-DETR Distillation Track
 
