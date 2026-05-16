@@ -906,4 +906,41 @@ Calibration interpretation:
 
 Updated calibration conclusion:
 
-> Score-IoU calibration is useful for learned queries, but the naive all-query max-IoU version conflicts with residual-anchor query behavior. The next calibration design should be matcher-aware: matched queries should receive IoU-quality class/objectness targets, while unmatched queries remain background. This is closer to quality focal / Varifocal-style detection training than raw max-IoU BCE over every query.
+> Score-IoU calibration is useful for learned queries, but the naive all-query max-IoU version conflicts with residual-anchor query behavior. The next calibration design should be matcher-aware: matched queries should receive IoU-quality class/objectness targets, while unmatched foreground class logits are pushed toward zero and no-object handling remains mainly from standard DETR CE. This is closer to quality focal / Varifocal-style detection training than raw max-IoU BCE over every query.
+
+Matcher-aware quality classification follow-up:
+
+This follow-up removes the duplicate-positive issue from all-query max-IoU BCE. It first runs the Hungarian matcher, then assigns only each matched query's target class an IoU-quality soft label. All unmatched foreground class logits remain zero.
+
+Output artifacts:
+
+- Weight `1.0`: `results/det_real_matcher_quality_cls_300step_2seed.csv`
+- Weight `0.25`: `results/det_real_matcher_quality_cls_w025_300step_2seed.csv`
+
+Weight `1.0`:
+
+| Variant | Final IoU | Best IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Score-IoU corr | Objectness AUC | Top-k FP rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.371 | 0.266 | 0.135 | 0.339 | 0.602 | 0.802 |
+| `local_anchor_residual_query_matchqual` | 0.366 | 0.392 | 0.358 | 0.281 | 0.092 | 0.456 | 0.645 | 0.771 |
+| `local_learned` | 0.359 | 0.367 | 0.321 | 0.310 | 0.108 | 0.438 | 0.658 | 0.719 |
+| `local_learned_matchqual` | 0.360 | 0.360 | 0.301 | 0.239 | 0.080 | 0.366 | 0.607 | 0.800 |
+
+Weight `0.25`:
+
+| Variant | Final IoU | Best IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Score-IoU corr | Objectness AUC | Top-k FP rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.371 | 0.266 | 0.135 | 0.339 | 0.602 | 0.802 |
+| `local_anchor_residual_query_matchqual` | 0.370 | 0.371 | 0.371 | 0.258 | 0.133 | 0.253 | 0.551 | 0.804 |
+| `local_learned` | 0.359 | 0.367 | 0.321 | 0.310 | 0.108 | 0.438 | 0.658 | 0.719 |
+
+Matcher-aware interpretation:
+
+- The matcher-aware loss avoids the duplicate-positive flaw of all-query max-IoU BCE, but the current BCE-on-foreground-class-logits form still does not improve the residual-anchor final result.
+- At weight `1.0`, it improves residual-anchor best IoU and objectness AP50-lite, but lowers final IoU and class-aware AP50-lite.
+- At weight `0.25`, the effect is smaller and still not positive.
+- For learned queries, matcher-aware quality classification is worse than the base learned model and worse than the previous naive max-IoU calibration.
+
+Updated scoring conclusion:
+
+> Matcher-aware quality classification is conceptually cleaner, but this implementation is not yet the right scoring fix. The next scoring path should avoid further weight sweeps and instead test either a separate quality/objectness head or a quality-modulated CE design where matched class CE is weighted by IoU while unmatched background CE remains standard.

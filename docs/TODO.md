@@ -360,7 +360,28 @@ Interpretation:
   - Naive class-agnostic max-IoU BCE calibration works for learned queries at weight `0.5`: it improves final IoU, objectness AP50-lite, class-aware AP50-lite, objectness AUC, and top-k FP rate over `local_learned`. It does not improve score-IoU correlation in this run.
   - The same calibration does not work for residual-anchor: at weight `0.5` it hurts final IoU, objectness AP, and class-aware AP; at weight `0.1` it improves score-IoU correlation/objectness AUC but still hurts AP and class-aware AP.
   - This suggests the calibration objective conflicts with residual-anchor query assignment. The likely issue is that max-IoU targets treat duplicate/high-overlap queries as soft positives, while DETR AP and matching need one confident query per object.
-  - Next calibration should be matcher-aware quality classification: matched queries get target IoU as class/objectness quality, unmatched queries stay background. Do not continue tuning naive all-query max-IoU BCE as the main path.
+  - Next calibration should be matcher-aware quality classification: matched queries get target IoU as class/objectness quality, while unmatched foreground class logits are pushed toward zero and no-object handling remains mainly from standard DETR CE. Do not continue tuning naive all-query max-IoU BCE as the main path.
+- Matcher-aware quality classification follow-up:
+  - Implemented `matcher_aware_quality_classification_loss`: run Hungarian matching, assign only each matched query's target class a detached IoU-quality soft label, and keep all unmatched foreground class logits at zero.
+  - Added variants:
+    - `local_learned_matchqual`
+    - `local_anchor_matchqual`
+    - `local_anchor_residual_query_matchqual`
+  - Weight `1.0` command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_learned_matchqual local_anchor_residual_query local_anchor_residual_query_matchqual --reference-model local_anchor_residual_query --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --quality-cls-weight 1.0 --out results/det_real_matcher_quality_cls_300step_2seed.csv --label-map-out results/det_real_matcher_quality_cls_label_map.csv --split-out results/det_real_matcher_quality_cls_split.csv --seeds 2`
+  - Weight `1.0` result:
+    - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.135`.
+    - `local_anchor_residual_query_matchqual`: final/best IoU `0.366/0.392`, objectness AP50-lite `0.281`, class-aware AP50-lite `0.092`.
+    - `local_learned`: final/best IoU `0.359/0.367`, objectness AP50-lite `0.310`, class-aware AP50-lite `0.108`.
+    - `local_learned_matchqual`: final/best IoU `0.360/0.360`, objectness AP50-lite `0.239`, class-aware AP50-lite `0.080`.
+  - Weight `0.25` command: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_anchor_residual_query local_anchor_residual_query_matchqual local_learned --reference-model local_anchor_residual_query --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --quality-cls-weight 0.25 --out results/det_real_matcher_quality_cls_w025_300step_2seed.csv --label-map-out results/det_real_matcher_quality_cls_w025_label_map.csv --split-out results/det_real_matcher_quality_cls_w025_split.csv --seeds 2`
+  - Weight `0.25` result:
+    - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.135`.
+    - `local_anchor_residual_query_matchqual`: final/best IoU `0.370/0.371`, objectness AP50-lite `0.258`, class-aware AP50-lite `0.133`.
+- Matcher-aware interpretation:
+  - Matcher-aware quality classification avoids the duplicate-positive problem of all-query max-IoU BCE, but the current BCE-on-foreground-class-logits implementation still does not improve residual-anchor final AP.
+  - At weight `1.0`, it improves residual-anchor best IoU and objectness AP50-lite, but lowers final IoU and class-aware AP50-lite. At weight `0.25`, the effect is smaller but still not positive.
+  - For learned queries, matcher-aware quality classification is worse than both the base learned model and the naive max-IoU calibration.
+  - The next scoring path should not be another weight sweep. Prefer a separate quality/objectness head, or quality-modulated CE where matched class CE is weighted by IoU but unmatched background CE remains standard.
 
 ### Step 5: RF-DETR Distillation Track
 

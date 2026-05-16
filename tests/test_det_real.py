@@ -13,12 +13,14 @@ from scripts.train_det_real import (
     duplicate_predictions_per_gt,
     filter_samples,
     load_real_det_samples,
+    matcher_aware_quality_classification_loss,
     objectness_logits,
     oracle_query_mask_logits,
     pearson_corr,
     query_ranking_diagnostics,
     score_iou_calibration_loss,
 )
+from attention2d.detection import DetectionCriterion
 
 
 def test_real_det_dataset_parses_xml_and_normalizes_boxes(tmp_path: Path) -> None:
@@ -180,3 +182,32 @@ def test_real_det_objectness_logits_are_foreground_vs_background() -> None:
     assert values.shape == (2,)
     assert float(values[0]) > 0.0
     assert float(values[1]) < 0.0
+
+
+def test_real_det_matcher_aware_quality_loss_uses_class_logits_only() -> None:
+    pred_logits = torch.tensor(
+        [[[2.0, -2.0, -1.0], [-2.0, 2.0, -1.0]]],
+        requires_grad=True,
+    )
+    pred_boxes = torch.tensor(
+        [[[0.50, 0.50, 0.40, 0.40], [0.10, 0.10, 0.10, 0.10]]],
+        requires_grad=True,
+    )
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.40, 0.40]]),
+        }
+    ]
+    criterion = DetectionCriterion(num_classes=2)
+    loss = matcher_aware_quality_classification_loss(
+        {"pred_logits": pred_logits, "pred_boxes": pred_boxes},
+        targets,
+        criterion,
+    )
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert pred_logits.grad is not None
+    assert float(pred_logits.grad.abs().sum()) > 0.0
+    assert pred_boxes.grad is None

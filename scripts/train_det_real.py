@@ -54,6 +54,9 @@ REAL_MODEL_CONFIGS = {
     "local_learned_calib": ("local", "learned", "none", "none", 0.1, "none"),
     "local_anchor_calib": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_calib": ("local", "anchor_residual", "none", "none", 0.01, "none"),
+    "local_learned_matchqual": ("local", "learned", "none", "none", 0.1, "none"),
+    "local_anchor_matchqual": ("local", "anchor", "none", "none", 0.1, "none"),
+    "local_anchor_residual_query_matchqual": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_mask_proposal_oracle_query": ("local", "mask_proposal_oracle", "none", "none", 0.1, "none"),
     "local_mask_proposal_oracle_nms_query": (
         "local",
@@ -77,6 +80,12 @@ CALIBRATED_MODELS = {
     "local_learned_calib",
     "local_anchor_calib",
     "local_anchor_residual_query_calib",
+}
+
+MATCH_QUALITY_MODELS = {
+    "local_learned_matchqual",
+    "local_anchor_matchqual",
+    "local_anchor_residual_query_matchqual",
 }
 
 
@@ -161,6 +170,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask-aux-weight", type=float, default=0.5)
     parser.add_argument("--mask-dice-weight", type=float, default=1.0)
     parser.add_argument("--score-iou-weight", type=float, default=0.5)
+    parser.add_argument("--quality-cls-weight", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
@@ -279,10 +289,19 @@ def train_one_model(
         outputs = forward_real_detector(model, images, targets)
         losses = criterion(outputs, targets)
         loss_score_iou = outputs["pred_logits"].new_tensor(0.0)
+        loss_quality_cls = outputs["pred_logits"].new_tensor(0.0)
         if model_name in CALIBRATED_MODELS:
             loss_score_iou = score_iou_calibration_loss(outputs, targets)
             losses["loss_score_iou"] = loss_score_iou
             losses["loss"] = losses["loss"] + args.score_iou_weight * loss_score_iou
+        if model_name in MATCH_QUALITY_MODELS:
+            loss_quality_cls = matcher_aware_quality_classification_loss(
+                outputs,
+                targets,
+                criterion,
+            )
+            losses["loss_quality_cls"] = loss_quality_cls
+            losses["loss"] = losses["loss"] + args.quality_cls_weight * loss_quality_cls
         if mask_aux_mode != "none":
             mask_losses = dense_mask_aux_loss(
                 outputs=outputs,
@@ -307,6 +326,7 @@ def train_one_model(
                 "step": step,
                 "loss": last_loss,
                 "loss_score_iou": float(loss_score_iou.detach().item()),
+                "loss_quality_cls": float(loss_quality_cls.detach().item()),
                 "eval_iou": metrics["iou"],
                 "eval_recall50": metrics["recall50"],
                 "eval_ap50": metrics["ap50"],
@@ -405,6 +425,31 @@ def score_iou_calibration_loss(
         objectness_logit = objectness_logits(pred_logits[batch_idx])
         batch_losses.append(F.binary_cross_entropy_with_logits(objectness_logit, iou_target))
     return torch.stack(batch_losses).mean()
+
+
+def matcher_aware_quality_classification_loss(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+) -> Tensor:
+    """Train matched class logits with IoU-quality targets and unmatched as background."""
+
+    pred_logits = outputs["pred_logits"]
+    pred_boxes = outputs["pred_boxes"]
+    quality_targets = torch.zeros_like(pred_logits[:, :, :-1])
+    matches = criterion.matcher(outputs, targets)
+    for batch_idx, (src_idx, target_idx) in enumerate(matches):
+        if src_idx.numel() == 0:
+            continue
+        labels = targets[batch_idx]["labels"][target_idx].to(pred_logits.device)
+        target_boxes = targets[batch_idx]["boxes"][target_idx].to(pred_boxes.device)
+        with torch.no_grad():
+            matched_iou = box_iou(
+                box_cxcywh_to_xyxy(pred_boxes[batch_idx, src_idx].detach()),
+                box_cxcywh_to_xyxy(target_boxes),
+            ).diag().clamp(0.0, 1.0)
+        quality_targets[batch_idx, src_idx, labels] = matched_iou
+    return F.binary_cross_entropy_with_logits(pred_logits[:, :, :-1], quality_targets)
 
 
 def objectness_logits(pred_logits: Tensor) -> Tensor:
@@ -903,6 +948,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "step",
         "loss",
         "loss_score_iou",
+        "loss_quality_cls",
         "eval_iou",
         "eval_recall50",
         "eval_ap50",
