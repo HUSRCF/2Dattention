@@ -1149,3 +1149,25 @@ Interpretation:
 - Temperature `2.0` does not improve the oracle-proposal path over the untemperatured `q^2` score from the same run (`0.312` fixed-temp vs `0.325` q^2/best-q).
 - For predicted proposals, temp-scaled fixed scoring is useful but still trails the best fixed alpha in the sweep.
 - Current practical recommendation: report fixed `q^2` with temperature `1.0` as the pre-registered quality score unless a separate calibration split justifies changing alpha/temperature.
+
+Official fixed-q2 real-mini summary:
+
+This table uses fixed `q^2` with temperature `1.0` as the formal quality score. Post-hoc best-q remains diagnostic only.
+
+Output artifact:
+
+- `results/det_real_official_fixed_q2_summary.csv`
+
+| Variant | Final IoU | Best IoU | Base AP50 | Class AP50 | Fixed-q2 AP50 | Fixed-q2 class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.359 | 0.367 | 0.310 | 0.108 | - | - | - |
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.266 | 0.135 | - | - | - |
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.266 | 0.135 | 0.341 | 0.185 | 0.421 |
+| `local_mask_proposal_nms_query_quality_head` | 0.357 | 0.366 | 0.266 | 0.093 | 0.282 | 0.108 | 0.364 |
+| `local_mask_proposal_oracle_nms_query_quality_head` | 0.399 | 0.421 | 0.259 | 0.138 | 0.325 | 0.173 | 0.372 |
+
+Interpretation:
+
+- Under the official fixed score, `local_anchor_residual_query_quality_head` remains the strongest AP route: fixed-q2 AP50 `0.341`.
+- Oracle proposal quality has the strongest localization coverage, but fixed-q2 AP50 remains below residual-anchor quality (`0.325` vs `0.341`).
+- The current real-mini recipe is therefore: residual-anchor detector + two-stage fixed-q2 quality ranking for AP, while proposal/oracle-proposal remains the coverage-improvement path that still needs better query-box refinement and scoring.
