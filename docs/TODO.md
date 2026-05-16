@@ -339,6 +339,28 @@ Interpretation:
   - add score-IoU/objectness calibration loss for residual-anchor and oracle-proposal variants;
   - improve predicted proposal quality toward oracle proposal, then retest whether AP follows;
   - add oracle proposal with learned scoring/box refinement decoupled from oracle query locations.
+- Score-IoU calibration follow-up:
+  - implemented `score_iou_calibration_loss`, which trains object-vs-background query logits to regress each query's detached max IoU to any target.
+  - Added calibrated real DET variants:
+    - `local_learned_calib`
+    - `local_anchor_calib`
+    - `local_anchor_residual_query_calib`
+  - Main command, weight `0.5`: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_learned local_learned_calib local_anchor_residual_query local_anchor_residual_query_calib --reference-model local_anchor_residual_query --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --score-iou-weight 0.5 --out results/det_real_residual_anchor_score_iou_calib_300step_2seed.csv --label-map-out results/det_real_residual_anchor_score_iou_calib_label_map.csv --split-out results/det_real_residual_anchor_score_iou_calib_split.csv --seeds 2`
+  - Weight `0.5` result:
+    - `local_learned`: final/best IoU `0.359/0.367`, objectness AP50-lite `0.310`, class-aware AP50-lite `0.108`.
+    - `local_learned_calib`: final/best IoU `0.376/0.376`, objectness AP50-lite `0.355`, class-aware AP50-lite `0.144`.
+    - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.135`.
+    - `local_anchor_residual_query_calib`: final/best IoU `0.361/0.372`, objectness AP50-lite `0.257`, class-aware AP50-lite `0.102`.
+  - Smaller weight command, weight `0.1`: `/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py --models local_anchor_residual_query local_anchor_residual_query_calib local_learned_calib --reference-model local_anchor_residual_query --top-classes 10 --max-samples 200 --max-objects 3 --num-queries 6 --steps 300 --eval-every 100 --eval-batches 4 --batch-size 16 --score-iou-weight 0.1 --out results/det_real_residual_anchor_score_iou_calib_w01_300step_2seed.csv --label-map-out results/det_real_residual_anchor_score_iou_calib_w01_label_map.csv --split-out results/det_real_residual_anchor_score_iou_calib_w01_split.csv --seeds 2`
+  - Weight `0.1` result:
+    - `local_anchor_residual_query`: final/best IoU `0.376/0.376`, objectness AP50-lite `0.266`, class-aware AP50-lite `0.135`.
+    - `local_anchor_residual_query_calib`: final/best IoU `0.373/0.373`, objectness AP50-lite `0.250`, class-aware AP50-lite `0.099`.
+    - `local_learned_calib`: final/best IoU `0.373/0.382`, objectness AP50-lite `0.262`, class-aware AP50-lite `0.082`.
+- Calibration interpretation:
+  - Naive class-agnostic max-IoU BCE calibration works for learned queries at weight `0.5`: it improves final IoU, objectness AP50-lite, class-aware AP50-lite, objectness AUC, and top-k FP rate over `local_learned`. It does not improve score-IoU correlation in this run.
+  - The same calibration does not work for residual-anchor: at weight `0.5` it hurts final IoU, objectness AP, and class-aware AP; at weight `0.1` it improves score-IoU correlation/objectness AUC but still hurts AP and class-aware AP.
+  - This suggests the calibration objective conflicts with residual-anchor query assignment. The likely issue is that max-IoU targets treat duplicate/high-overlap queries as soft positives, while DETR AP and matching need one confident query per object.
+  - Next calibration should be matcher-aware quality classification: matched queries get target IoU as class/objectness quality, unmatched queries stay background. Do not continue tuning naive all-query max-IoU BCE as the main path.
 
 ### Step 5: RF-DETR Distillation Track
 

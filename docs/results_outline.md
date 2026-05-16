@@ -871,3 +871,39 @@ Interpretation:
 Updated real-DET P0 conclusion:
 
 > Real DET P0 now separates two bottlenecks in the current mini setup. Box coverage can improve when foreground-union proposal locations are idealized or when anchor information is added as a soft residual to learned queries. However, AP remains limited by query scoring and class/objectness calibration. The next real-detector step should combine residual anchor queries with score-IoU/objectness calibration and improve predicted proposal quality toward the oracle proposal upper bound.
+
+Score-IoU/objectness calibration follow-up:
+
+This follow-up adds a simple class-agnostic objectness calibration auxiliary loss. For each query, the aggregate foreground-vs-background logit is trained with BCE against the query's detached max IoU to any target. This targets objectness quality, but it is not the same score used by AP-lite, which still ranks by max foreground softmax probability.
+
+Output artifacts:
+
+- Weight `0.5`: `results/det_real_residual_anchor_score_iou_calib_300step_2seed.csv`
+- Weight `0.1`: `results/det_real_residual_anchor_score_iou_calib_w01_300step_2seed.csv`
+
+Weight `0.5`:
+
+| Variant | Final IoU | Best IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Score-IoU corr | Objectness AUC | Top-k FP rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.359 | 0.367 | 0.321 | 0.310 | 0.108 | 0.438 | 0.658 | 0.719 |
+| `local_learned_calib` | 0.376 | 0.376 | 0.369 | 0.355 | 0.144 | 0.419 | 0.682 | 0.665 |
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.371 | 0.266 | 0.135 | 0.339 | 0.602 | 0.802 |
+| `local_anchor_residual_query_calib` | 0.361 | 0.372 | 0.329 | 0.257 | 0.102 | 0.351 | 0.624 | 0.792 |
+
+Weight `0.1`:
+
+| Variant | Final IoU | Best IoU | Recall50 | Objectness AP50-lite | Class-aware AP50-lite | Score-IoU corr | Objectness AUC | Top-k FP rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.371 | 0.266 | 0.135 | 0.339 | 0.602 | 0.802 |
+| `local_anchor_residual_query_calib` | 0.373 | 0.373 | 0.327 | 0.250 | 0.099 | 0.429 | 0.631 | 0.800 |
+| `local_learned_calib` | 0.373 | 0.382 | 0.310 | 0.262 | 0.082 | 0.346 | 0.627 | 0.779 |
+
+Calibration interpretation:
+
+- The naive max-IoU calibration loss helps `local_learned` at weight `0.5`: it improves final IoU, objectness AP50-lite, class-aware AP50-lite, objectness AUC, and top-k false-positive rate. It does not improve score-IoU correlation in this run.
+- The same loss does not help residual-anchor. At weight `0.5`, it hurts final IoU and AP. At weight `0.1`, it improves score-IoU correlation and objectness AUC, but still hurts objectness AP and class-aware AP.
+- This suggests that residual-anchor's AP problem is not solved by all-query max-IoU BCE. The loss likely conflicts with DETR-style one-to-one assignment because duplicate queries with high IoU are treated as soft positives.
+
+Updated calibration conclusion:
+
+> Score-IoU calibration is useful for learned queries, but the naive all-query max-IoU version conflicts with residual-anchor query behavior. The next calibration design should be matcher-aware: matched queries should receive IoU-quality class/objectness targets, while unmatched queries remain background. This is closer to quality focal / Varifocal-style detection training than raw max-IoU BCE over every query.

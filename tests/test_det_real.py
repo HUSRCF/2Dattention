@@ -13,9 +13,11 @@ from scripts.train_det_real import (
     duplicate_predictions_per_gt,
     filter_samples,
     load_real_det_samples,
+    objectness_logits,
     oracle_query_mask_logits,
     pearson_corr,
     query_ranking_diagnostics,
+    score_iou_calibration_loss,
 )
 
 
@@ -137,3 +139,44 @@ def test_real_det_oracle_query_mask_logits_from_targets() -> None:
     assert float(logits.max()) == 8.0
     assert float(logits.min()) == -8.0
     assert int((logits[0] > 0).sum().item()) > int((logits[1] > 0).sum().item())
+
+
+def test_real_det_score_iou_calibration_loss_backpropagates_to_logits_only() -> None:
+    pred_logits = torch.tensor(
+        [[[2.0, -1.0], [-1.0, 2.0]]],
+        requires_grad=True,
+    )
+    pred_boxes = torch.tensor(
+        [[[0.50, 0.50, 0.40, 0.40], [0.10, 0.10, 0.10, 0.10]]],
+        requires_grad=True,
+    )
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.40, 0.40]]),
+        }
+    ]
+    loss = score_iou_calibration_loss(
+        {"pred_logits": pred_logits, "pred_boxes": pred_boxes},
+        targets,
+    )
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert pred_logits.grad is not None
+    assert float(pred_logits.grad.abs().sum()) > 0.0
+    assert pred_boxes.grad is None
+
+
+def test_real_det_objectness_logits_are_foreground_vs_background() -> None:
+    logits = torch.tensor(
+        [
+            [3.0, -3.0, 0.0],
+            [0.0, 0.0, 3.0],
+        ]
+    )
+    values = objectness_logits(logits)
+
+    assert values.shape == (2,)
+    assert float(values[0]) > 0.0
+    assert float(values[1]) < 0.0

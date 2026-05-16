@@ -20,6 +20,7 @@ from itertools import cycle, permutations
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Subset
@@ -50,6 +51,9 @@ from train_det_toy import (  # noqa: E402
 
 REAL_MODEL_CONFIGS = {
     **BASE_MODEL_CONFIGS,
+    "local_learned_calib": ("local", "learned", "none", "none", 0.1, "none"),
+    "local_anchor_calib": ("local", "anchor", "none", "none", 0.1, "none"),
+    "local_anchor_residual_query_calib": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_mask_proposal_oracle_query": ("local", "mask_proposal_oracle", "none", "none", 0.1, "none"),
     "local_mask_proposal_oracle_nms_query": (
         "local",
@@ -67,6 +71,12 @@ REAL_MODEL_CONFIGS = {
         0.1,
         "none",
     ),
+}
+
+CALIBRATED_MODELS = {
+    "local_learned_calib",
+    "local_anchor_calib",
+    "local_anchor_residual_query_calib",
 }
 
 
@@ -150,6 +160,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--mask-aux-weight", type=float, default=0.5)
     parser.add_argument("--mask-dice-weight", type=float, default=1.0)
+    parser.add_argument("--score-iou-weight", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
@@ -267,6 +278,11 @@ def train_one_model(
         model.set_query_mask_gate_scale(mask_gate_scale(gate_schedule, step, args.steps))
         outputs = forward_real_detector(model, images, targets)
         losses = criterion(outputs, targets)
+        loss_score_iou = outputs["pred_logits"].new_tensor(0.0)
+        if model_name in CALIBRATED_MODELS:
+            loss_score_iou = score_iou_calibration_loss(outputs, targets)
+            losses["loss_score_iou"] = loss_score_iou
+            losses["loss"] = losses["loss"] + args.score_iou_weight * loss_score_iou
         if mask_aux_mode != "none":
             mask_losses = dense_mask_aux_loss(
                 outputs=outputs,
@@ -290,6 +306,7 @@ def train_one_model(
                 "run_seed": run_seed,
                 "step": step,
                 "loss": last_loss,
+                "loss_score_iou": float(loss_score_iou.detach().item()),
                 "eval_iou": metrics["iou"],
                 "eval_recall50": metrics["recall50"],
                 "eval_ap50": metrics["ap50"],
@@ -364,6 +381,38 @@ def oracle_query_mask_logits(
     positive = torch.full_like(masks, float(logit_abs))
     negative = torch.full_like(masks, -float(logit_abs))
     return torch.where(masks >= 0.5, positive, negative)
+
+
+def score_iou_calibration_loss(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+) -> Tensor:
+    """Align query objectness logits with detached max-IoU targets."""
+
+    pred_logits = outputs["pred_logits"]
+    pred_boxes = outputs["pred_boxes"]
+    batch_losses = []
+    for batch_idx, target in enumerate(targets):
+        target_boxes = target["boxes"].to(pred_boxes.device)
+        if target_boxes.numel() == 0:
+            iou_target = pred_boxes.new_zeros(pred_boxes.shape[1])
+        else:
+            with torch.no_grad():
+                iou_target = box_iou(
+                    box_cxcywh_to_xyxy(pred_boxes[batch_idx].detach()),
+                    box_cxcywh_to_xyxy(target_boxes),
+                ).max(dim=1).values.clamp(0.0, 1.0)
+        objectness_logit = objectness_logits(pred_logits[batch_idx])
+        batch_losses.append(F.binary_cross_entropy_with_logits(objectness_logit, iou_target))
+    return torch.stack(batch_losses).mean()
+
+
+def objectness_logits(pred_logits: Tensor) -> Tensor:
+    """Return object-vs-no-object logits from DETR class logits."""
+
+    foreground = torch.logsumexp(pred_logits[:, :-1], dim=-1)
+    background = pred_logits[:, -1]
+    return foreground - background
 
 
 @torch.no_grad()
@@ -853,6 +902,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "run_seed",
         "step",
         "loss",
+        "loss_score_iou",
         "eval_iou",
         "eval_recall50",
         "eval_ap50",
