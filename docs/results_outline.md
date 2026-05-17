@@ -1532,6 +1532,7 @@ Artifacts:
 - `results/det_real_quality_calib_split_ece_400step_3seed.csv`
 - `results/det_real_quality_calib_trainlabels_400step_3seed.csv`
 - `results/det_real_quality_calib_trainlabels_500img_500step_3seed.csv`
+- `results/det_real_quality_calib_trainlabels_1000img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1571,6 +1572,31 @@ Interpretation:
 
 - The larger strict check strengthens the ranking/calibration interpretation. The main gain is AP/ranking and ECE, not a large localization shift.
 - The detector-side mainline remains `local_anchor_residual_query` as the base detector plus low-interference two-stage quality ranking.
+
+1000-image strict train-label-map check:
+
+The residual-anchor quality route was expanded again to 1000 images, 500 steps, 3 seeds, `--label-map-source train`, and held-out alpha calibration.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.414 | 0.271 | 0.107 | 0.040 | 0.271 | 0.271 | 0.040 | 0.257 | 0.310 |
+| `local_anchor_residual_query_quality_head` | 0.420 | 0.351 | 0.148 | 0.048 | 0.398 | 0.397 | 0.044 | 0.171 | 0.027 |
+
+Paired deltas:
+
+- Final IoU: `+0.006`, `2/3` wins.
+- AP50: `+0.080`, `3/3` wins.
+- Class AP50: `+0.041`, `3/3` wins.
+- Pre-registered `q^2` AP50: `+0.127`, `3/3` wins.
+- Calibration-selected fixed AP50: `+0.126`, `3/3` wins.
+- Calibration-selected fixed AP75: `+0.005`, `3/3` wins.
+- Combined ECE-lite improves from `0.257/0.310` to `0.171/0.027` for AP50/AP75 targets.
+
+Interpretation:
+
+- The 1000-image check makes the detector-side result much cleaner: two-stage quality ranking gives large AP/ranking and calibration gains while localization moves only slightly.
+- This should now be treated as the strongest real-mini positive result in the repo.
+- Next scale-up should prioritize detector-quality ranking robustness and calibration protocol, not new proposal-state architectures.
 
 Quality-head generalization check:
 
