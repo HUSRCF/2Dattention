@@ -1851,6 +1851,31 @@ Smoke artifact:
 
 This smoke only validates wiring and CSV output. It is not a formal architecture comparison.
 
+Grid-residual formal off-center result:
+
+Artifact:
+
+- `results/det_real_grid_residual_offcenter_1000img_500step_3seed.csv`
+
+| Variant | Final IoU | AP50 | Class AP50 | q/fixed AP50 | Center Fixed AP50 | Offcenter Fixed AP50 | Offcenter Top-k FP | Offcenter Combined Top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.332 | 0.130 | 0.072 | 0.130 | 0.248 | 0.067 | 0.965 | 0.965 |
+| `local_anchor_residual_query_quality_head` | 0.333 | 0.127 | 0.054 | 0.150 | 0.378 | 0.033 | 0.981 | 0.982 |
+| `local_grid_residual_query` | 0.333 | 0.143 | 0.072 | 0.143 | 0.271 | 0.072 | 0.957 | 0.957 |
+| `local_grid_residual_query_quality_head` | 0.334 | 0.129 | 0.065 | 0.146 | 0.346 | 0.047 | 0.971 | 0.994 |
+
+Paired deltas versus `local_anchor_residual_query`:
+
+- `local_grid_residual_query`: AP50 `+0.013` (`2/3`), final IoU `+0.002` (`2/3`), center fixed AP50 `+0.022` (`3/3`), offcenter fixed AP50 `+0.005` (`1/3`).
+- `local_grid_residual_query_quality_head`: q/fixed AP50 `+0.016` (`3/3`), center fixed AP50 `+0.098` (`3/3`), offcenter fixed AP50 `-0.020` (`1/3`).
+
+Interpretation:
+
+- Coarse grid query coverage gives a small base-detector AP improvement and is worth keeping as a lightweight representation control.
+- It does not solve the off-center failure: off-center top-k false positives remain close to saturated for both grid base and grid quality models.
+- The quality head again helps center ranking more than off-center ranking.
+- Next off-center work should move beyond coarse grid seeding, likely toward query-position supervision, off-center proposal selection, or explicit suppression of high-score false candidates.
+
 Small-object slice-stress check:
 
 The small-object slice was tested separately with `--eval-slice-filter small`. The eval split contains `30/31/33` small-slice images across the three seeds, so this is a useful stress test but higher-variance than the off-center split.
