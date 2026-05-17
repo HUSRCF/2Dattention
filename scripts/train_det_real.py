@@ -384,6 +384,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--max-objects", type=int, default=3)
     parser.add_argument("--train-frac", type=float, default=0.8)
+    parser.add_argument(
+        "--calibration-frac",
+        type=float,
+        default=0.0,
+        help="Optional fraction of the held-out split used only to choose quality alpha.",
+    )
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=64)
@@ -423,6 +429,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
     parser.add_argument("--eval-batches", type=int, default=8)
+    parser.add_argument(
+        "--calibration-batches",
+        type=int,
+        default=0,
+        help="Calibration batches for alpha selection; 0 reuses --eval-batches.",
+    )
     parser.add_argument("--out", type=Path, default=Path("results/det_real_mini_compare.csv"))
     parser.add_argument(
         "--label-map-out",
@@ -443,6 +455,8 @@ def main() -> None:
         raise ValueError("--fixed-quality-alpha must be >= 0")
     if args.quality_score_temperature <= 0:
         raise ValueError("--quality-score-temperature must be > 0")
+    if not 0.0 <= args.calibration_frac < 1.0:
+        raise ValueError("--calibration-frac must be in [0, 1)")
     device = get_best_device()
     all_samples = load_real_det_samples(args.anno_root, args.image_root)
     label_to_id = build_label_map(all_samples, top_classes=args.top_classes)
@@ -469,15 +483,25 @@ def main() -> None:
     split_rows: list[dict[str, int | str]] = []
     for seed_idx in range(args.seeds):
         run_seed = args.seed + seed_idx
-        train_set, eval_set, seed_split_rows = build_splits(
+        train_set, calibration_set, eval_set, seed_split_rows = build_splits(
             samples=samples,
             label_to_id=label_to_id,
             image_size=args.image_size,
             max_objects=args.max_objects,
             train_frac=args.train_frac,
+            calibration_frac=args.calibration_frac,
             seed=run_seed,
         )
         split_rows.extend(seed_split_rows)
+        calibration_loader = None
+        if calibration_set is not None:
+            calibration_loader = DataLoader(
+                calibration_set,
+                batch_size=args.batch_size,
+                shuffle=False,
+                num_workers=0,
+                collate_fn=det_collate,
+            )
         eval_loader = DataLoader(
             eval_set,
             batch_size=args.batch_size,
@@ -486,7 +510,18 @@ def main() -> None:
             collate_fn=det_collate,
         )
         for model_name in args.models:
-            rows.extend(train_one_model(args, model_name, run_seed, train_set, eval_loader, device, len(label_to_id)))
+            rows.extend(
+                train_one_model(
+                    args,
+                    model_name,
+                    run_seed,
+                    train_set,
+                    eval_loader,
+                    device,
+                    len(label_to_id),
+                    calibration_loader=calibration_loader,
+                )
+            )
     write_rows(args.out, rows)
     write_split_manifest(args.split_out, split_rows)
     print("saved_csv:", args.out)
@@ -504,6 +539,7 @@ def train_one_model(
     eval_loader: DataLoader,
     device: torch.device,
     num_classes: int,
+    calibration_loader: DataLoader | None = None,
 ) -> list[dict[str, float | int | str]]:
     feature_mode, query_init, query_refine, mask_aux_mode, gate_init, gate_schedule = REAL_MODEL_CONFIGS[model_name]
     if "oracle" in query_init and mask_aux_mode != "none":
@@ -603,6 +639,19 @@ def train_one_model(
         optimizer.step()
         last_loss = float(losses["loss"].item())
         if step % args.eval_every == 0 or step == args.steps:
+            fixed_quality_alpha = args.fixed_quality_alpha
+            if model_name in QUALITY_HEAD_MODELS and calibration_loader is not None:
+                calibration_metrics = evaluate_real(
+                    model,
+                    calibration_loader,
+                    device,
+                    batches=args.calibration_batches or args.eval_batches,
+                    criterion=criterion,
+                    use_quality_scores=True,
+                    fixed_quality_alpha=args.fixed_quality_alpha,
+                    quality_score_temperature=args.quality_score_temperature,
+                )
+                fixed_quality_alpha = calibration_metrics["ap50_q_best_alpha"]
             metrics = evaluate_real(
                 model,
                 eval_loader,
@@ -610,7 +659,7 @@ def train_one_model(
                 batches=args.eval_batches,
                 criterion=criterion,
                 use_quality_scores=model_name in QUALITY_HEAD_MODELS,
-                fixed_quality_alpha=args.fixed_quality_alpha,
+                fixed_quality_alpha=fixed_quality_alpha,
                 quality_score_temperature=args.quality_score_temperature,
             )
             if metrics["iou"] > best_iou:
@@ -1571,13 +1620,26 @@ def build_splits(
     image_size: int,
     max_objects: int,
     train_frac: float,
+    calibration_frac: float,
     seed: int,
-) -> tuple[Subset, Subset, list[dict[str, int | str]]]:
+) -> tuple[Subset, Subset | None, Subset, list[dict[str, int | str]]]:
     dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
     indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(seed)).tolist()
     train_size = max(1, min(len(indices) - 1, int(len(indices) * train_frac)))
+    train_indices = indices[:train_size]
+    heldout_indices = indices[train_size:]
+    calibration_indices: list[int] = []
+    eval_indices = heldout_indices
+    if calibration_frac > 0.0 and len(heldout_indices) > 1:
+        calibration_size = max(1, min(len(heldout_indices) - 1, int(len(heldout_indices) * calibration_frac)))
+        calibration_indices = heldout_indices[:calibration_size]
+        eval_indices = heldout_indices[calibration_size:]
     split_rows = []
-    for split, split_indices in (("train", indices[:train_size]), ("eval", indices[train_size:])):
+    split_defs = [("train", train_indices)]
+    if calibration_indices:
+        split_defs.append(("calibration", calibration_indices))
+    split_defs.append(("eval", eval_indices))
+    for split, split_indices in split_defs:
         for idx in split_indices:
             split_rows.append(
                 {
@@ -1588,7 +1650,8 @@ def build_splits(
                     "object_count": len(samples[idx].boxes),
                 }
             )
-    return Subset(dataset, indices[:train_size]), Subset(dataset, indices[train_size:]), split_rows
+    calibration_subset = Subset(dataset, calibration_indices) if calibration_indices else None
+    return Subset(dataset, train_indices), calibration_subset, Subset(dataset, eval_indices), split_rows
 
 
 def det_collate(batch: list[tuple[Tensor, dict[str, Tensor]]]) -> tuple[Tensor, list[dict[str, Tensor]]]:

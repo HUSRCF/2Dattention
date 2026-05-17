@@ -6,8 +6,11 @@ from PIL import Image
 import torch
 
 from scripts.train_det_real import (
+    RealBox,
     RealDetDataset,
+    RealDetSample,
     build_label_map,
+    build_splits,
     binary_auc,
     det_collate,
     duplicate_predictions_per_gt,
@@ -71,6 +74,34 @@ def test_real_det_dataset_parses_xml_and_normalizes_boxes(tmp_path: Path) -> Non
     images, targets = det_collate([dataset[0]])
     assert images.shape == (1, 3, 32, 32)
     assert len(targets) == 1
+
+
+def test_real_det_build_splits_can_hold_out_calibration() -> None:
+    samples = [
+        RealDetSample(
+            image_id=f"sample_{idx}",
+            image_path=Path(f"sample_{idx}.JPEG"),
+            width=64,
+            height=64,
+            boxes=(RealBox("class_a", 4, 4, 32, 32),),
+        )
+        for idx in range(10)
+    ]
+    train_set, calibration_set, eval_set, split_rows = build_splits(
+        samples=samples,
+        label_to_id={"class_a": 0},
+        image_size=64,
+        max_objects=1,
+        train_frac=0.6,
+        calibration_frac=0.5,
+        seed=123,
+    )
+
+    assert len(train_set) == 6
+    assert calibration_set is not None
+    assert len(calibration_set) == 2
+    assert len(eval_set) == 2
+    assert {str(row["split"]) for row in split_rows} == {"train", "calibration", "eval"}
 
 
 def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> None:

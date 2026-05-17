@@ -1506,3 +1506,29 @@ Interpretation:
 - The model learns query-specific masks, but using soft mask moments to refine boxes hurts both localization and ranking.
 - This is now a concrete negative result: side query masks are insufficient, and naive mask-to-box moment interpolation is also insufficient.
 - The remaining strong real-mini AP route is still `local_anchor_residual_query + two-stage quality`; proposal refresh remains a geometry diagnostic rather than an active detector architecture.
+
+Held-out alpha calibration for two-stage quality:
+
+This protocol separates formal inference scoring from eval-set post-hoc best-q selection. The original held-out set is split into a calibration subset and a final eval subset. For quality-head models, alpha is chosen on calibration and then used as the fixed alpha on final eval.
+
+Implementation:
+
+- `--calibration-frac`
+- `--calibration-batches`
+
+Artifacts:
+
+- `results/det_real_quality_calib_split_smoke.csv`
+- `results/det_real_quality_calib_split_400step_2seed.csv`
+
+| Variant | Final IoU | Best IoU | AP50 | Class AP50 | Calibrated fixed AP50 | Calibrated fixed Class AP50 | Fixed alpha |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.358 | 0.376 | 0.222 | 0.071 | 0.222 | 0.071 | 0.00 |
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.236 | 0.143 | 0.295 | 0.189 | 1.12 |
+
+Interpretation:
+
+- The frozen two-stage quality head keeps a positive signal under held-out alpha calibration.
+- It improves final IoU, base AP50, class-aware AP50, calibrated fixed AP50, and calibrated fixed class-aware AP50 over the residual-anchor base on the same split.
+- The calibrated fixed AP50 is close to the final-eval best-q AP50, so the quality route is not relying entirely on eval-set post-hoc alpha selection.
+- This strengthens the detector-side claim: the most reliable current positive result is still low-interference post-detector quality ranking, not proposal persistence or mask-moment box refinement.

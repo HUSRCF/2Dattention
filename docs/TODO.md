@@ -29,6 +29,7 @@ Immediate stage gates:
 
 - P0 calibration gate: frozen ranking should produce meaningful held-out AP75/ECE or score-IoU correlation gains before expanding calibration.
 - P1 proposal-consumption gate: layerwise proposal refresh / `reinject` is the active predicted-proposal path. Persistent state can only return to mainline if a future proposal-quality/oracle-gap run beats `reinject` on both geometry and AP without post-hoc tuning.
+- Current update: held-out alpha calibration now supports the frozen quality route; query-mask moment refinement and longer proposal refresh did not.
 
 ### Step 0: Persistent Proposal-State Mini Probe
 
@@ -781,6 +782,23 @@ Interpretation:
     - Official fixed scoring keeps `local_anchor_residual_query_quality_head` as the current best AP50 route (`0.341`).
     - Oracle proposal quality gives the strongest localization coverage but still trails residual-anchor quality in fixed-q2 AP (`0.325` vs `0.341`).
     - Proposal/query improvement and quality ranking are both useful, but the current best real-mini recipe is still residual-anchor detector + two-stage fixed-q2 quality ranking.
+- Held-out calibration split:
+  - Added CLI fields:
+    - `--calibration-frac`;
+    - `--calibration-batches`.
+  - When enabled, the original held-out split is divided into calibration and final eval subsets. The quality model chooses alpha on calibration via `ap50_q_best_alpha`; final eval reports that alpha through `eval_ap50_q_fixed`.
+  - Smoke artifact: `results/det_real_quality_calib_split_smoke.csv`.
+  - Standard artifact: `results/det_real_quality_calib_split_400step_2seed.csv`.
+
+| Model | Final IoU | Best IoU | AP50 | Class AP50 | Calibrated fixed AP50 | Calibrated fixed Class AP50 | Fixed alpha |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.358 | 0.376 | 0.222 | 0.071 | 0.222 | 0.071 | 0.00 |
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.236 | 0.143 | 0.295 | 0.189 | 1.12 |
+
+  - Interpretation:
+    - The two-stage quality head remains useful under held-out alpha calibration: final IoU `+0.018`, AP50 `+0.014`, class AP50 `+0.072`, calibrated fixed AP50 `+0.073`, all `2/2` paired wins.
+    - The calibrated fixed AP50 (`0.295`) is close to final-eval best-q (`0.300`), so this run does not look like pure eval-set alpha overfitting.
+    - Because this split is smaller than the previous full-eval run, the absolute AP values should not be compared directly to `results/det_real_official_fixed_q2_summary.csv`; use it as protocol evidence.
 - Query-conditioned mask auxiliary:
   - Implemented per-query dense mask logits: `query_mask_logits_per_query` with shape `[B, Q, H, W]`.
   - Added matched-query mask loss: run Hungarian matching, supervise each matched query with its matched bbox rectangle mask via BCE + Dice; unmatched queries are not mask-supervised.
