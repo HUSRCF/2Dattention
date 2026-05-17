@@ -1876,6 +1876,24 @@ Interpretation:
 - The quality head again helps center ranking more than off-center ranking.
 - Next off-center work should move beyond coarse grid seeding, likely toward query-position supervision, off-center proposal selection, or explicit suppression of high-score false candidates.
 
+Top-k center-distance diagnostics:
+
+The CSV now reports how far the top-ranked predicted boxes are from the image center:
+
+- `topk_center_distance`
+- `combined_topk_center_distance`
+- `center_topk_center_distance`, `offcenter_topk_center_distance`
+- `center_combined_topk_center_distance`, `offcenter_combined_topk_center_distance`
+
+Smoke artifact:
+
+- `results/det_real_topk_center_distance_smoke.csv`
+
+Use these fields to distinguish two off-center failure modes:
+
+- center-biased false positives: high-score predictions remain near the image center even for off-center targets;
+- general off-center ranking failure: high-score predictions are not center-biased but still fail to overlap the off-center object.
+
 Small-object slice-stress check:
 
 The small-object slice was tested separately with `--eval-slice-filter small`. The eval split contains `30/31/33` small-slice images across the three seeds, so this is a useful stress test but higher-variance than the off-center split.
