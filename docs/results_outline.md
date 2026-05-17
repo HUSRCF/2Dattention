@@ -1536,6 +1536,7 @@ Artifacts:
 - `results/det_real_quality_calib_trainlabels_400step_3seed.csv`
 - `results/det_real_quality_calib_trainlabels_500img_500step_3seed.csv`
 - `results/det_real_quality_calib_trainlabels_1000img_500step_3seed.csv`
+- `results/det_real_quality_traincalib_1000img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1600,6 +1601,43 @@ Interpretation:
 - The 1000-image check makes the detector-side result much cleaner: two-stage quality ranking gives large AP/ranking and calibration gains while localization moves only slightly.
 - This should now be treated as the strongest real-mini positive result in the repo.
 - Next scale-up should prioritize detector-quality ranking robustness and calibration protocol, not new proposal-state architectures.
+
+Strict train-sourced calibration and slice robustness:
+
+The previous 1000-image run selected the fixed quality alpha from a calibration split carved out of heldout. A stricter protocol now uses `--calibration-source train`, so alpha selection is based on a held-out subset of the training split and final eval remains untouched by calibration.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.414 | 0.271 | 0.129 | 0.030 | 0.271 | 0.271 | 0.030 | 0.292 | 0.338 |
+| `local_anchor_residual_query_quality_head` | 0.416 | 0.328 | 0.150 | 0.041 | 0.383 | 0.384 | 0.050 | 0.148 | 0.028 |
+
+Paired deltas:
+
+- Final IoU: `+0.002`, `2/3` wins.
+- AP50: `+0.057`, `2/3` wins.
+- Class AP50: `+0.021`, `2/3` wins.
+- AP75: `+0.011`, `2/3` wins.
+- Pre-registered `q^2` AP50: `+0.112`, `3/3` wins.
+- Train-calibrated fixed AP50: `+0.113`, `3/3` wins.
+- Train-calibrated fixed AP75: `+0.020`, `2/3` wins.
+- Combined ECE-lite improves from `0.292/0.338` to `0.148/0.028` for AP50/AP75 targets.
+
+Slice fixed-quality AP50:
+
+| Slice | Base | Quality | Delta | Wins |
+|---|---:|---:|---:|---:|
+| small | 0.000 | 0.000 | +0.000 | n/a |
+| medium | 0.004 | 0.009 | +0.005 | 2/3 |
+| large | 0.312 | 0.444 | +0.131 | 3/3 |
+| center | 0.335 | 0.499 | +0.164 | 3/3 |
+| offcenter | 0.066 | 0.037 | -0.029 | 1/3 |
+
+Interpretation:
+
+- The stricter train-sourced calibration run confirms the main quality-ranking result without using heldout for alpha selection.
+- The quality signal is strongest on large and center objects, where fixed-quality scoring improves AP robustly across all seeds.
+- Small-object evidence is absent in this slice protocol, and off-center performance gets worse under the current fixed-quality score. This is the clearest robustness weakness left in the detector-side route.
+- The next detector work should target off-center/small calibration robustness, OOD/slice calibration, and larger real-det protocols. It should not reopen persistent proposal state as an active architecture unless it beats the current residual-anchor quality route under these stricter diagnostics.
 
 Quality-head generalization check:
 
