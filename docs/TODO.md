@@ -37,6 +37,7 @@ Immediate stage gates:
 - Quality-head generalization: `results/det_real_quality_generalization_trainlabels_400step_3seed.csv` shows the two-stage frozen quality head also improves `local_learned` strongly (AP50 `+0.091`, q2 AP50 `+0.095`, fixed AP50 `+0.082`, all `3/3` vs `local_learned`). Treat quality ranking as a general post-detector fix, not only a residual-anchor-specific trick.
 - Larger learned-query check: `results/det_real_learned_quality_trainlabels_500img_500step_3seed.csv` keeps the quality-weighted scoring and ECE benefit, but the base AP50 drops (`-0.040`) and fixed AP50 gain is weaker (`+0.037`, `2/3`). The best 500-image recipe remains residual-anchor base plus two-stage quality ranking.
 - 1000-image strict check: `results/det_real_quality_calib_trainlabels_1000img_500step_3seed.csv` is now the strongest detector-side evidence. Residual-anchor + two-stage quality gives AP50 `+0.080` (`3/3`), q2 AP50 `+0.127` (`3/3`), fixed AP50 `+0.126` (`3/3`), and combined ECE50/ECE75 drops from `0.257/0.310` to `0.171/0.027`, while final IoU only moves `+0.006`.
+- Protocol upgrade implemented: `--calibration-source train` now carves the alpha-calibration subset out of training data instead of heldout, leaving final eval independent of alpha selection. Slice robustness columns were added for small/medium/large and center/offcenter AP50 plus fixed-quality AP50. Smoke artifact: `results/det_real_traincalib_slice_smoke.csv`.
 
 ### Step 0: Persistent Proposal-State Mini Probe
 

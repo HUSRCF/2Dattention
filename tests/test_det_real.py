@@ -9,6 +9,7 @@ from scripts.train_det_real import (
     RealBox,
     RealDetDataset,
     RealDetSample,
+    box_slice_masks,
     build_label_map,
     build_splits,
     binary_auc,
@@ -32,6 +33,7 @@ from scripts.train_det_real import (
     ranking_gap_closure,
     score_iou_calibration_loss,
     set_quality_head_only_trainable,
+    summarize_slice_ap,
 )
 from attention2d.detection import DetectionCriterion
 from attention2d.detection import TinyAnchorRegionDETR
@@ -103,6 +105,57 @@ def test_real_det_build_splits_can_hold_out_calibration() -> None:
     assert len(calibration_set) == 2
     assert len(eval_set) == 2
     assert {str(row["split"]) for row in split_rows} == {"train", "calibration", "eval"}
+
+
+def test_real_det_build_splits_can_use_train_calibration() -> None:
+    samples = [
+        RealDetSample(
+            image_id=f"sample_{idx}",
+            image_path=Path(f"sample_{idx}.JPEG"),
+            width=64,
+            height=64,
+            boxes=(RealBox("class_a", 4, 4, 32, 32),),
+        )
+        for idx in range(10)
+    ]
+    train_set, calibration_set, eval_set, split_rows = build_splits(
+        samples=samples,
+        label_to_id={"class_a": 0},
+        image_size=64,
+        max_objects=1,
+        train_frac=0.6,
+        calibration_frac=0.5,
+        calibration_source="train",
+        seed=123,
+    )
+
+    assert len(train_set) == 3
+    assert calibration_set is not None
+    assert len(calibration_set) == 3
+    assert len(eval_set) == 4
+    split_counts = {str(row["split"]): 0 for row in split_rows}
+    for row in split_rows:
+        split_counts[str(row["split"])] += 1
+    assert split_counts == {"train": 3, "calibration": 3, "eval": 4}
+
+
+def test_real_det_slice_masks_and_ap_summary() -> None:
+    boxes = torch.tensor(
+        [
+            [0.50, 0.50, 0.10, 0.10],
+            [0.80, 0.80, 0.30, 0.30],
+        ]
+    )
+    masks = box_slice_masks(boxes)
+
+    assert masks["small"].tolist() == [True, False]
+    assert masks["large"].tolist() == [False, True]
+    assert masks["center"].tolist() == [True, False]
+    assert masks["offcenter"].tolist() == [False, True]
+
+    summary = summarize_slice_ap({"small": [torch.tensor(0.25), torch.tensor(0.75)], "large": []})
+    assert summary["small"] == 0.5
+    assert summary["large"] == 0.0
 
 
 def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> None:

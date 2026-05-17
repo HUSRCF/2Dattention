@@ -399,6 +399,15 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Optional fraction of the held-out split used only to choose quality alpha.",
     )
+    parser.add_argument(
+        "--calibration-source",
+        choices=("heldout", "train"),
+        default="heldout",
+        help=(
+            "Where to carve the calibration split from. 'heldout' preserves legacy "
+            "behavior; 'train' keeps the eval split independent of alpha selection."
+        ),
+    )
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=64)
@@ -508,6 +517,7 @@ def main() -> None:
             max_objects=args.max_objects,
             train_frac=args.train_frac,
             calibration_frac=args.calibration_frac,
+            calibration_source=args.calibration_source,
             seed=run_seed,
         )
         split_rows.extend(seed_split_rows)
@@ -709,6 +719,16 @@ def train_one_model(
                 "eval_ap75": metrics["ap75"],
                 "eval_ap75_q_fixed": metrics["ap75_q_fixed"],
                 "eval_ap75_oracle_iou": metrics["ap75_oracle_iou"],
+                "eval_small_ap50": metrics["small_ap50"],
+                "eval_medium_ap50": metrics["medium_ap50"],
+                "eval_large_ap50": metrics["large_ap50"],
+                "eval_center_ap50": metrics["center_ap50"],
+                "eval_offcenter_ap50": metrics["offcenter_ap50"],
+                "eval_small_ap50_q_fixed": metrics["small_ap50_q_fixed"],
+                "eval_medium_ap50_q_fixed": metrics["medium_ap50_q_fixed"],
+                "eval_large_ap50_q_fixed": metrics["large_ap50_q_fixed"],
+                "eval_center_ap50_q_fixed": metrics["center_ap50_q_fixed"],
+                "eval_offcenter_ap50_q_fixed": metrics["offcenter_ap50_q_fixed"],
                 "eval_ap50_q025": metrics["ap50_q025"],
                 "eval_ap50_q05": metrics["ap50_q05"],
                 "eval_ap50_q1": metrics["ap50_q1"],
@@ -943,6 +963,20 @@ def evaluate_real(
     aps75 = []
     aps75_q_fixed = []
     aps75_oracle_iou = []
+    slice_aps: dict[str, list[Tensor]] = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
+    slice_aps_q_fixed: dict[str, list[Tensor]] = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
     aps_q025 = []
     aps_q05 = []
     aps_q1 = []
@@ -1068,6 +1102,25 @@ def evaluate_real(
                 outputs["pred_boxes"][sample_idx],
                 target["boxes"],
             )
+            for slice_name, slice_mask in box_slice_masks(target["boxes"]).items():
+                if not bool(slice_mask.any()):
+                    continue
+                slice_boxes = target["boxes"][slice_mask]
+                slice_aps[slice_name].append(
+                    objectness_ap50_for_image(
+                        outputs["pred_logits"][sample_idx],
+                        outputs["pred_boxes"][sample_idx],
+                        slice_boxes,
+                    ).cpu()
+                )
+                slice_aps_q_fixed[slice_name].append(
+                    objectness_ap50_for_image(
+                        outputs["pred_logits"][sample_idx],
+                        outputs["pred_boxes"][sample_idx],
+                        slice_boxes,
+                        score_multiplier=fixed_quality_scores,
+                    ).cpu()
+                )
             aps_q025.append(
                 objectness_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -1230,6 +1283,8 @@ def evaluate_real(
     ap75 = float(torch.stack(aps75).mean().item()) if aps75 else 0.0
     ap75_q_fixed = float(torch.stack(aps75_q_fixed).mean().item()) if aps75_q_fixed else 0.0
     ap75_oracle_iou = float(torch.stack(aps75_oracle_iou).mean().item()) if aps75_oracle_iou else 0.0
+    slice_ap50 = summarize_slice_ap(slice_aps)
+    slice_ap50_q_fixed = summarize_slice_ap(slice_aps_q_fixed)
     ap50_q_by_alpha = {
         0.25: float(torch.stack(aps_q025).mean().item()) if aps_q025 else 0.0,
         0.5: float(torch.stack(aps_q05).mean().item()) if aps_q05 else 0.0,
@@ -1263,6 +1318,8 @@ def evaluate_real(
         "ap75": ap75,
         "ap75_q_fixed": ap75_q_fixed,
         "ap75_oracle_iou": ap75_oracle_iou,
+        **{f"{name}_ap50": value for name, value in slice_ap50.items()},
+        **{f"{name}_ap50_q_fixed": value for name, value in slice_ap50_q_fixed.items()},
         "ap50_q025": ap50_q_by_alpha[0.25],
         "ap50_q05": ap50_q_by_alpha[0.5],
         "ap50_q1": ap50_q_by_alpha[1.0],
@@ -1346,6 +1403,38 @@ def fixed_quality_score_multiplier(
         raise ValueError("alpha must be >= 0")
     quality = (quality_logits / temperature).sigmoid().clamp(0.0, 1.0)
     return quality.pow(alpha)
+
+
+def box_slice_masks(boxes: Tensor) -> dict[str, Tensor]:
+    """Return object-size and center-position masks for normalized cxcywh boxes."""
+
+    if boxes.numel() == 0:
+        empty = torch.zeros(0, dtype=torch.bool, device=boxes.device)
+        return {
+            "small": empty,
+            "medium": empty,
+            "large": empty,
+            "center": empty,
+            "offcenter": empty,
+        }
+    areas = boxes[:, 2] * boxes[:, 3]
+    center_distance = ((boxes[:, 0] - 0.5).square() + (boxes[:, 1] - 0.5).square()).sqrt()
+    return {
+        "small": areas < 0.04,
+        "medium": (areas >= 0.04) & (areas < 0.075),
+        "large": areas >= 0.075,
+        "center": center_distance < 0.25,
+        "offcenter": center_distance >= 0.25,
+    }
+
+
+def summarize_slice_ap(values: dict[str, list[Tensor]]) -> dict[str, float]:
+    """Average per-image AP values for every robustness slice."""
+
+    return {
+        name: float(torch.stack(slice_values).mean().item()) if slice_values else 0.0
+        for name, slice_values in values.items()
+    }
 
 
 def ranking_gap_closure(base_score: float, quality_score: float, oracle_score: float) -> float:
@@ -1733,8 +1822,11 @@ def build_splits(
     max_objects: int,
     train_frac: float,
     calibration_frac: float,
-    seed: int,
+    calibration_source: str = "heldout",
+    seed: int = 0,
 ) -> tuple[Subset, Subset | None, Subset, list[dict[str, int | str]]]:
+    if calibration_source not in {"heldout", "train"}:
+        raise ValueError("calibration_source must be 'heldout' or 'train'")
     dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
     indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(seed)).tolist()
     train_size = max(1, min(len(indices) - 1, int(len(indices) * train_frac)))
@@ -1742,10 +1834,14 @@ def build_splits(
     heldout_indices = indices[train_size:]
     calibration_indices: list[int] = []
     eval_indices = heldout_indices
-    if calibration_frac > 0.0 and len(heldout_indices) > 1:
+    if calibration_frac > 0.0 and calibration_source == "heldout" and len(heldout_indices) > 1:
         calibration_size = max(1, min(len(heldout_indices) - 1, int(len(heldout_indices) * calibration_frac)))
         calibration_indices = heldout_indices[:calibration_size]
         eval_indices = heldout_indices[calibration_size:]
+    elif calibration_frac > 0.0 and calibration_source == "train" and len(train_indices) > 1:
+        calibration_size = max(1, min(len(train_indices) - 1, int(len(train_indices) * calibration_frac)))
+        calibration_indices = train_indices[-calibration_size:]
+        train_indices = train_indices[:-calibration_size]
     split_rows = []
     split_defs = [("train", train_indices)]
     if calibration_indices:
@@ -1831,6 +1927,16 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_ap75",
         "eval_ap75_q_fixed",
         "eval_ap75_oracle_iou",
+        "eval_small_ap50",
+        "eval_medium_ap50",
+        "eval_large_ap50",
+        "eval_center_ap50",
+        "eval_offcenter_ap50",
+        "eval_small_ap50_q_fixed",
+        "eval_medium_ap50_q_fixed",
+        "eval_large_ap50_q_fixed",
+        "eval_center_ap50_q_fixed",
+        "eval_offcenter_ap50_q_fixed",
         "eval_ap50_q025",
         "eval_ap50_q05",
         "eval_ap50_q1",
@@ -1908,6 +2014,9 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
         "ap75_mean,ap75_q_fixed_mean,ap75_iou_reference_mean,"
+        "small_ap50_mean,medium_ap50_mean,large_ap50_mean,center_ap50_mean,offcenter_ap50_mean,"
+        "small_ap50_q_fixed_mean,medium_ap50_q_fixed_mean,large_ap50_q_fixed_mean,"
+        "center_ap50_q_fixed_mean,offcenter_ap50_q_fixed_mean,"
         "ap50_q025_mean,ap50_q05_mean,ap50_q1_mean,ap50_q2_mean,ap50_q4_mean,"
         "ap50_q_fixed_mean,ap50_q_fixed_alpha_mean,ap50_q_fixed_temperature_mean,"
         "ap50_q_best_mean,ap50_q_selected_alpha_mean,"
@@ -1942,6 +2051,16 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_ap75']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap75_q_fixed']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap75_oracle_iou']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_small_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_medium_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_large_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_center_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_offcenter_ap50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_small_ap50_q_fixed']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_medium_ap50_q_fixed']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_large_ap50_q_fixed']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_center_ap50_q_fixed']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_offcenter_ap50_q_fixed']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q025']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q05']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q1']) for row in model_rows]):.3f},"
