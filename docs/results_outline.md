@@ -1579,6 +1579,7 @@ This check asks whether the two-stage frozen quality head is specific to residua
 Artifact:
 
 - `results/det_real_quality_generalization_trainlabels_400step_3seed.csv`
+- `results/det_real_learned_quality_trainlabels_500img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Combined ECE50 | Combined ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -1592,3 +1593,26 @@ Interpretation:
 - The two-stage quality head is not residual-anchor-specific. It also strongly improves `local_learned`: AP50 `+0.091`, class AP50 `+0.051`, q2 AP50 `+0.095`, fixed AP50 `+0.082`, all `3/3` paired against `local_learned`.
 - `local_learned_quality_head` is highly competitive on AP/ranking and ECE. It has the highest base AP50 in this 200-image check, while `local_anchor_residual_query_quality_head` keeps the strongest final IoU and slightly higher calibration-selected fixed AP50.
 - This updates the detector-side interpretation: the low-interference quality head is a general ranking fix, while residual-anchor remains a good base-detector/coupling candidate rather than the only viable quality route.
+
+Larger learned-query quality check:
+
+The learned-query route was also run at 500 images, 500 steps, 3 seeds, `--label-map-source train`.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.391 | 0.323 | 0.152 | 0.061 | 0.323 | 0.323 | 0.279 | 0.309 |
+| `local_learned_quality_head` | 0.392 | 0.283 | 0.131 | 0.046 | 0.366 | 0.360 | 0.161 | 0.051 |
+
+Paired deltas versus `local_learned`:
+
+- Final IoU: `+0.002`, `2/3` wins.
+- Base AP50 with unmodified class/objectness score: `-0.040`, `1/3` wins.
+- Pre-registered `q^2` AP50: `+0.043`, `2/3` wins.
+- Calibration-selected fixed AP50: `+0.037`, `2/3` wins.
+- Combined ECE-lite improves from `0.279/0.309` to `0.161/0.051` for AP50/AP75 targets.
+
+Interpretation:
+
+- The 500-image run keeps the calibration/ECE benefit for `local_learned`, but the AP benefit is weaker and depends on using the quality-weighted score. The unmodified class/objectness AP is lower after the quality-only phase.
+- Compared with the 500-image residual-anchor quality route, learned-query quality is less strong on fixed AP50 (`0.360` vs `0.384`) and final IoU (`0.392` vs `0.407`).
+- Updated detector-side hierarchy: quality ranking is a broadly useful scoring layer, but the best current 500-image recipe remains residual-anchor base plus two-stage quality ranking.
