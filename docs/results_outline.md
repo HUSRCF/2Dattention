@@ -1530,6 +1530,7 @@ Artifacts:
 - `results/det_real_quality_calib_split_400step_3seed.csv`
 - `results/det_real_quality_calib_split_ap75_400step_3seed.csv`
 - `results/det_real_quality_calib_split_ece_400step_3seed.csv`
+- `results/det_real_quality_calib_trainlabels_400step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1544,3 +1545,4 @@ Interpretation:
 - Query-level ECE-lite improves sharply: ECE50 drops from `0.346` to `0.144`, and ECE75 drops from `0.391` to `0.052`.
 - The calibrated fixed AP50 (`0.295`) is close to the final-eval best-q AP50 (`0.298`), so the quality route is not relying entirely on eval-set post-hoc alpha selection.
 - This strengthens the detector-side claim: the most reliable current positive result is still low-interference post-detector quality ranking, not proposal persistence or mask-moment box refinement.
+- The strict `--label-map-source train` rerun preserves the same AP pattern while avoiding held-out label-frequency leakage: final IoU `+0.021` (`3/3`), AP50 `+0.010` (`3/3`), class AP50 `+0.049` (`3/3`), calibrated fixed AP50 `+0.079` (`3/3`), and calibrated fixed AP75 `+0.048` (`2/3`).

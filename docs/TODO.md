@@ -32,6 +32,7 @@ Immediate stage gates:
 - Current update: held-out alpha calibration now supports the frozen quality route; query-mask moment refinement and longer proposal refresh did not.
 - Protocol correction: existing historical real-mini artifacts used legacy `--label-map-source all`; future strict held-out detector runs should use `--label-map-source train` to avoid held-out label-frequency leakage when selecting top classes.
 - Reporting tool: use `scripts/summarize_det_real_results.py` to summarize final-step CSV metrics and paired deltas. Its default columns include both pre-registered `eval_ap50_q2` and calibration/fixed-score `eval_ap50_q_fixed` plus `eval_ap50_q_fixed_alpha`.
+- Strict protocol check: `results/det_real_quality_calib_trainlabels_400step_3seed.csv` confirms the quality-ranking signal survives `--label-map-source train` with the same key paired gains as the legacy label-map run.
 
 ### Step 0: Persistent Proposal-State Mini Probe
 
