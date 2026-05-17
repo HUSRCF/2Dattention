@@ -1726,6 +1726,94 @@ Interpretation:
 - The behavior closely matches query-only quality on off-center-only eval: calibration improves, but AP/class ranking remains weak.
 - The remaining off-center blocker is therefore more likely query/object representation, query assignment, or the class/objectness branch, not missing box coordinates in the quality head input.
 
+Box-conditioned class/objectness off-center check:
+
+The next check asks whether the off-center weakness is in the class/objectness branch rather than the separate quality branch. `local_anchor_residual_query_box_class_head` concatenates `[query, detached_pred_box]` before the class head. `local_anchor_residual_query_box_class_quality_head` combines that class head with the two-stage frozen quality-head protocol.
+
+Artifact:
+
+- `results/det_real_box_class_traincalib_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- top-10 train labels, 1000 images, 500 steps, 3 seeds
+- `--calibration-source train`
+- `--eval-slice-filter offcenter`
+- quality head starts at step 376 with best-checkpoint restore
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Offcenter Fixed AP50 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.332 | 0.130 | 0.072 | 0.012 | 0.130 | 0.130 | 0.012 | 0.067 | 0.302 | 0.340 |
+| `local_anchor_residual_query_box_class_head` | 0.329 | 0.116 | 0.058 | 0.012 | 0.116 | 0.116 | 0.012 | 0.030 | 0.322 | 0.347 |
+| `local_anchor_residual_query_box_class_quality_head` | 0.323 | 0.119 | 0.068 | 0.007 | 0.124 | 0.125 | 0.008 | 0.026 | 0.141 | 0.071 |
+
+Paired deltas versus `local_anchor_residual_query`:
+
+- `box_class_head`: final IoU `-0.002` (`1/3` wins), AP50 `-0.014` (`1/3`), class AP50 `-0.014` (`0/3`), offcenter fixed AP50 `-0.037` (`0/3`).
+- `box_class_quality_head`: final IoU `-0.009` (`1/3`), AP50 `-0.011` (`1/3`), class AP50 `-0.004` (`1/3`), q2 AP50 `-0.006` (`1/3`), fixed AP50 `-0.005` (`1/3`), fixed AP75 `-0.004` (`1/3`), offcenter fixed AP50 `-0.041` (`1/3`).
+
+Interpretation:
+
+- Feeding detached predicted boxes into the class/objectness head does not improve off-center ranking or class-aware AP.
+- The quality-head version still improves ECE, but the AP and offcenter-fixed AP losses remain.
+- This rules out the simplest class-head geometry explanation. The remaining off-center issue is more likely in query/object representation, Hungarian assignment behavior, duplicate/high-score false positives, or slice-specific query-position handling.
+- Next detector work should therefore be diagnostic-first: add center/offcenter-stratified query-assignment and ranking diagnostics before introducing another representation module.
+
+Off-center diagnostic instrumentation:
+
+The real DET CSV now reports center/offcenter-stratified query/ranking diagnostics:
+
+- `center_matched_assignment_class_acc`, `offcenter_matched_assignment_class_acc`
+- `center_tp50_class_acc`, `offcenter_tp50_class_acc`
+- `center_score_iou_corr`, `offcenter_score_iou_corr`
+- `center_objectness_auc`, `offcenter_objectness_auc`
+- `center_topk_fp_rate`, `offcenter_topk_fp_rate`
+- `center_duplicate_per_gt`, `offcenter_duplicate_per_gt`
+
+Smoke artifact:
+
+- `results/det_real_slice_diagnostics_smoke.csv`
+
+Use these fields to decide whether off-center failure is mainly assignment/class correctness, score-IoU ranking, duplicate high-score false positives, or query-position representation.
+
+Formal off-center diagnostic rerun:
+
+Artifact:
+
+- `results/det_real_offcenter_diagnostics_1000img_500step_3seed.csv`
+
+This reruns the off-center stress comparison after adding center/offcenter diagnostic fields.
+
+| Variant | Final IoU | AP50 | Class AP50 | q2 AP50 | Fixed AP50 | Center Fixed AP50 | Offcenter Fixed AP50 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.332 | 0.130 | 0.072 | 0.130 | 0.130 | 0.248 | 0.067 | 0.302 | 0.340 |
+| `local_anchor_residual_query_quality_head` | 0.333 | 0.127 | 0.054 | 0.150 | 0.150 | 0.378 | 0.033 | 0.106 | 0.032 |
+
+Key paired deltas versus `local_anchor_residual_query`:
+
+- Final IoU: `+0.001` (`2/3` wins).
+- Base AP50: `-0.003` (`2/3` wins).
+- Class AP50: `-0.018` (`2/3` wins).
+- q2/fixed AP50: `+0.021` (`2/3` wins).
+- Center fixed AP50: `+0.130` (`3/3` wins).
+- Offcenter fixed AP50: `-0.035` (`1/3` wins).
+- Combined ECE50/ECE75: `0.302/0.340 -> 0.106/0.032`.
+
+Diagnostic fields:
+
+| Variant | Center Assign Class Acc | Offcenter Assign Class Acc | Center Score-IoU Corr | Offcenter Score-IoU Corr | Center Obj AUC | Offcenter Obj AUC | Center Top-k FP | Offcenter Top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.455 | 0.404 | 0.092 | 0.227 | 0.580 | 0.525 | 0.845 | 0.965 |
+| `local_anchor_residual_query_quality_head` | 0.397 | 0.332 | 0.245 | 0.186 | 0.619 | 0.507 | 0.758 | 0.981 |
+
+Interpretation:
+
+- The frozen quality head improves calibration and improves center fixed AP strongly, but it does not improve off-center fixed AP.
+- Off-center top-k false-positive rate is extremely high and remains high after quality scoring (`0.965 -> 0.981`).
+- Off-center objectness AUC and assignment class accuracy do not improve with the current quality head.
+- The off-center failure is therefore not a global calibration or alpha-selection problem. It looks more like a query/object representation and high-score false-candidate problem for off-center targets.
+- Next work should target off-center-aware query representation or assignment/ranking diagnostics, not another alpha sweep, persistent proposal-state rescue, or detached-box head concatenation.
+
 Small-object slice-stress check:
 
 The small-object slice was tested separately with `--eval-slice-filter small`. The eval split contains `30/31/33` small-slice images across the three seeds, so this is a useful stress test but higher-variance than the off-center split.

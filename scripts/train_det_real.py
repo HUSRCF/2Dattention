@@ -820,6 +820,18 @@ def train_one_model(
                 "combined_ece75": metrics["combined_ece75"],
                 "topk_fp_rate": metrics["topk_fp_rate"],
                 "duplicate_per_gt": metrics["duplicate_per_gt"],
+                "center_matched_assignment_class_acc": metrics["center_matched_assignment_class_acc"],
+                "offcenter_matched_assignment_class_acc": metrics["offcenter_matched_assignment_class_acc"],
+                "center_tp50_class_acc": metrics["center_tp50_class_acc"],
+                "offcenter_tp50_class_acc": metrics["offcenter_tp50_class_acc"],
+                "center_score_iou_corr": metrics["center_score_iou_corr"],
+                "offcenter_score_iou_corr": metrics["offcenter_score_iou_corr"],
+                "center_objectness_auc": metrics["center_objectness_auc"],
+                "offcenter_objectness_auc": metrics["offcenter_objectness_auc"],
+                "center_topk_fp_rate": metrics["center_topk_fp_rate"],
+                "offcenter_topk_fp_rate": metrics["offcenter_topk_fp_rate"],
+                "center_duplicate_per_gt": metrics["center_duplicate_per_gt"],
+                "offcenter_duplicate_per_gt": metrics["offcenter_duplicate_per_gt"],
                 "query_assignment_entropy": metrics["query_assignment_entropy"],
                 "best_iou": best_iou,
                 "best_step": best_step,
@@ -1046,6 +1058,30 @@ def evaluate_real(
     topk_fp_rates = []
     duplicate_per_gt_values = []
     query_assignment_counts = torch.zeros(model.num_queries, dtype=torch.float32)
+    slice_diag_vectors: dict[str, dict[str, list[Tensor]]] = {
+        "center": {
+            "matched_assignment_class_acc": [],
+            "tp50_class_acc": [],
+        },
+        "offcenter": {
+            "matched_assignment_class_acc": [],
+            "tp50_class_acc": [],
+        },
+    }
+    slice_diag_scalars: dict[str, dict[str, list[Tensor]]] = {
+        "center": {
+            "score_iou_corr": [],
+            "objectness_auc": [],
+            "topk_fp_rate": [],
+            "duplicate_per_gt": [],
+        },
+        "offcenter": {
+            "score_iou_corr": [],
+            "objectness_auc": [],
+            "topk_fp_rate": [],
+            "duplicate_per_gt": [],
+        },
+    }
     mask_ious = []
     mask_dices = []
     strata: dict[str, list[Tensor]] = {
@@ -1146,6 +1182,7 @@ def evaluate_real(
                 if not bool(slice_mask.any()):
                     continue
                 slice_boxes = target["boxes"][slice_mask]
+                slice_labels = target["labels"][slice_mask]
                 slice_aps[slice_name].append(
                     objectness_ap50_for_image(
                         outputs["pred_logits"][sample_idx],
@@ -1161,6 +1198,24 @@ def evaluate_real(
                         score_multiplier=fixed_quality_scores,
                     ).cpu()
                 )
+                if slice_name in slice_diag_vectors:
+                    slice_diagnostics = query_ranking_diagnostics(
+                        pred_logits=outputs["pred_logits"][sample_idx],
+                        pred_boxes=outputs["pred_boxes"][sample_idx],
+                        target_boxes=slice_boxes,
+                        target_labels=slice_labels,
+                        quality_logits=quality_logits,
+                        combined_quality_scores=fixed_quality_scores,
+                    )
+                    for metric_name, values in slice_diag_vectors[slice_name].items():
+                        source_name = (
+                            "matched_assignment_class_correct"
+                            if metric_name == "matched_assignment_class_acc"
+                            else "tp50_class_correct"
+                        )
+                        values.append(slice_diagnostics[source_name].cpu())
+                    for metric_name, values in slice_diag_scalars[slice_name].items():
+                        values.append(slice_diagnostics[metric_name].cpu())
             aps_q025.append(
                 objectness_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -1412,6 +1467,7 @@ def evaluate_real(
         "combined_ece75": float(torch.stack(combined_ece75s).mean().item()) if combined_ece75s else 0.0,
         "topk_fp_rate": float(torch.stack(topk_fp_rates).mean().item()) if topk_fp_rates else 0.0,
         "duplicate_per_gt": float(torch.stack(duplicate_per_gt_values).mean().item()) if duplicate_per_gt_values else 0.0,
+        **summarize_slice_ranking_diagnostics(slice_diag_vectors, slice_diag_scalars),
         "query_assignment_entropy": assignment_entropy(query_assignment_counts),
         "mask_iou": mask_iou,
         "mask_dice": mask_dice,
@@ -1475,6 +1531,28 @@ def summarize_slice_ap(values: dict[str, list[Tensor]]) -> dict[str, float]:
         name: float(torch.stack(slice_values).mean().item()) if slice_values else 0.0
         for name, slice_values in values.items()
     }
+
+
+def summarize_slice_ranking_diagnostics(
+    vector_values: dict[str, dict[str, list[Tensor]]],
+    scalar_values: dict[str, dict[str, list[Tensor]]],
+) -> dict[str, float]:
+    """Average query-ranking diagnostics for center/offcenter target subsets."""
+
+    summary: dict[str, float] = {}
+    for slice_name, metric_values in vector_values.items():
+        for metric_name, values in metric_values.items():
+            key = f"{slice_name}_{metric_name}"
+            non_empty = [value for value in values if value.numel() > 0]
+            if not non_empty:
+                summary[key] = 0.0
+                continue
+            summary[key] = float(torch.cat(non_empty).float().mean().item())
+    for slice_name, metric_values in scalar_values.items():
+        for metric_name, values in metric_values.items():
+            key = f"{slice_name}_{metric_name}"
+            summary[key] = float(torch.stack(values).mean().item()) if values else 0.0
+    return summary
 
 
 def sample_matches_slice(sample: RealDetSample, max_objects: int, slice_name: str) -> bool:
@@ -2090,6 +2168,18 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "combined_ece75",
         "topk_fp_rate",
         "duplicate_per_gt",
+        "center_matched_assignment_class_acc",
+        "offcenter_matched_assignment_class_acc",
+        "center_tp50_class_acc",
+        "offcenter_tp50_class_acc",
+        "center_score_iou_corr",
+        "offcenter_score_iou_corr",
+        "center_objectness_auc",
+        "offcenter_objectness_auc",
+        "center_topk_fp_rate",
+        "offcenter_topk_fp_rate",
+        "center_duplicate_per_gt",
+        "offcenter_duplicate_per_gt",
         "query_assignment_entropy",
         "best_iou",
         "best_step",

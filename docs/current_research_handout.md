@@ -170,13 +170,13 @@ P0：固定 real-mini 评估口径
 - 固定 `q^2, temperature=1.0` 作为正式 scoring。
 - post-hoc best-q 和 IoU-reference 只作诊断。
 - 继续记录 score-IoU correlation、quality-IoU correlation、combined-IoU correlation。
+- 当前 robustness blocker 是 off-center；不要继续扫 alpha，也不要回到 persistent proposal state。
 
-P1：改进 proposal/query coupling
+P1：诊断 off-center query/representation
 
-- 提升 predicted proposal quality，缩小与 oracle proposal 的差距。
-- 检查 query 是否真的消费 proposal，而不是只改变初始化。
-- 增强 query-box refinement 和 decoder。
-- 下一步主实验应从 `init-only` 推进到 `layerwise re-inject / persistent proposal state`，并报告 oracle-gap closing ratio。
+- 增加 center/offcenter-stratified 的 query assignment、TP50 class accuracy、duplicate FP、score-IoU correlation、matched-class accuracy。
+- 已排除的简单解释：aggregate alpha mismatch、quality head 缺 box 坐标、class/objectness head 缺 box 坐标。
+- 只有诊断显示具体失败模式后，再考虑新的 query-position representation 或 off-center-aware scoring。
 
 P2：做 calibration split
 

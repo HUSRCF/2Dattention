@@ -26,6 +26,16 @@ DEFAULT_METRICS = (
     "objectness_ece75",
     "combined_ece50",
     "combined_ece75",
+    "center_matched_assignment_class_acc",
+    "offcenter_matched_assignment_class_acc",
+    "center_score_iou_corr",
+    "offcenter_score_iou_corr",
+    "center_objectness_auc",
+    "offcenter_objectness_auc",
+    "center_topk_fp_rate",
+    "offcenter_topk_fp_rate",
+    "center_duplicate_per_gt",
+    "offcenter_duplicate_per_gt",
 )
 
 

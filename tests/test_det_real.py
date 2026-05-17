@@ -35,6 +35,7 @@ from scripts.train_det_real import (
     score_iou_calibration_loss,
     set_quality_head_only_trainable,
     summarize_slice_ap,
+    summarize_slice_ranking_diagnostics,
 )
 from attention2d.detection import DetectionCriterion
 from attention2d.detection import TinyAnchorRegionDETR
@@ -322,6 +323,36 @@ def test_real_det_scalar_diagnostics() -> None:
     )
     iou_matrix = torch.tensor([[0.6, 0.1], [0.7, 0.2], [0.0, 0.8]])
     assert torch.allclose(duplicate_predictions_per_gt(iou_matrix, threshold=0.5), torch.tensor(0.5))
+
+
+def test_real_det_slice_ranking_diagnostics_summary_handles_empty_vectors() -> None:
+    summary = summarize_slice_ranking_diagnostics(
+        {
+            "center": {
+                "matched_assignment_class_acc": [torch.tensor([1.0, 0.0])],
+                "tp50_class_acc": [torch.zeros(0)],
+            },
+            "offcenter": {
+                "matched_assignment_class_acc": [],
+                "tp50_class_acc": [torch.tensor([1.0])],
+            },
+        },
+        {
+            "center": {
+                "score_iou_corr": [torch.tensor(0.25), torch.tensor(0.75)],
+            },
+            "offcenter": {
+                "score_iou_corr": [],
+            },
+        },
+    )
+
+    assert summary["center_matched_assignment_class_acc"] == 0.5
+    assert summary["center_tp50_class_acc"] == 0.0
+    assert summary["offcenter_matched_assignment_class_acc"] == 0.0
+    assert summary["offcenter_tp50_class_acc"] == 1.0
+    assert summary["center_score_iou_corr"] == 0.5
+    assert summary["offcenter_score_iou_corr"] == 0.0
 
 
 def test_real_det_ranking_diagnostics_handle_empty_targets() -> None:
