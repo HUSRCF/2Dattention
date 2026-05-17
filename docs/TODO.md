@@ -91,6 +91,41 @@ Smoke observation, not formal evidence:
 - The new `proposal_oracle_gap_mode` table is emitted correctly.
 - In this tiny smoke, `persistent` gives positive final-IoU closure before the closure-definition cleanup, but hurts base AP50; `reinject` improves AP50 but does not improve final IoU. This is a mechanism smoke only and should be rerun with the standard 200-image / 2-seed protocol before making any claim.
 
+Standard real-mini result:
+
+- Artifact: `results/det_real_proposal_state_300step_2seed.csv`.
+- Protocol: top-10 classes, 200 images, max 3 objects, 6 queries, 300 steps, 2 seeds, eval every 100 steps.
+
+| Model | Final IoU | Best IoU | Recall50 | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.302 | 0.266 | 0.093 | 0.458 |
+| `local_mask_proposal_nms_query_decode2` | 0.344 | 0.352 | 0.265 | 0.221 | 0.088 | 0.443 |
+| `local_mask_proposal_nms_query_reinject` | 0.367 | 0.373 | 0.293 | 0.258 | 0.111 | 0.386 |
+| `local_mask_proposal_nms_query_persistent` | 0.356 | 0.367 | 0.324 | 0.262 | 0.121 | 0.420 |
+| `local_mask_proposal_oracle_nms_query` | 0.399 | 0.421 | 0.340 | 0.259 | 0.138 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_decode2` | 0.399 | 0.415 | 0.380 | 0.313 | 0.086 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_reinject` | 0.402 | 0.416 | 0.354 | 0.279 | 0.103 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_persistent` | 0.405 | 0.421 | 0.413 | 0.322 | 0.081 | 1.000 |
+
+Proposal-gap closure summary:
+
+- `decode2`: worse than init-only on predicted final/best IoU; depth alone is not the answer.
+- `reinject`: predicted final-IoU closure `0.608`, best-IoU closure `0.140`, but AP50 is slightly lower than init-only.
+- `persistent`: predicted final-IoU closure is negative (`-0.335`) and best-IoU closure is near zero (`-0.014`), but class AP50 improves by `+0.027` over init-only with `2/2` wins.
+- Oracle persistent is strongest in oracle AP50 (`0.322`) and final IoU (`0.405`), but its class AP50 is weak (`0.081`).
+
+Interpretation:
+
+- `decode2` is a useful negative control: simply adding decoder depth does not explain proposal consumption gains.
+- `reinject` is currently the most reliable predicted proposal-consumption candidate for geometry, because it beats init-only on final/best IoU mean.
+- `persistent` is not yet supported as the main predicted-proposal architecture. It may improve query/class behavior, but it does not close the predicted-vs-oracle geometry gap under the current update rule.
+- Oracle persistent remains promising, which means the consumer idea may have capacity if proposal quality/state update is better controlled.
+- Next step should not add teacher, dense positives, or a larger backbone yet. Do only micro-stabilization:
+  - `persistent_gated` with a smaller update/read gate,
+  - `late_persistent`, only in the last decoder step,
+  - `persistent_stopgrad`, detach proposal-state update input,
+  - post-detector frozen quality ranking on the completed checkpoints.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

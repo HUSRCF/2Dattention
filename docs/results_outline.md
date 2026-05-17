@@ -1249,3 +1249,45 @@ Smoke interpretation:
 - The implementation runs end-to-end on real DET mini inputs and emits the proposal-gap summary.
 - In the 40-step / 80-sample / 1-seed smoke, `persistent` improves final-IoU closure but hurts base AP50, while `reinject` improves AP50 but not final IoU.
 - This supports the diagnostic value of the new control but is not yet evidence that persistent proposal state is the right final architecture.
+
+Standard 300-step result:
+
+Artifact:
+
+- `results/det_real_proposal_state_300step_2seed.csv`
+
+Protocol:
+
+- top-10 classes
+- 200 images
+- max 3 objects
+- 6 queries
+- 300 training steps
+- 2 seeds
+
+| Variant | Final IoU | Best IoU | Recall50 | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.302 | 0.266 | 0.093 | 0.458 |
+| `local_mask_proposal_nms_query_decode2` | 0.344 | 0.352 | 0.265 | 0.221 | 0.088 | 0.443 |
+| `local_mask_proposal_nms_query_reinject` | 0.367 | 0.373 | 0.293 | 0.258 | 0.111 | 0.386 |
+| `local_mask_proposal_nms_query_persistent` | 0.356 | 0.367 | 0.324 | 0.262 | 0.121 | 0.420 |
+| `local_mask_proposal_oracle_nms_query` | 0.399 | 0.421 | 0.340 | 0.259 | 0.138 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_decode2` | 0.399 | 0.415 | 0.380 | 0.313 | 0.086 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_reinject` | 0.402 | 0.416 | 0.354 | 0.279 | 0.103 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_persistent` | 0.405 | 0.421 | 0.413 | 0.322 | 0.081 | 1.000 |
+
+Proposal-gap diagnostic:
+
+| Mode | Final-IoU closure | Best-IoU closure | AP50 closure | Class-AP50 closure |
+|---|---:|---:|---:|---:|
+| `decode2` | -0.148 | -0.217 | 0.000 | -0.047 |
+| `reinject` | 0.608 | 0.140 | 0.000 | 0.318 |
+| `persistent` | -0.335 | -0.014 | 0.000 | 0.648 |
+
+Interpretation:
+
+- `decode2` is a clean negative depth control: extra decoder depth alone does not help.
+- `reinject` is the strongest predicted proposal-consumption geometry candidate in this matrix: final IoU `0.367`, best IoU `0.373`, and positive final-IoU closure.
+- `persistent` is not yet supported as the main predicted-proposal architecture. It improves class AP50 over init-only, but it does not close the geometry oracle gap under the current state update rule.
+- Oracle persistent has the strongest oracle AP50 and final IoU, so the consumer-side idea should not be discarded; the current bottleneck may be proposal quality, update strength, query identity stability, or ranking calibration.
+- Next recommended micro-controls: `persistent_gated`, `late_persistent`, `persistent_stopgrad`, and frozen quality scoring over the completed detector checkpoints.
