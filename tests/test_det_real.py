@@ -384,6 +384,28 @@ def test_real_det_oracle_iou_score_rescues_ap_ranking() -> None:
     assert float(oracle_ap) > 0.99
 
 
+def test_real_det_objectness_ap_supports_higher_iou_threshold() -> None:
+    target_boxes = torch.tensor([[0.50, 0.50, 0.40, 0.40]])
+    pred_boxes = torch.tensor([[0.52, 0.50, 0.40, 0.40]])
+    pred_logits = torch.tensor([[4.0, -2.0]])
+
+    ap50 = objectness_ap50_for_image(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        iou_threshold=0.5,
+    )
+    ap95 = objectness_ap50_for_image(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        iou_threshold=0.95,
+    )
+
+    assert float(ap50) > 0.99
+    assert float(ap95) == 0.0
+
+
 def test_real_det_query_ranking_diagnostics_include_combined_score_corr() -> None:
     pred_logits = torch.tensor(
         [

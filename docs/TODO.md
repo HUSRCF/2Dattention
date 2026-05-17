@@ -790,14 +790,16 @@ Interpretation:
   - Smoke artifact: `results/det_real_quality_calib_split_smoke.csv`.
   - Standard artifact: `results/det_real_quality_calib_split_400step_2seed.csv`.
   - Robustness artifact: `results/det_real_quality_calib_split_400step_3seed.csv`.
+  - AP75 artifact: `results/det_real_quality_calib_split_ap75_400step_3seed.csv`.
 
-| Model | Final IoU | Best IoU | AP50 | Class AP50 | Calibrated fixed AP50 | Calibrated fixed Class AP50 | Fixed alpha |
+| Model | Final IoU | AP50 | Class AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | Fixed alpha |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `local_anchor_residual_query` | 0.345 | 0.367 | 0.216 | 0.089 | 0.216 | 0.089 | 0.00 |
-| `local_anchor_residual_query_quality_head` | 0.367 | 0.367 | 0.225 | 0.138 | 0.295 | 0.180 | 2.08 |
+| `local_anchor_residual_query` | 0.345 | 0.216 | 0.089 | 0.006 | 0.216 | 0.006 | 0.00 |
+| `local_anchor_residual_query_quality_head` | 0.367 | 0.225 | 0.138 | 0.019 | 0.295 | 0.054 | 2.08 |
 
   - Interpretation:
     - The two-stage quality head remains useful under held-out alpha calibration: final IoU `+0.021`, AP50 `+0.010`, class AP50 `+0.049`, calibrated fixed AP50 `+0.079`, all `3/3` paired wins.
+    - AP75-lite also improves: base AP75 `+0.013` and calibrated fixed AP75 `+0.048`, which suggests the ranking head is not only improving loose AP50 ordering.
     - The calibrated fixed AP50 (`0.295`) is close to final-eval best-q (`0.298`), so this run does not look like pure eval-set alpha overfitting.
     - Because this split is smaller than the previous full-eval run, the absolute AP values should not be compared directly to `results/det_real_official_fixed_q2_summary.csv`; use it as protocol evidence.
 - Query-conditioned mask auxiliary:

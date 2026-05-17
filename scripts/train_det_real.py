@@ -688,6 +688,9 @@ def train_one_model(
                 "eval_recall50": metrics["recall50"],
                 "eval_ap50": metrics["ap50"],
                 "eval_ap50_class": metrics["ap50_class"],
+                "eval_ap75": metrics["ap75"],
+                "eval_ap75_q_fixed": metrics["ap75_q_fixed"],
+                "eval_ap75_oracle_iou": metrics["ap75_oracle_iou"],
                 "eval_ap50_q025": metrics["ap50_q025"],
                 "eval_ap50_q05": metrics["ap50_q05"],
                 "eval_ap50_q1": metrics["ap50_q1"],
@@ -915,6 +918,9 @@ def evaluate_real(
     recalls = []
     aps = []
     aps_class = []
+    aps75 = []
+    aps75_q_fixed = []
+    aps75_oracle_iou = []
     aps_q025 = []
     aps_q05 = []
     aps_q1 = []
@@ -1000,6 +1006,14 @@ def evaluate_real(
                     target["boxes"],
                 ).cpu()
             )
+            aps75.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    iou_threshold=0.75,
+                ).cpu()
+            )
             aps_class.append(
                 class_aware_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -1072,6 +1086,15 @@ def evaluate_real(
                     score_multiplier=fixed_quality_scores,
                 ).cpu()
             )
+            aps75_q_fixed.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=fixed_quality_scores,
+                    iou_threshold=0.75,
+                ).cpu()
+            )
             aps_class_q025.append(
                 class_aware_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -1134,6 +1157,15 @@ def evaluate_real(
                     score_multiplier=oracle_iou_scores,
                 ).cpu()
             )
+            aps75_oracle_iou.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=oracle_iou_scores,
+                    iou_threshold=0.75,
+                ).cpu()
+            )
             aps_class_oracle_iou.append(
                 class_aware_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -1165,6 +1197,9 @@ def evaluate_real(
         mask_dice = 0.0
     ap50 = float(torch.stack(aps).mean().item()) if aps else 0.0
     ap50_class = float(torch.stack(aps_class).mean().item()) if aps_class else 0.0
+    ap75 = float(torch.stack(aps75).mean().item()) if aps75 else 0.0
+    ap75_q_fixed = float(torch.stack(aps75_q_fixed).mean().item()) if aps75_q_fixed else 0.0
+    ap75_oracle_iou = float(torch.stack(aps75_oracle_iou).mean().item()) if aps75_oracle_iou else 0.0
     ap50_q_by_alpha = {
         0.25: float(torch.stack(aps_q025).mean().item()) if aps_q025 else 0.0,
         0.5: float(torch.stack(aps_q05).mean().item()) if aps_q05 else 0.0,
@@ -1195,6 +1230,9 @@ def evaluate_real(
         "recall50": float(all_recalls.mean().item()),
         "ap50": ap50,
         "ap50_class": ap50_class,
+        "ap75": ap75,
+        "ap75_q_fixed": ap75_q_fixed,
+        "ap75_oracle_iou": ap75_oracle_iou,
         "ap50_q025": ap50_q_by_alpha[0.25],
         "ap50_q05": ap50_q_by_alpha[0.5],
         "ap50_q1": ap50_q_by_alpha[1.0],
@@ -1301,6 +1339,7 @@ def objectness_ap50_for_image(
     pred_boxes: Tensor,
     target_boxes: Tensor,
     score_multiplier: Tensor | None = None,
+    iou_threshold: float = 0.5,
 ) -> Tensor:
     if target_boxes.numel() == 0:
         return pred_logits.new_tensor(0.0)
@@ -1320,7 +1359,7 @@ def objectness_ap50_for_image(
         ious = iou_matrix[query_idx]
         best_iou, best_target_tensor = ious.max(dim=0)
         best_target = int(best_target_tensor.item())
-        if float(best_iou.item()) >= 0.5 and best_target not in matched_targets:
+        if float(best_iou.item()) >= iou_threshold and best_target not in matched_targets:
             matched_targets.add(best_target)
             true_positives.append(1.0)
             false_positives.append(0.0)
@@ -1509,6 +1548,7 @@ def class_aware_ap50_for_image(
     target_boxes: Tensor,
     target_labels: Tensor,
     score_multiplier: Tensor | None = None,
+    iou_threshold: float = 0.5,
 ) -> Tensor:
     if target_boxes.numel() == 0:
         return pred_logits.new_tensor(0.0)
@@ -1534,7 +1574,7 @@ def class_aware_ap50_for_image(
         else:
             best_iou = pred_logits.new_tensor(-1.0)
             best_target = -1
-        if float(best_iou.item()) >= 0.5 and best_target not in matched_targets:
+        if float(best_iou.item()) >= iou_threshold and best_target not in matched_targets:
             matched_targets.add(best_target)
             true_positives.append(1.0)
             false_positives.append(0.0)
@@ -1716,6 +1756,9 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_recall50",
         "eval_ap50",
         "eval_ap50_class",
+        "eval_ap75",
+        "eval_ap75_q_fixed",
+        "eval_ap75_oracle_iou",
         "eval_ap50_q025",
         "eval_ap50_q05",
         "eval_ap50_q1",
@@ -1788,6 +1831,7 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     final_rows = final_rows_by_model_seed(rows)
     print(
         "summary_model,final_iou_mean,best_iou_mean,recall50_mean,ap50_mean,ap50_class_mean,"
+        "ap75_mean,ap75_q_fixed_mean,ap75_iou_reference_mean,"
         "ap50_q025_mean,ap50_q05_mean,ap50_q1_mean,ap50_q2_mean,ap50_q4_mean,"
         "ap50_q_fixed_mean,ap50_q_fixed_alpha_mean,ap50_q_fixed_temperature_mean,"
         "ap50_q_best_mean,ap50_q_selected_alpha_mean,"
@@ -1817,6 +1861,9 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_recall50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_class']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap75']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap75_q_fixed']) for row in model_rows]):.3f},"
+            f"{mean([float(row['eval_ap75_oracle_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q025']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q05']) for row in model_rows]):.3f},"
             f"{mean([float(row['eval_ap50_q1']) for row in model_rows]):.3f},"
@@ -1965,6 +2012,8 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
     print(
         "paired_model,final_iou_delta_mean,final_iou_wins,best_iou_delta_mean,best_iou_wins,"
         "ap50_delta_mean,ap50_wins,ap50_class_delta_mean,ap50_class_wins,"
+        "ap75_delta_mean,ap75_wins,ap75_q_fixed_delta_mean,ap75_q_fixed_wins,"
+        "ap75_oracle_iou_delta_mean,ap75_oracle_iou_wins,"
         "ap50_q1_delta_mean,ap50_q1_wins,ap50_q_fixed_delta_mean,ap50_q_fixed_wins,"
         "ap50_q_best_delta_mean,ap50_q_best_wins,"
         "ap50_class_q1_delta_mean,ap50_class_q1_wins,"
@@ -1982,6 +2031,9 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
         best_deltas = []
         ap_deltas = []
         ap_class_deltas = []
+        ap75_deltas = []
+        ap75_q_fixed_deltas = []
+        ap75_oracle_deltas = []
         ap_q1_deltas = []
         ap_q_fixed_deltas = []
         ap_q_best_deltas = []
@@ -2001,6 +2053,9 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
             best_deltas.append(float(cur["best_iou"]) - float(ref["best_iou"]))
             ap_deltas.append(float(cur["eval_ap50"]) - float(ref["eval_ap50"]))
             ap_class_deltas.append(float(cur["eval_ap50_class"]) - float(ref["eval_ap50_class"]))
+            ap75_deltas.append(float(cur["eval_ap75"]) - float(ref["eval_ap75"]))
+            ap75_q_fixed_deltas.append(float(cur["eval_ap75_q_fixed"]) - float(ref["eval_ap75_q_fixed"]))
+            ap75_oracle_deltas.append(float(cur["eval_ap75_oracle_iou"]) - float(ref["eval_ap75_oracle_iou"]))
             ap_q1_deltas.append(float(cur["eval_ap50_q1"]) - float(ref["eval_ap50_q1"]))
             ap_q_fixed_deltas.append(float(cur["eval_ap50_q_fixed"]) - float(ref["eval_ap50_q_fixed"]))
             ap_q_best_deltas.append(float(cur["eval_ap50_q_best"]) - float(ref["eval_ap50_q_best"]))
@@ -2030,6 +2085,9 @@ def print_paired_summary(rows: list[dict[str, float | int | str]], reference_mod
                 f"{mean(best_deltas):.3f},{wins_higher(best_deltas)},"
                 f"{mean(ap_deltas):.3f},{wins_higher(ap_deltas)},"
                 f"{mean(ap_class_deltas):.3f},{wins_higher(ap_class_deltas)},"
+                f"{mean(ap75_deltas):.3f},{wins_higher(ap75_deltas)},"
+                f"{mean(ap75_q_fixed_deltas):.3f},{wins_higher(ap75_q_fixed_deltas)},"
+                f"{mean(ap75_oracle_deltas):.3f},{wins_higher(ap75_oracle_deltas)},"
                 f"{mean(ap_q1_deltas):.3f},{wins_higher(ap_q1_deltas)},"
                 f"{mean(ap_q_fixed_deltas):.3f},{wins_higher(ap_q_fixed_deltas)},"
                 f"{mean(ap_q_best_deltas):.3f},{wins_higher(ap_q_best_deltas)},"
