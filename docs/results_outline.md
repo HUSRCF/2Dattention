@@ -1291,3 +1291,49 @@ Interpretation:
 - `persistent` is not yet supported as the main predicted-proposal architecture. It improves class AP50 over init-only, but it does not close the geometry oracle gap under the current state update rule.
 - Oracle persistent has the strongest oracle AP50 and final IoU, so the consumer-side idea should not be discarded; the current bottleneck may be proposal quality, update strength, query identity stability, or ranking calibration.
 - Next recommended micro-controls: `persistent_gated`, `late_persistent`, `persistent_stopgrad`, and frozen quality scoring over the completed detector checkpoints.
+
+Persistent-stability controls:
+
+These controls ask whether persistent can be rescued without adding a larger backbone, teacher, dense positives, or a new training recipe.
+
+Artifact:
+
+- `results/det_real_persistent_stability_300step_2seed.csv`
+
+Protocol:
+
+- top-10 classes
+- 200 images
+- max 3 objects
+- 6 queries
+- 300 training steps
+- 2 seeds
+
+| Variant | Final IoU | Best IoU | Recall50 | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.302 | 0.266 | 0.093 | 0.458 |
+| `local_mask_proposal_nms_query_late_persistent` | 0.339 | 0.359 | 0.312 | 0.252 | 0.089 | 0.463 |
+| `local_mask_proposal_nms_query_persistent_gated` | 0.328 | 0.349 | 0.264 | 0.234 | 0.099 | 0.459 |
+| `local_mask_proposal_nms_query_persistent_stopgrad` | 0.337 | 0.363 | 0.310 | 0.249 | 0.090 | 0.387 |
+| `local_mask_proposal_oracle_nms_query` | 0.399 | 0.421 | 0.340 | 0.259 | 0.138 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_late_persistent` | 0.406 | 0.412 | 0.386 | 0.270 | 0.095 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_persistent_gated` | 0.383 | 0.421 | 0.346 | 0.213 | 0.072 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_persistent_stopgrad` | 0.405 | 0.412 | 0.380 | 0.300 | 0.118 | 1.000 |
+
+Paired against the predicted init-only baseline:
+
+| Variant | Final IoU delta | Final IoU wins | AP50 delta | AP50 wins | Class AP50 delta | Class AP50 wins |
+|---|---:|---:|---:|---:|---:|---:|
+| `late_persistent` | -0.019 | 1/2 | -0.014 | 0/2 | -0.004 | 1/2 |
+| `persistent_gated` | -0.029 | 0/2 | -0.033 | 0/2 | +0.006 | 1/2 |
+| `persistent_stopgrad` | -0.020 | 0/2 | -0.017 | 0/2 | -0.004 | 1/2 |
+| `oracle_late_persistent` | +0.049 | 2/2 | +0.004 | 1/2 | +0.002 | 1/2 |
+| `oracle_persistent_gated` | +0.026 | 2/2 | -0.053 | 0/2 | -0.022 | 0/2 |
+| `oracle_persistent_stopgrad` | +0.047 | 2/2 | +0.034 | 2/2 | +0.025 | 2/2 |
+
+Interpretation:
+
+- The predicted-proposal persistent variants do not rescue persistent stability. Gating, late injection, and stop-gradient update all underperform the predicted init-only baseline on final IoU and AP50.
+- `persistent_stopgrad` nearly recovers best IoU but still loses final IoU/AP, so it is not a sufficient rescue.
+- Oracle `persistent_stopgrad` is the useful positive control: with idealized proposals, it improves final IoU, AP50, and class AP50 with `2/2` paired wins. The consumer idea still has capacity, but the current predicted-proposal state path is not stable enough.
+- Current route decision: for predicted proposals, shrink the mainline to lighter layerwise proposal refresh / `reinject`. Keep persistent as an oracle/proposal-quality research branch rather than the active detector architecture.

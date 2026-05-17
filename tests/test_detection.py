@@ -334,7 +334,13 @@ def test_tiny_anchor_region_detr_proposal_state_refine_modes() -> None:
             "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
         },
     ]
-    for mode in ("proposal_decode2", "proposal_reinject", "proposal_persistent"):
+    for mode in (
+        "proposal_decode2",
+        "proposal_reinject",
+        "proposal_persistent",
+        "proposal_late_persistent",
+        "proposal_persistent_stopgrad",
+    ):
         model = TinyAnchorRegionDETR(
             embed_dim=16,
             num_classes=1,
@@ -353,7 +359,7 @@ def test_tiny_anchor_region_detr_proposal_state_refine_modes() -> None:
         total_loss.backward()
         if mode != "proposal_decode2":
             assert model.proposal_state_gate.grad is not None
-        if mode == "proposal_persistent":
+        if mode in {"proposal_persistent", "proposal_late_persistent", "proposal_persistent_stopgrad"}:
             assert model.proposal_state_update[-1].weight.grad is not None
 
 

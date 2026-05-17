@@ -126,6 +126,43 @@ Interpretation:
   - `persistent_stopgrad`, detach proposal-state update input,
   - post-detector frozen quality ranking on the completed checkpoints.
 
+Persistent-stability follow-up:
+
+- Implemented predicted variants:
+  - `local_mask_proposal_nms_query_persistent_gated`: same persistent state path, but with a small `gate_init=0.01`.
+  - `local_mask_proposal_nms_query_late_persistent`: first decoder read is normal; proposal state is injected only into the second read.
+  - `local_mask_proposal_nms_query_persistent_stopgrad`: proposal state update consumes detached decoded query features.
+- Implemented oracle counterparts:
+  - `local_mask_proposal_oracle_nms_query_persistent_gated`
+  - `local_mask_proposal_oracle_nms_query_late_persistent`
+  - `local_mask_proposal_oracle_nms_query_persistent_stopgrad`
+- Standard protocol artifact: `results/det_real_persistent_stability_300step_2seed.csv`.
+- Protocol: top-10 classes, 200 images, max 3 objects, 6 queries, 300 steps, 2 seeds, eval every 100 steps.
+
+| Model | Final IoU | Best IoU | Recall50 | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.302 | 0.266 | 0.093 | 0.458 |
+| `local_mask_proposal_nms_query_late_persistent` | 0.339 | 0.359 | 0.312 | 0.252 | 0.089 | 0.463 |
+| `local_mask_proposal_nms_query_persistent_gated` | 0.328 | 0.349 | 0.264 | 0.234 | 0.099 | 0.459 |
+| `local_mask_proposal_nms_query_persistent_stopgrad` | 0.337 | 0.363 | 0.310 | 0.249 | 0.090 | 0.387 |
+| `local_mask_proposal_oracle_nms_query` | 0.399 | 0.421 | 0.340 | 0.259 | 0.138 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_late_persistent` | 0.406 | 0.412 | 0.386 | 0.270 | 0.095 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_persistent_gated` | 0.383 | 0.421 | 0.346 | 0.213 | 0.072 | 1.000 |
+| `local_mask_proposal_oracle_nms_query_persistent_stopgrad` | 0.405 | 0.412 | 0.380 | 0.300 | 0.118 | 1.000 |
+
+Paired vs predicted init-only baseline:
+
+- `late_persistent`: final IoU `-0.019`, AP50 `-0.014`, class AP50 `-0.004`.
+- `persistent_gated`: final IoU `-0.029`, AP50 `-0.033`, class AP50 `+0.006`.
+- `persistent_stopgrad`: final IoU `-0.020`, AP50 `-0.017`, class AP50 `-0.004`.
+
+Interpretation:
+
+- The predicted-proposal persistent variants do not rescue persistent stability. All three lose final IoU and AP50 against the init-only predicted proposal baseline under the standard 200-image / 2-seed / 300-step protocol.
+- `persistent_stopgrad` nearly recovers best IoU (`-0.003` vs init-only), but still loses final IoU/AP and therefore is not enough to keep persistent as the main predicted-proposal route.
+- Oracle `persistent_stopgrad` is positive: final IoU `+0.047`, AP50 `+0.034`, class AP50 `+0.025`, all `2/2` paired wins vs predicted init-only. This means the consumer idea can work when proposal quality/state inputs are idealized, but the current predicted-proposal state path is too unstable.
+- Mainline decision: shrink the active proposal-consumption path to lighter layerwise proposal refresh / `reinject` for predicted proposals. Keep persistent only as an oracle/proposal-quality follow-up, not as the current main architecture.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

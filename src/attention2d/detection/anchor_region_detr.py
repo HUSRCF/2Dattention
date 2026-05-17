@@ -44,11 +44,18 @@ class TinyAnchorRegionDETR(nn.Module):
                 "query_init must be a supported learned, anchor, residual-anchor, "
                 "mask-proposal, or oracle mask-proposal mode"
             )
-        proposal_refine_modes = {"proposal_decode2", "proposal_reinject", "proposal_persistent"}
+        proposal_refine_modes = {
+            "proposal_decode2",
+            "proposal_reinject",
+            "proposal_persistent",
+            "proposal_late_persistent",
+            "proposal_persistent_stopgrad",
+        }
         if query_refine not in {"none", "mask_pool", "mask_bias", "query_mask", *proposal_refine_modes}:
             raise ValueError(
                 "query_refine must be 'none', 'mask_pool', 'mask_bias', 'query_mask', "
-                "'proposal_decode2', 'proposal_reinject', or 'proposal_persistent'"
+                "'proposal_decode2', 'proposal_reinject', 'proposal_persistent', "
+                "'proposal_late_persistent', or 'proposal_persistent_stopgrad'"
             )
         self.feature_mode = feature_mode
         self.query_init = query_init
@@ -73,7 +80,7 @@ class TinyAnchorRegionDETR(nn.Module):
             self.query_mask_feature_proj = nn.Conv2d(embed_dim, embed_dim, kernel_size=1)
         if query_refine in proposal_refine_modes:
             self.proposal_state_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
-        if query_refine == "proposal_persistent":
+        if query_refine in {"proposal_persistent", "proposal_late_persistent", "proposal_persistent_stopgrad"}:
             self.proposal_state_update = nn.Sequential(
                 nn.LayerNorm(embed_dim),
                 nn.Linear(embed_dim, embed_dim),
@@ -162,7 +169,13 @@ class TinyAnchorRegionDETR(nn.Module):
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             gate = self.query_mask_gate * self.query_mask_gate_scale
             attention_bias = mask_attention_bias(query_mask_logits, gate)
-        if self.query_refine in {"proposal_decode2", "proposal_reinject", "proposal_persistent"}:
+        if self.query_refine in {
+            "proposal_decode2",
+            "proposal_reinject",
+            "proposal_persistent",
+            "proposal_late_persistent",
+            "proposal_persistent_stopgrad",
+        }:
             if proposal_queries is None:
                 raise ValueError("proposal-state refinement requires mask-proposal query initialization")
             decoded = proposal_state_decode(
@@ -173,7 +186,8 @@ class TinyAnchorRegionDETR(nn.Module):
                 mode=self.query_refine,
                 gate=self.proposal_state_gate * self.query_mask_gate_scale,
                 proposal_update=self.proposal_state_update
-                if self.query_refine == "proposal_persistent"
+                if self.query_refine
+                in {"proposal_persistent", "proposal_late_persistent", "proposal_persistent_stopgrad"}
                 else None,
             )
         else:
@@ -341,13 +355,21 @@ def proposal_state_decode(
     if mode == "proposal_reinject":
         decoded = decoder(queries, spatial_tokens)
         return decoder(decoded + gate * proposal_queries, spatial_tokens)
-    if mode == "proposal_persistent":
+    if mode in {"proposal_persistent", "proposal_persistent_stopgrad"}:
         if proposal_update is None:
-            raise ValueError("proposal_persistent requires proposal_update")
+            raise ValueError(f"{mode} requires proposal_update")
         proposal_state = proposal_queries
         decoded = queries
         for _ in range(2):
             decoded = decoder(decoded + gate * proposal_state, spatial_tokens)
-            proposal_state = proposal_state + gate * proposal_update(decoded)
+            update_input = decoded.detach() if mode == "proposal_persistent_stopgrad" else decoded
+            proposal_state = proposal_state + gate * proposal_update(update_input)
+        return decoded
+    if mode == "proposal_late_persistent":
+        if proposal_update is None:
+            raise ValueError("proposal_late_persistent requires proposal_update")
+        decoded = decoder(queries, spatial_tokens)
+        proposal_state = proposal_queries + gate * proposal_update(decoded.detach())
+        decoded = decoder(decoded + gate * proposal_state, spatial_tokens)
         return decoded
     raise ValueError(f"unsupported proposal state mode: {mode}")
