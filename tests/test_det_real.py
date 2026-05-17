@@ -264,6 +264,7 @@ def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> Non
     assert "objectness_ece50" in diagnostics
     assert "combined_ece50" in diagnostics
     assert float(diagnostics["topk_fp_rate"]) == 0.0
+    assert float(diagnostics["combined_topk_fp_rate"]) == 0.0
     assert float(diagnostics["duplicate_per_gt"]) == 1.0
     assert diagnostics["matched_query_counts"].shape == (3,)
 
@@ -302,6 +303,8 @@ def test_real_det_combined_diagnostics_use_fixed_quality_multiplier() -> None:
 
     assert float(q1_diagnostics["combined_auc"]) > 0.99
     assert float(suppressed_diagnostics["combined_auc"]) < 0.01
+    assert float(q1_diagnostics["combined_topk_fp_rate"]) == 0.0
+    assert float(suppressed_diagnostics["combined_topk_fp_rate"]) == 1.0
 
 
 def test_real_det_scalar_diagnostics() -> None:
@@ -340,9 +343,13 @@ def test_real_det_slice_ranking_diagnostics_summary_handles_empty_vectors() -> N
         {
             "center": {
                 "score_iou_corr": [torch.tensor(0.25), torch.tensor(0.75)],
+                "topk_fp_rate": [torch.tensor(0.0)],
+                "combined_topk_fp_rate": [torch.tensor(0.5)],
             },
             "offcenter": {
                 "score_iou_corr": [],
+                "topk_fp_rate": [],
+                "combined_topk_fp_rate": [],
             },
         },
     )
@@ -352,7 +359,10 @@ def test_real_det_slice_ranking_diagnostics_summary_handles_empty_vectors() -> N
     assert summary["offcenter_matched_assignment_class_acc"] == 0.0
     assert summary["offcenter_tp50_class_acc"] == 1.0
     assert summary["center_score_iou_corr"] == 0.5
+    assert summary["center_topk_fp_rate"] == 0.0
+    assert summary["center_combined_topk_fp_rate"] == 0.5
     assert summary["offcenter_score_iou_corr"] == 0.0
+    assert summary["offcenter_combined_topk_fp_rate"] == 0.0
 
 
 def test_real_det_ranking_diagnostics_handle_empty_targets() -> None:
@@ -366,6 +376,7 @@ def test_real_det_ranking_diagnostics_handle_empty_targets() -> None:
     assert diagnostics["matched_assignment_class_correct"].numel() == 0
     assert diagnostics["tp50_class_correct"].numel() == 0
     assert float(diagnostics["topk_fp_rate"]) == 0.0
+    assert float(diagnostics["combined_topk_fp_rate"]) == 0.0
     assert float(diagnostics["duplicate_per_gt"]) == 0.0
 
 

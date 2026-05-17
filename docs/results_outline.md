@@ -1768,11 +1768,13 @@ The real DET CSV now reports center/offcenter-stratified query/ranking diagnosti
 - `center_score_iou_corr`, `offcenter_score_iou_corr`
 - `center_objectness_auc`, `offcenter_objectness_auc`
 - `center_topk_fp_rate`, `offcenter_topk_fp_rate`
+- `center_combined_topk_fp_rate`, `offcenter_combined_topk_fp_rate`
 - `center_duplicate_per_gt`, `offcenter_duplicate_per_gt`
 
 Smoke artifact:
 
 - `results/det_real_slice_diagnostics_smoke.csv`
+- `results/det_real_combined_topk_slice_smoke.csv`
 
 Use these fields to decide whether off-center failure is mainly assignment/class correctness, score-IoU ranking, duplicate high-score false positives, or query-position representation.
 

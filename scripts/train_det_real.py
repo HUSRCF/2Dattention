@@ -819,6 +819,7 @@ def train_one_model(
                 "combined_ece50": metrics["combined_ece50"],
                 "combined_ece75": metrics["combined_ece75"],
                 "topk_fp_rate": metrics["topk_fp_rate"],
+                "combined_topk_fp_rate": metrics["combined_topk_fp_rate"],
                 "duplicate_per_gt": metrics["duplicate_per_gt"],
                 "center_matched_assignment_class_acc": metrics["center_matched_assignment_class_acc"],
                 "offcenter_matched_assignment_class_acc": metrics["offcenter_matched_assignment_class_acc"],
@@ -830,6 +831,8 @@ def train_one_model(
                 "offcenter_objectness_auc": metrics["offcenter_objectness_auc"],
                 "center_topk_fp_rate": metrics["center_topk_fp_rate"],
                 "offcenter_topk_fp_rate": metrics["offcenter_topk_fp_rate"],
+                "center_combined_topk_fp_rate": metrics["center_combined_topk_fp_rate"],
+                "offcenter_combined_topk_fp_rate": metrics["offcenter_combined_topk_fp_rate"],
                 "center_duplicate_per_gt": metrics["center_duplicate_per_gt"],
                 "offcenter_duplicate_per_gt": metrics["offcenter_duplicate_per_gt"],
                 "query_assignment_entropy": metrics["query_assignment_entropy"],
@@ -1056,6 +1059,7 @@ def evaluate_real(
     combined_ece50s = []
     combined_ece75s = []
     topk_fp_rates = []
+    combined_topk_fp_rates = []
     duplicate_per_gt_values = []
     query_assignment_counts = torch.zeros(model.num_queries, dtype=torch.float32)
     slice_diag_vectors: dict[str, dict[str, list[Tensor]]] = {
@@ -1073,12 +1077,14 @@ def evaluate_real(
             "score_iou_corr": [],
             "objectness_auc": [],
             "topk_fp_rate": [],
+            "combined_topk_fp_rate": [],
             "duplicate_per_gt": [],
         },
         "offcenter": {
             "score_iou_corr": [],
             "objectness_auc": [],
             "topk_fp_rate": [],
+            "combined_topk_fp_rate": [],
             "duplicate_per_gt": [],
         },
     }
@@ -1145,6 +1151,7 @@ def evaluate_real(
             combined_ece50s.append(diagnostics["combined_ece50"].cpu())
             combined_ece75s.append(diagnostics["combined_ece75"].cpu())
             topk_fp_rates.append(diagnostics["topk_fp_rate"].cpu())
+            combined_topk_fp_rates.append(diagnostics["combined_topk_fp_rate"].cpu())
             duplicate_per_gt_values.append(diagnostics["duplicate_per_gt"].cpu())
             query_assignment_counts += diagnostics["matched_query_counts"].cpu()
             update_stratified_iou_lists(strata, matched_iou.cpu(), target["boxes"].cpu())
@@ -1466,6 +1473,9 @@ def evaluate_real(
         "combined_ece50": float(torch.stack(combined_ece50s).mean().item()) if combined_ece50s else 0.0,
         "combined_ece75": float(torch.stack(combined_ece75s).mean().item()) if combined_ece75s else 0.0,
         "topk_fp_rate": float(torch.stack(topk_fp_rates).mean().item()) if topk_fp_rates else 0.0,
+        "combined_topk_fp_rate": (
+            float(torch.stack(combined_topk_fp_rates).mean().item()) if combined_topk_fp_rates else 0.0
+        ),
         "duplicate_per_gt": float(torch.stack(duplicate_per_gt_values).mean().item()) if duplicate_per_gt_values else 0.0,
         **summarize_slice_ranking_diagnostics(slice_diag_vectors, slice_diag_scalars),
         "query_assignment_entropy": assignment_entropy(query_assignment_counts),
@@ -1665,6 +1675,7 @@ def query_ranking_diagnostics(
             "combined_ece50": calibration_ece(combined_scores, torch.zeros_like(combined_scores, dtype=torch.bool)),
             "combined_ece75": calibration_ece(combined_scores, torch.zeros_like(combined_scores, dtype=torch.bool)),
             "topk_fp_rate": pred_logits.new_tensor(0.0),
+            "combined_topk_fp_rate": pred_logits.new_tensor(0.0),
             "duplicate_per_gt": pred_logits.new_tensor(0.0),
             "matched_query_counts": torch.zeros(
                 pred_boxes.shape[0],
@@ -1691,6 +1702,8 @@ def query_ranking_diagnostics(
     tp50_class_correct = class_correct[tp50_mask]
     topk = objectness.argsort(descending=True)[:target_count]
     topk_fp_rate = (max_iou_per_query[topk] < 0.5).float().mean()
+    combined_topk = combined_scores.argsort(descending=True)[:target_count]
+    combined_topk_fp_rate = (max_iou_per_query[combined_topk] < 0.5).float().mean()
     duplicate_per_gt = duplicate_predictions_per_gt(iou_matrix, threshold=0.5)
     positive = max_iou_per_query >= 0.5
     positive75 = max_iou_per_query >= 0.75
@@ -1719,6 +1732,7 @@ def query_ranking_diagnostics(
         "combined_ece50": calibration_ece(combined_scores, positive),
         "combined_ece75": calibration_ece(combined_scores, positive75),
         "topk_fp_rate": topk_fp_rate,
+        "combined_topk_fp_rate": combined_topk_fp_rate,
         "duplicate_per_gt": duplicate_per_gt,
         "matched_query_counts": matched_query_counts,
     }
@@ -2167,6 +2181,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "combined_ece50",
         "combined_ece75",
         "topk_fp_rate",
+        "combined_topk_fp_rate",
         "duplicate_per_gt",
         "center_matched_assignment_class_acc",
         "offcenter_matched_assignment_class_acc",
@@ -2178,6 +2193,8 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "offcenter_objectness_auc",
         "center_topk_fp_rate",
         "offcenter_topk_fp_rate",
+        "center_combined_topk_fp_rate",
+        "offcenter_combined_topk_fp_rate",
         "center_duplicate_per_gt",
         "offcenter_duplicate_per_gt",
         "query_assignment_entropy",
