@@ -13,7 +13,7 @@ local-state backbone
 Boundary:
 
 - Current supported signal: clean no-prefill online anchor/region interaction improves dense bbox-mask localization.
-- Current supported detector signal: residual-anchor queries plus two-stage frozen quality ranking improve real-mini AP under fixed `q^2` scoring.
+- Current supported detector signal: residual-anchor queries plus two-stage frozen quality ranking improve real-mini AP under held-out alpha calibration. Fixed `q^2` remains a pre-registered baseline, while `eval_ap50_q_fixed` can be calibration-selected when `--calibration-frac` is enabled.
 - Current unsupported claims: early prefill, stale history pools, full prefill-lattice memory, graph-prefill, side-only DenseMaskAux, quality loss on class logits, and old memory-first routing.
 - RF-DETR-level performance requires a real detector, not just classification or bbox-mask probes.
 
@@ -30,6 +30,8 @@ Immediate stage gates:
 - P0 calibration gate: frozen ranking should produce meaningful held-out AP75/ECE or score-IoU correlation gains before expanding calibration.
 - P1 proposal-consumption gate: layerwise proposal refresh / `reinject` is the active predicted-proposal path. Persistent state can only return to mainline if a future proposal-quality/oracle-gap run beats `reinject` on both geometry and AP without post-hoc tuning.
 - Current update: held-out alpha calibration now supports the frozen quality route; query-mask moment refinement and longer proposal refresh did not.
+- Protocol correction: existing historical real-mini artifacts used legacy `--label-map-source all`; future strict held-out detector runs should use `--label-map-source train` to avoid held-out label-frequency leakage when selecting top classes.
+- Reporting tool: use `scripts/summarize_det_real_results.py` to summarize final-step CSV metrics and paired deltas. Its default columns include both pre-registered `eval_ap50_q2` and calibration/fixed-score `eval_ap50_q_fixed` plus `eval_ap50_q_fixed_alpha`.
 
 ### Step 0: Persistent Proposal-State Mini Probe
 

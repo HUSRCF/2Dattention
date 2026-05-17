@@ -135,6 +135,42 @@ def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> Non
     assert diagnostics["matched_query_counts"].shape == (3,)
 
 
+def test_real_det_combined_diagnostics_use_fixed_quality_multiplier() -> None:
+    pred_logits = torch.tensor(
+        [
+            [4.0, -2.0, -3.0],
+            [3.0, -2.0, -3.0],
+        ]
+    )
+    pred_boxes = torch.tensor(
+        [
+            [0.50, 0.50, 0.40, 0.40],
+            [0.10, 0.10, 0.10, 0.10],
+        ]
+    )
+    target_boxes = torch.tensor([[0.50, 0.50, 0.40, 0.40]])
+    target_labels = torch.tensor([0])
+
+    q1_diagnostics = query_ranking_diagnostics(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        target_labels,
+        quality_logits=torch.tensor([0.0, 0.0]),
+    )
+    suppressed_diagnostics = query_ranking_diagnostics(
+        pred_logits,
+        pred_boxes,
+        target_boxes,
+        target_labels,
+        quality_logits=torch.tensor([0.0, 0.0]),
+        combined_quality_scores=torch.tensor([0.01, 0.99]),
+    )
+
+    assert float(q1_diagnostics["combined_auc"]) > 0.99
+    assert float(suppressed_diagnostics["combined_auc"]) < 0.01
+
+
 def test_real_det_scalar_diagnostics() -> None:
     assert torch.allclose(
         pearson_corr(torch.tensor([1.0, 2.0, 3.0]), torch.tensor([1.0, 2.0, 3.0])),

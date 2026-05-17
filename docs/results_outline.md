@@ -1511,6 +1511,13 @@ Held-out alpha calibration for two-stage quality:
 
 This protocol separates formal inference scoring from eval-set post-hoc best-q selection. The original held-out set is split into a calibration subset and a final eval subset. For quality-head models, alpha is chosen on calibration and then used as the fixed alpha on final eval.
 
+Field semantics:
+
+- `eval_ap50_q2` is the pre-registered fixed `q^2` score.
+- `eval_ap50_q_fixed` is the fixed score used on final eval. With `--calibration-frac > 0`, its alpha is selected on the calibration split and stored in `eval_ap50_q_fixed_alpha`.
+- `combined_*` calibration diagnostics use the same fixed/calibration-selected quality multiplier as final eval, not an implicit `q^1` multiplier.
+- Existing historical real-mini runs use the legacy `--label-map-source all` behavior, which selects top classes before the train/eval split. Future strict held-out runs should use `--label-map-source train` so held-out class frequencies do not affect the chosen label set.
+
 Implementation:
 
 - `--calibration-frac`

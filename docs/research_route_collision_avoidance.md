@@ -14,7 +14,7 @@ local-state backbone
 
 - 分类靠 `no_prefill_local_mix` 所代表的 local-state refinement。
 - 密集空间定位靠 `anchor_only_no_prefill` 所代表的 clean online anchor/region interaction。
-- real DET mini 的 AP 提升靠 `local_anchor_residual_query + two-stage quality head + fixed q^2 scoring`。
+- real DET mini 的 AP 提升靠 `local_anchor_residual_query + two-stage quality head + held-out calibrated quality scoring`；固定 `q^2` 仍是预注册基线。
 
 不应继续试图证明：
 
@@ -64,7 +64,7 @@ AP ranking 需要与 localization quality 解耦。
 ```text
 local_anchor_residual_query
 + two-stage frozen quality head
-+ fixed score = class_prob * quality^2
++ held-out calibrated score, with fixed q^2 as the pre-registered baseline
 + temperature = 1.0
 ```
 
@@ -127,7 +127,7 @@ Layerwise Proposal Refresh + Frozen Rank Calibration
 
 - two-stage quality head 已能在 real DET mini 上提升 AP。
 - always-on quality 会干扰 detector 主训练。
-- fixed `q^2, temperature=1.0` 是当前正式 scoring。
+- fixed `q^2, temperature=1.0` 是预注册 scoring；启用 calibration split 时，正式 fixed score 使用 calibration-selected alpha，并在 final eval 上固定。
 
 建议实验：
 
@@ -258,8 +258,8 @@ persistent 只有在 future proposal-quality 或 oracle-gap run 同时超过 rei
 
 P0:
 
-- 保持 official scoring：`class_prob * quality^2`, `temperature=1.0`。
-- 建立 calibration split，不再用 eval set 调 alpha / temperature。
+- 保持 `class_prob * quality^2`, `temperature=1.0` 作为预注册基线。
+- 建立 calibration split；启用 calibration 时，用 calibration-selected alpha 作为 final eval 的 fixed score，不再用 eval set 调 alpha / temperature。
 - 补 score-IoU / quality-IoU / combined-score-IoU correlation。
 - 汇总 predicted-vs-oracle proposal gap。
 

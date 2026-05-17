@@ -381,6 +381,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--models", nargs="+", choices=tuple(REAL_MODEL_CONFIGS), default=["local_learned"])
     parser.add_argument("--reference-model", choices=tuple(REAL_MODEL_CONFIGS), default="local_learned")
     parser.add_argument("--top-classes", type=int, default=20)
+    parser.add_argument(
+        "--label-map-source",
+        choices=("all", "train"),
+        default="all",
+        help=(
+            "Source used to choose top classes. 'all' preserves legacy runs; "
+            "'train' avoids held-out label-frequency leakage for strict runs."
+        ),
+    )
     parser.add_argument("--max-samples", type=int, default=1000)
     parser.add_argument("--max-objects", type=int, default=3)
     parser.add_argument("--train-frac", type=float, default=0.8)
@@ -459,7 +468,15 @@ def main() -> None:
         raise ValueError("--calibration-frac must be in [0, 1)")
     device = get_best_device()
     all_samples = load_real_det_samples(args.anno_root, args.image_root)
-    label_to_id = build_label_map(all_samples, top_classes=args.top_classes)
+    label_source_samples = all_samples
+    if args.label_map_source == "train":
+        indices = torch.randperm(
+            len(all_samples),
+            generator=torch.Generator().manual_seed(args.seed),
+        ).tolist()
+        train_size = max(1, min(len(indices), int(len(indices) * args.train_frac)))
+        label_source_samples = [all_samples[idx] for idx in indices[:train_size]]
+    label_to_id = build_label_map(label_source_samples, top_classes=args.top_classes)
     samples = filter_samples(all_samples, set(label_to_id), max_samples=args.max_samples)
     if len(samples) < 2:
         raise ValueError("not enough real DET samples after filtering")
@@ -470,6 +487,7 @@ def main() -> None:
     print("classes:", len(label_to_id))
     print("max_objects:", args.max_objects)
     print("num_queries:", args.num_queries)
+    print("label_map_source:", args.label_map_source)
     print("label_map:", args.label_map_out)
     print(
         "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
@@ -982,14 +1000,23 @@ def evaluate_real(
                 outputs["pred_boxes"][sample_idx],
                 target["boxes"],
             )
+            quality_logits = (
+                outputs["pred_quality_logits"][sample_idx]
+                if use_quality_scores and "pred_quality_logits" in outputs
+                else None
+            )
+            fixed_quality_scores = fixed_quality_score_multiplier(
+                quality_logits,
+                alpha=fixed_quality_alpha,
+                temperature=quality_score_temperature,
+            )
             diagnostics = query_ranking_diagnostics(
                 pred_logits=outputs["pred_logits"][sample_idx],
                 pred_boxes=outputs["pred_boxes"][sample_idx],
                 target_boxes=target["boxes"],
                 target_labels=target["labels"],
-                quality_logits=outputs["pred_quality_logits"][sample_idx]
-                if use_quality_scores and "pred_quality_logits" in outputs
-                else None,
+                quality_logits=quality_logits,
+                combined_quality_scores=fixed_quality_scores,
             )
             ious.append(matched_iou.cpu())
             recalls.append((matched_iou >= 0.5).float().cpu())
@@ -1035,16 +1062,7 @@ def evaluate_real(
                 ).cpu()
             )
             quality_scores = quality_score_multipliers(
-                outputs["pred_quality_logits"][sample_idx]
-                if use_quality_scores and "pred_quality_logits" in outputs
-                else None,
-            )
-            fixed_quality_scores = fixed_quality_score_multiplier(
-                outputs["pred_quality_logits"][sample_idx]
-                if use_quality_scores and "pred_quality_logits" in outputs
-                else None,
-                alpha=fixed_quality_alpha,
-                temperature=quality_score_temperature,
+                quality_logits,
             )
             oracle_iou_scores = oracle_iou_score_multiplier(
                 outputs["pred_boxes"][sample_idx],
@@ -1395,10 +1413,16 @@ def query_ranking_diagnostics(
     target_boxes: Tensor,
     target_labels: Tensor,
     quality_logits: Tensor | None = None,
+    combined_quality_scores: Tensor | None = None,
 ) -> dict[str, Tensor]:
     objectness = pred_logits.softmax(dim=-1)[:, :-1].max(dim=-1).values
     quality_scores = quality_logits.sigmoid() if quality_logits is not None else None
-    combined_scores = objectness * quality_scores if quality_scores is not None else objectness
+    if combined_quality_scores is not None:
+        combined_scores = objectness * combined_quality_scores
+    elif quality_scores is not None:
+        combined_scores = objectness * quality_scores
+    else:
+        combined_scores = objectness
     pred_labels = pred_logits.softmax(dim=-1)[:, :-1].argmax(dim=-1)
     target_count = int(target_boxes.shape[0])
     if target_count == 0:
