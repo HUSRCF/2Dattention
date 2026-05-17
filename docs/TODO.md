@@ -188,6 +188,31 @@ Interpretation:
 - Oracle `reinject` improves geometry and base AP over oracle init-only, but fixed-q2 AP is lower (`0.313` vs `0.325`). This suggests current quality calibration does not fully align with the refreshed proposal boxes.
 - Mainline status: keep `reinject` as the active predicted-proposal geometry/coverage path, but do not claim it solves AP. The AP route remains `local_anchor_residual_query + two-stage quality`; proposal refresh remains a coverage path that needs better quality calibration or box-score coupling.
 
+Layerwise refresh gate sweep:
+
+- Added refresh-strength variants:
+  - `local_mask_proposal_nms_query_reinject_g001`: gate init `0.01`
+  - `local_mask_proposal_nms_query_reinject_g003`: gate init `0.03`
+  - `local_mask_proposal_nms_query_reinject_g03`: gate init `0.30`
+- Standard artifact: `results/det_real_reinject_gate_sweep_300step_2seed.csv`.
+- Protocol: top-10 classes, 200 images, max 3 objects, 6 queries, 300 steps, 2 seeds.
+
+| Model | Final IoU | Best IoU | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | 0.357 | 0.366 | 0.266 | 0.093 | 0.458 |
+| `reinject_g001` | 0.348 | 0.348 | 0.239 | 0.075 | 0.406 |
+| `reinject_g003` | 0.352 | 0.377 | 0.274 | 0.150 | 0.436 |
+| `reinject_g01` | 0.367 | 0.373 | 0.258 | 0.111 | 0.386 |
+| `reinject_g03` | 0.366 | 0.366 | 0.242 | 0.119 | 0.468 |
+
+Interpretation:
+
+- Very weak refresh (`0.01`) is underpowered and loses on geometry/AP.
+- The default `0.10` remains the strongest final-IoU refresh setting, but it is not the best AP/class setting.
+- `0.03` is the best ranking/class candidate: AP50 `0.274`, class AP50 `0.150`, and best IoU `0.377`. It has final-IoU instability, so it should be treated as a candidate for longer training or best-checkpoint/quality-head follow-up, not as a solved default.
+- Strong refresh (`0.30`) helps dense mask coverage but hurts AP. This suggests over-refreshing proposal evidence can improve region coverage while worsening score/box ranking.
+- Next active refresh control: run `reinject_g003_quality_head` or a longer 500-step `g003` check before adding new architecture.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

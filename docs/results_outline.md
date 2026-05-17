@@ -1372,3 +1372,28 @@ Interpretation:
 - Predicted `reinject` improves fixed class-aware AP over init-only proposal quality (`0.124` vs `0.108`), so refresh has some class/region coupling value.
 - Oracle `reinject` improves base AP and geometry over oracle init-only, but its fixed-q2 AP is lower than oracle init-only (`0.313` vs `0.325`). This points to quality calibration mismatch for refreshed proposal boxes.
 - Current detector ranking: residual-anchor plus two-stage quality remains the strongest AP route; layerwise proposal refresh is now the active proposal-coverage path, not the active AP solution.
+
+Layerwise refresh gate sweep:
+
+The next control asks whether the `reinject` refresh strength is too weak or too strong. Only the gate initialization changes.
+
+Artifact:
+
+- `results/det_real_reinject_gate_sweep_300step_2seed.csv`
+
+| Variant | Gate init | Final IoU | Best IoU | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_mask_proposal_nms_query` | none | 0.357 | 0.366 | 0.266 | 0.093 | 0.458 |
+| `reinject_g001` | 0.01 | 0.348 | 0.348 | 0.239 | 0.075 | 0.406 |
+| `reinject_g003` | 0.03 | 0.352 | 0.377 | 0.274 | 0.150 | 0.436 |
+| `reinject_g01` | 0.10 | 0.367 | 0.373 | 0.258 | 0.111 | 0.386 |
+| `reinject_g03` | 0.30 | 0.366 | 0.366 | 0.242 | 0.119 | 0.468 |
+
+Interpretation:
+
+- Gate strength controls a real ranking/coverage tradeoff.
+- `0.01` is too weak and loses broadly.
+- `0.03` is the strongest AP/class setting and the best-IoU setting, but its final IoU is unstable.
+- `0.10` remains the most stable final-IoU setting.
+- `0.30` improves dense mask coverage but hurts AP, suggesting over-refreshing region evidence can degrade ranking.
+- Next result to prioritize: `reinject_g003` with two-stage quality or longer training. Do not add a new proposal architecture until this refresh-strength tradeoff is resolved.
