@@ -8,6 +8,7 @@
 
 - 分类任务：`no_prefill_local_mix` 是当前最强实用基线。
 - 密集空间定位与检测方向：clean online anchor/region interaction 与 two-stage quality ranking 是当前最有价值的信号。
+- 后续旗舰路线：`Proposal Consumption + Frozen Rank Calibration`，详见 `docs/research_route_collision_avoidance.md`。
 
 一句话总结：
 
@@ -175,6 +176,7 @@ P1：改进 proposal/query coupling
 - 提升 predicted proposal quality，缩小与 oracle proposal 的差距。
 - 检查 query 是否真的消费 proposal，而不是只改变初始化。
 - 增强 query-box refinement 和 decoder。
+- 下一步主实验应从 `init-only` 推进到 `layerwise re-inject / persistent proposal state`，并报告 oracle-gap closing ratio。
 
 P2：做 calibration split
 

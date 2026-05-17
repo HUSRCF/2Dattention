@@ -1,14 +1,33 @@
 # TODO: 2Dattention Research Roadmap
 
-## Current P0: RF-DETR Push Roadmap
+## Current P0: Proposal Consumption + Frozen Rank Calibration
 
-Goal: move from classification/probe models toward a real detection model family that can eventually be compared against RF-DETR-style detectors. The current repo is not yet a detector; the immediate task is to build the detection stack and test whether our verified dense-mask signal, `anchor_only_no_prefill`, can improve query initialization or region reasoning.
+Goal: move from classification/probe models toward a real detection model family that can eventually be compared against RF-DETR-style detectors. Based on the current evidence, the project should no longer be framed as early prefill or memory-first. The active research route is:
+
+```text
+local-state backbone
++ anchor/proposal query coupling
++ low-interference frozen quality ranking
+```
 
 Boundary:
 
 - Current supported signal: clean no-prefill online anchor/region interaction improves dense bbox-mask localization.
-- Current unsupported claims: early prefill, stale history pools, full prefill-lattice memory, and old memory-first routing.
+- Current supported detector signal: residual-anchor queries plus two-stage frozen quality ranking improve real-mini AP under fixed `q^2` scoring.
+- Current unsupported claims: early prefill, stale history pools, full prefill-lattice memory, graph-prefill, side-only DenseMaskAux, quality loss on class logits, and old memory-first routing.
 - RF-DETR-level performance requires a real detector, not just classification or bbox-mask probes.
+
+Collision-avoidance route:
+
+- Avoid claiming "new DETR query initialization"; frame the next step as diagnosing and reducing the init-only vs persistent proposal consumption gap.
+- Avoid claiming "new quality score"; frame the quality path as a frozen, post-detector, held-out calibrated ranking head.
+- Avoid claiming "new local-global backbone"; if this route returns, frame it as ambiguity-triggered interaction scheduling.
+- See `docs/research_route_collision_avoidance.md` for the detailed roadmap, stage gates, and IP/literature risk framing.
+
+Immediate stage gates:
+
+- P0 calibration gate: frozen ranking should produce meaningful held-out AP75/ECE or score-IoU correlation gains before expanding calibration.
+- P1 proposal-consumption gate: persistent proposal state should close at least part of the predicted-vs-oracle proposal gap and improve ambiguity slices before becoming the main model claim.
 
 ### Step 1: Detection Scaffold
 
