@@ -213,6 +213,25 @@ Interpretation:
 - Strong refresh (`0.30`) helps dense mask coverage but hurts AP. This suggests over-refreshing proposal evidence can improve region coverage while worsening score/box ranking.
 - Next active refresh control: run `reinject_g003_quality_head` or a longer 500-step `g003` check before adding new architecture.
 
+Best-checkpoint restore before quality head:
+
+- Added `--restore-best-before-quality-head`. When used with `--quality-head-only-after-start`, the script restores the best detector checkpoint observed before the frozen quality-head phase.
+- Motivation: `reinject_g003` often reaches its best detector IoU before step 300, then partially regresses before quality-only training begins. Training the quality head on the last detector checkpoint can hide the useful refresh setting.
+- Artifact: `results/det_real_reinject_g003_quality_bestrestore_400step_2seed.csv`.
+- Protocol: top-10 classes, 200 images, max 3 objects, 6 queries, 400 steps, 2 seeds, quality head starts at step 301, detector restored to best pre-quality checkpoint.
+
+| Model | Final IoU | Best IoU | AP50 | Class AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.276 | 0.168 | 0.338 | 0.201 | 0.397 |
+| `local_mask_proposal_nms_query_reinject_g003_quality_head` | 0.377 | 0.377 | 0.272 | 0.120 | 0.319 | 0.116 | 0.419 |
+
+Interpretation:
+
+- Best-checkpoint restore is a real engineering fix for unstable refresh settings: `g003_quality` final IoU improves from `0.352` without restore to `0.377` with restore.
+- `g003` with best restore is now a credible coverage/geometry candidate, matching residual-anchor final IoU while retaining a higher IoU-reference AP headroom (`0.419`).
+- It still does not beat residual-anchor quality on fixed-q2 AP (`0.319` vs `0.338`) or class-aware fixed-q2 AP (`0.116` vs `0.201`).
+- Current conclusion: restore-best makes layerwise refresh viable as a geometry path, but ranking/class calibration is still the blocker. Do not add new proposal architecture until fixed scoring for refreshed proposal boxes improves.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

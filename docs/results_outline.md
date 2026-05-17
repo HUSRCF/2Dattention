@@ -1397,3 +1397,27 @@ Interpretation:
 - `0.10` remains the most stable final-IoU setting.
 - `0.30` improves dense mask coverage but hurts AP, suggesting over-refreshing region evidence can degrade ranking.
 - Next result to prioritize: `reinject_g003` with two-stage quality or longer training. Do not add a new proposal architecture until this refresh-strength tradeoff is resolved.
+
+Best-checkpoint restore before frozen quality:
+
+The `g003` result exposed a training-schedule issue: the detector can reach its best IoU before the quality-only phase, then regress by step 300. A new optional flag restores the best pre-quality detector checkpoint before freezing the detector and training the quality head.
+
+Implementation:
+
+- `--restore-best-before-quality-head`
+
+Artifact:
+
+- `results/det_real_reinject_g003_quality_bestrestore_400step_2seed.csv`
+
+| Variant | Final IoU | Best IoU | AP50 | Class AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.276 | 0.168 | 0.338 | 0.201 | 0.397 |
+| `local_mask_proposal_nms_query_reinject_g003_quality_head` | 0.377 | 0.377 | 0.272 | 0.120 | 0.319 | 0.116 | 0.419 |
+
+Interpretation:
+
+- Restoring the best detector checkpoint before quality training fixes much of the `g003` final-IoU instability: final IoU rises from `0.352` to `0.377`.
+- This makes `g003` refresh a credible geometry/coverage path, roughly matching residual-anchor final IoU.
+- It does not solve AP/class scoring. Fixed-q2 AP remains lower than residual-anchor quality (`0.319` vs `0.338`), and class-aware fixed-q2 AP is much lower (`0.116` vs `0.201`).
+- The next blocker is therefore refreshed-box scoring/calibration, not more persistent proposal state.

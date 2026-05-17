@@ -9,6 +9,7 @@ target-matched IoU/recall and objectness AP50-lite.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import random
 import sys
@@ -105,6 +106,14 @@ REAL_MODEL_CONFIGS = {
         "none",
     ),
     "local_mask_proposal_nms_query_reinject_g003": (
+        "local",
+        "mask_proposal_nms",
+        "proposal_reinject",
+        "proposal",
+        0.03,
+        "none",
+    ),
+    "local_mask_proposal_nms_query_reinject_g003_quality_head": (
         "local",
         "mask_proposal_nms",
         "proposal_reinject",
@@ -262,6 +271,7 @@ QUALITY_HEAD_MODELS = {
     "local_anchor_residual_query_querymask_quality_head",
     "local_mask_proposal_nms_query_quality_head",
     "local_mask_proposal_nms_query_reinject_quality_head",
+    "local_mask_proposal_nms_query_reinject_g003_quality_head",
     "local_mask_proposal_oracle_nms_query_quality_head",
     "local_mask_proposal_oracle_nms_query_reinject_quality_head",
 }
@@ -370,6 +380,11 @@ def parse_args() -> argparse.Namespace:
         "--quality-head-only-after-start",
         action="store_true",
         help="After quality-head start, freeze the detector and train only the query quality head.",
+    )
+    parser.add_argument(
+        "--restore-best-before-quality-head",
+        action="store_true",
+        help="Before quality-head-only training starts, restore the best detector checkpoint observed so far.",
     )
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
@@ -485,6 +500,7 @@ def train_one_model(
     loader_iter = cycle(train_loader)
     best_iou = -1.0
     best_step = 0
+    best_detector_state: dict[str, Tensor] | None = None
     last_loss = 0.0
     examples_seen = 0
     start = time.perf_counter()
@@ -496,6 +512,8 @@ def train_one_model(
             and not quality_only_enabled
             and step >= args.quality_head_start_step
         ):
+            if args.restore_best_before_quality_head and best_detector_state is not None:
+                model.load_state_dict(best_detector_state)
             set_quality_head_only_trainable(model)
             quality_only_enabled = True
         images, targets = next(loader_iter)
@@ -564,6 +582,15 @@ def train_one_model(
             if metrics["iou"] > best_iou:
                 best_iou = metrics["iou"]
                 best_step = step
+                if (
+                    model_name in QUALITY_HEAD_MODELS
+                    and args.restore_best_before_quality_head
+                    and not quality_only_enabled
+                ):
+                    best_detector_state = {
+                        name: tensor.detach().cpu().clone()
+                        for name, tensor in copy.deepcopy(model.state_dict()).items()
+                    }
             speed = examples_seen / max(time.perf_counter() - start, 1e-9)
             row = {
                 "model": model_name,
