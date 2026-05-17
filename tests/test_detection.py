@@ -322,6 +322,41 @@ def test_tiny_anchor_region_detr_mask_proposal_nms_diversifies_indices() -> None
             assert bool((distance > 2).all())
 
 
+def test_tiny_anchor_region_detr_proposal_state_refine_modes() -> None:
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    for mode in ("proposal_decode2", "proposal_reinject", "proposal_persistent"):
+        model = TinyAnchorRegionDETR(
+            embed_dim=16,
+            num_classes=1,
+            num_queries=4,
+            feature_mode="local",
+            query_init="mask_proposal_nms",
+            query_refine=mode,
+        )
+        criterion = DetectionCriterion(num_classes=1)
+        outputs = model(images)
+        assert outputs["pred_logits"].shape == (2, 4, 2)
+        assert outputs["query_proposal_indices"].shape == (2, 4)
+        losses = criterion(outputs, targets)
+        mask_losses = dense_mask_aux_loss(outputs, targets, mask_head=None, dice_weight=1.0)
+        total_loss = losses["loss"] + 0.5 * mask_losses["loss_mask_aux"]
+        total_loss.backward()
+        if mode != "proposal_decode2":
+            assert model.proposal_state_gate.grad is not None
+        if mode == "proposal_persistent":
+            assert model.proposal_state_update[-1].weight.grad is not None
+
+
 def test_tiny_anchor_region_detr_mask_pool_query_refine() -> None:
     torch.manual_seed(7)
     model = TinyAnchorRegionDETR(

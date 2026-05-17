@@ -1211,3 +1211,41 @@ Interpretation:
 - As an auxiliary loss alone, querymask does not beat the residual-anchor detector on real DET mini box/AP at 300 steps.
 - Two-stage quality ranking gives a small scoring recovery for querymask, but not enough to make it competitive with the residual-anchor quality route.
 - The next architectural step should use query masks for box/query refinement, for example differentiable mask moments or a mask-conditioned box-refinement MLP, instead of treating query masks as auxiliary supervision only.
+
+Persistent proposal-state mini probe:
+
+This is the first implementation of the `init-only vs layerwise re-inject vs persistent proposal state` control requested by the proposal-consumption route. It should be treated as a smoke test until repeated under the standard real-mini protocol.
+
+Implemented variants:
+
+- `local_mask_proposal_nms_query`: predicted proposal init-only baseline.
+- `local_mask_proposal_nms_query_decode2`: depth-matched init-only control.
+- `local_mask_proposal_nms_query_reinject`: proposal tokens are re-added before the second decoder read.
+- `local_mask_proposal_nms_query_persistent`: proposal state is updated after each decoder read.
+- Oracle counterparts use `local_mask_proposal_oracle_nms_*`.
+
+New summary output:
+
+```text
+proposal_oracle_gap_mode,metric,pred_model,oracle_model,
+pred_mean,oracle_mean,direct_gap_mean,closure_vs_init_oracle_gap_mean
+```
+
+The closure metric uses the init-only predicted-vs-oracle gap as denominator:
+
+```text
+(candidate_predicted_metric - init_only_predicted_metric)
+/ (init_only_oracle_metric - init_only_predicted_metric)
+```
+
+If the init-only oracle metric is not higher than the init-only predicted metric, there is no positive oracle headroom and closure is reported as `0.0`.
+
+Smoke artifact:
+
+- `results/det_real_proposal_state_smoke.csv`
+
+Smoke interpretation:
+
+- The implementation runs end-to-end on real DET mini inputs and emits the proposal-gap summary.
+- In the 40-step / 80-sample / 1-seed smoke, `persistent` improves final-IoU closure but hurts base AP50, while `reinject` improves AP50 but not final IoU.
+- This supports the diagnostic value of the new control but is not yet evidence that persistent proposal state is the right final architecture.

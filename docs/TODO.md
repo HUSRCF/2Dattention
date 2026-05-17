@@ -29,6 +29,68 @@ Immediate stage gates:
 - P0 calibration gate: frozen ranking should produce meaningful held-out AP75/ECE or score-IoU correlation gains before expanding calibration.
 - P1 proposal-consumption gate: persistent proposal state should close at least part of the predicted-vs-oracle proposal gap and improve ambiguity slices before becoming the main model claim.
 
+### Step 0: Persistent Proposal-State Mini Probe
+
+Goal: test whether proposal evidence is merely useful at initialization time or remains useful when consumed across decoder steps.
+
+Implemented minimal controls:
+
+- `local_mask_proposal_nms_query`: existing predicted proposal init-only baseline.
+- `local_mask_proposal_nms_query_decode2`: depth-matched init-only control with two shared decoder reads but no proposal re-injection.
+- `local_mask_proposal_nms_query_reinject`: two decoder reads; the second read receives the original proposal tokens again.
+- `local_mask_proposal_nms_query_persistent`: two decoder reads with a learned proposal state update after each read.
+- Oracle counterparts:
+  - `local_mask_proposal_oracle_nms_query`
+  - `local_mask_proposal_oracle_nms_query_decode2`
+  - `local_mask_proposal_oracle_nms_query_reinject`
+  - `local_mask_proposal_oracle_nms_query_persistent`
+
+Added summary metric:
+
+```text
+proposal_oracle_gap_mode,metric,pred_model,oracle_model,
+pred_mean,oracle_mean,direct_gap_mean,closure_vs_init_oracle_gap_mean
+```
+
+Definition:
+
+```text
+closure_vs_init_oracle_gap =
+  (candidate_predicted_metric - init_only_predicted_metric)
+  / (init_only_oracle_metric - init_only_predicted_metric)
+```
+
+Interpretation:
+
+- `0.0`: candidate does not close the init-only predicted-vs-oracle gap.
+- `1.0`: candidate closes the entire init-only oracle gap.
+- `<0`: candidate is worse than init-only predicted proposal.
+- `>1`: candidate exceeds the init-only oracle reference on that metric.
+- If the init-only oracle metric is not higher than the init-only predicted metric, there is no positive oracle headroom and closure is reported as `0.0`.
+
+Smoke command:
+
+```bash
+/opt/anaconda3/envs/AIAA/bin/python -u scripts/train_det_real.py \
+  --models local_mask_proposal_nms_query local_mask_proposal_nms_query_decode2 \
+  local_mask_proposal_nms_query_reinject local_mask_proposal_nms_query_persistent \
+  local_mask_proposal_oracle_nms_query local_mask_proposal_oracle_nms_query_decode2 \
+  local_mask_proposal_oracle_nms_query_reinject local_mask_proposal_oracle_nms_query_persistent \
+  --reference-model local_mask_proposal_nms_query \
+  --top-classes 10 --max-samples 80 --max-objects 3 --num-queries 6 \
+  --steps 40 --eval-every 40 --eval-batches 2 --batch-size 8 \
+  --out results/det_real_proposal_state_smoke.csv \
+  --label-map-out results/det_real_proposal_state_smoke_label_map.csv \
+  --split-out results/det_real_proposal_state_smoke_split.csv \
+  --seeds 1
+```
+
+Smoke observation, not formal evidence:
+
+- The new variants train and evaluate on MPS.
+- The new `proposal_oracle_gap_mode` table is emitted correctly.
+- In this tiny smoke, `persistent` gives positive final-IoU closure before the closure-definition cleanup, but hurts base AP50; `reinject` improves AP50 but does not improve final IoU. This is a mechanism smoke only and should be rerun with the standard 200-image / 2-seed protocol before making any claim.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

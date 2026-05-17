@@ -44,8 +44,12 @@ class TinyAnchorRegionDETR(nn.Module):
                 "query_init must be a supported learned, anchor, residual-anchor, "
                 "mask-proposal, or oracle mask-proposal mode"
             )
-        if query_refine not in {"none", "mask_pool", "mask_bias", "query_mask"}:
-            raise ValueError("query_refine must be 'none', 'mask_pool', 'mask_bias', or 'query_mask'")
+        proposal_refine_modes = {"proposal_decode2", "proposal_reinject", "proposal_persistent"}
+        if query_refine not in {"none", "mask_pool", "mask_bias", "query_mask", *proposal_refine_modes}:
+            raise ValueError(
+                "query_refine must be 'none', 'mask_pool', 'mask_bias', 'query_mask', "
+                "'proposal_decode2', 'proposal_reinject', or 'proposal_persistent'"
+            )
         self.feature_mode = feature_mode
         self.query_init = query_init
         self.query_refine = query_refine
@@ -67,6 +71,15 @@ class TinyAnchorRegionDETR(nn.Module):
         if query_refine == "query_mask":
             self.query_mask_query_proj = nn.Linear(embed_dim, embed_dim)
             self.query_mask_feature_proj = nn.Conv2d(embed_dim, embed_dim, kernel_size=1)
+        if query_refine in proposal_refine_modes:
+            self.proposal_state_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
+        if query_refine == "proposal_persistent":
+            self.proposal_state_update = nn.Sequential(
+                nn.LayerNorm(embed_dim),
+                nn.Linear(embed_dim, embed_dim),
+                nn.GELU(),
+                nn.Linear(embed_dim, embed_dim),
+            )
         self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
         self.head = DetectionHead(embed_dim, num_classes=num_classes)
 
@@ -97,6 +110,7 @@ class TinyAnchorRegionDETR(nn.Module):
         spatial_tokens = spatial_state.flatten(2).transpose(1, 2)
         query_mask_logits = None
         query_proposal_indices = None
+        proposal_queries = None
         if self.query_init in {
             "mask_proposal",
             "mask_proposal_nms",
@@ -121,6 +135,7 @@ class TinyAnchorRegionDETR(nn.Module):
                 self.num_queries,
                 suppression_radius=proposal_suppression_radius,
             )
+            proposal_queries = queries
         elif self.query_init == "anchor":
             queries = anchor_queries_from_state(spatial_state, self.num_queries)
         elif self.query_init == "anchor_detached":
@@ -147,7 +162,22 @@ class TinyAnchorRegionDETR(nn.Module):
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             gate = self.query_mask_gate * self.query_mask_gate_scale
             attention_bias = mask_attention_bias(query_mask_logits, gate)
-        decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
+        if self.query_refine in {"proposal_decode2", "proposal_reinject", "proposal_persistent"}:
+            if proposal_queries is None:
+                raise ValueError("proposal-state refinement requires mask-proposal query initialization")
+            decoded = proposal_state_decode(
+                decoder=self.query_decoder,
+                queries=queries,
+                proposal_queries=proposal_queries,
+                spatial_tokens=spatial_tokens,
+                mode=self.query_refine,
+                gate=self.proposal_state_gate * self.query_mask_gate_scale,
+                proposal_update=self.proposal_state_update
+                if self.query_refine == "proposal_persistent"
+                else None,
+            )
+        else:
+            decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
         outputs = self.head(decoded)
         if self.query_refine == "query_mask":
             outputs["query_mask_logits_per_query"] = query_conditioned_mask_logits(
@@ -292,3 +322,32 @@ def query_conditioned_mask_logits(
     projected_features = feature_proj(state)
     logits = torch.einsum("bqc,bchw->bqhw", projected_queries, projected_features)
     return logits * (queries.shape[-1] ** -0.5)
+
+
+def proposal_state_decode(
+    decoder: SimpleCrossAttentionDecoder,
+    queries: Tensor,
+    proposal_queries: Tensor,
+    spatial_tokens: Tensor,
+    mode: str,
+    gate: Tensor,
+    proposal_update: nn.Module | None = None,
+) -> Tensor:
+    """Decode queries while controlling how proposal state is consumed."""
+
+    if mode == "proposal_decode2":
+        decoded = decoder(queries, spatial_tokens)
+        return decoder(decoded, spatial_tokens)
+    if mode == "proposal_reinject":
+        decoded = decoder(queries, spatial_tokens)
+        return decoder(decoded + gate * proposal_queries, spatial_tokens)
+    if mode == "proposal_persistent":
+        if proposal_update is None:
+            raise ValueError("proposal_persistent requires proposal_update")
+        proposal_state = proposal_queries
+        decoded = queries
+        for _ in range(2):
+            decoded = decoder(decoded + gate * proposal_state, spatial_tokens)
+            proposal_state = proposal_state + gate * proposal_update(decoded)
+        return decoded
+    raise ValueError(f"unsupported proposal state mode: {mode}")

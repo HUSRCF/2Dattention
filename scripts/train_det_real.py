@@ -80,11 +80,59 @@ REAL_MODEL_CONFIGS = {
         0.1,
         "none",
     ),
+    "local_mask_proposal_nms_query_decode2": (
+        "local",
+        "mask_proposal_nms",
+        "proposal_decode2",
+        "proposal",
+        0.1,
+        "none",
+    ),
+    "local_mask_proposal_nms_query_reinject": (
+        "local",
+        "mask_proposal_nms",
+        "proposal_reinject",
+        "proposal",
+        0.1,
+        "none",
+    ),
+    "local_mask_proposal_nms_query_persistent": (
+        "local",
+        "mask_proposal_nms",
+        "proposal_persistent",
+        "proposal",
+        0.1,
+        "none",
+    ),
     "local_mask_proposal_oracle_query": ("local", "mask_proposal_oracle", "none", "none", 0.1, "none"),
     "local_mask_proposal_oracle_nms_query": (
         "local",
         "mask_proposal_oracle_nms",
         "none",
+        "none",
+        0.1,
+        "none",
+    ),
+    "local_mask_proposal_oracle_nms_query_decode2": (
+        "local",
+        "mask_proposal_oracle_nms",
+        "proposal_decode2",
+        "none",
+        0.1,
+        "none",
+    ),
+    "local_mask_proposal_oracle_nms_query_reinject": (
+        "local",
+        "mask_proposal_oracle_nms",
+        "proposal_reinject",
+        "none",
+        0.1,
+        "none",
+    ),
+    "local_mask_proposal_oracle_nms_query_persistent": (
+        "local",
+        "mask_proposal_oracle_nms",
+        "proposal_persistent",
         "none",
         0.1,
         "none",
@@ -306,6 +354,7 @@ def main() -> None:
     print("saved_csv:", args.out)
     print("saved_split:", args.split_out)
     print_summary(rows)
+    print_proposal_oracle_gap_summary(rows)
     print_paired_summary(rows, args.reference_model)
 
 
@@ -1604,6 +1653,94 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['eval_offcenter_iou']) for row in model_rows]):.3f},"
             f"{mean([float(row['images_per_sec']) for row in model_rows]):.2f}"
         )
+
+
+def print_proposal_oracle_gap_summary(rows: list[dict[str, float | int | str]]) -> None:
+    """Print predicted-vs-oracle proposal gap and closure diagnostics."""
+
+    final_rows = final_rows_by_model_seed(rows)
+    row_models = {str(row["model"]) for row in final_rows}
+    baseline_pred = "local_mask_proposal_nms_query"
+    baseline_oracle = "local_mask_proposal_oracle_nms_query"
+    if baseline_pred not in row_models or baseline_oracle not in row_models:
+        return
+    pairs = [
+        (
+            "init_only",
+            "local_mask_proposal_nms_query",
+            "local_mask_proposal_oracle_nms_query",
+        ),
+        (
+            "decode2",
+            "local_mask_proposal_nms_query_decode2",
+            "local_mask_proposal_oracle_nms_query_decode2",
+        ),
+        (
+            "reinject",
+            "local_mask_proposal_nms_query_reinject",
+            "local_mask_proposal_oracle_nms_query_reinject",
+        ),
+        (
+            "persistent",
+            "local_mask_proposal_nms_query_persistent",
+            "local_mask_proposal_oracle_nms_query_persistent",
+        ),
+    ]
+    metrics = [
+        ("final_iou", "eval_iou"),
+        ("best_iou", "best_iou"),
+        ("ap50", "eval_ap50"),
+        ("class_ap50", "eval_ap50_class"),
+    ]
+    print(
+        "proposal_oracle_gap_mode,metric,pred_model,oracle_model,"
+        "pred_mean,oracle_mean,direct_gap_mean,closure_vs_init_oracle_gap_mean"
+    )
+    run_seeds = sorted({int(row["run_seed"]) for row in final_rows})
+    for mode, pred_model, oracle_model in pairs:
+        if pred_model not in row_models or oracle_model not in row_models:
+            continue
+        for metric_name, field in metrics:
+            pred_values = []
+            oracle_values = []
+            gap_values = []
+            closure_values = []
+            for run_seed in run_seeds:
+                pred = find_row(final_rows, model=pred_model, run_seed=run_seed)
+                oracle = find_row(final_rows, model=oracle_model, run_seed=run_seed)
+                base_pred = find_row(final_rows, model=baseline_pred, run_seed=run_seed)
+                base_oracle = find_row(final_rows, model=baseline_oracle, run_seed=run_seed)
+                if pred is None or oracle is None or base_pred is None or base_oracle is None:
+                    continue
+                pred_value = float(pred[field])
+                oracle_value = float(oracle[field])
+                base_pred_value = float(base_pred[field])
+                base_oracle_value = float(base_oracle[field])
+                pred_values.append(pred_value)
+                oracle_values.append(oracle_value)
+                gap_values.append(oracle_value - pred_value)
+                closure_values.append(
+                    proposal_gap_closure(
+                        base_pred=base_pred_value,
+                        candidate=pred_value,
+                        oracle=base_oracle_value,
+                    )
+                )
+            if pred_values:
+                print(
+                    f"{mode},{metric_name},{pred_model},{oracle_model},"
+                    f"{mean(pred_values):.3f},{mean(oracle_values):.3f},"
+                    f"{mean(gap_values):.3f},{mean(closure_values):.3f}"
+                )
+
+
+def proposal_gap_closure(base_pred: float, candidate: float, oracle: float) -> float:
+    """Return raw fraction of the init-only predicted-vs-oracle gap closed."""
+
+    gap = oracle - base_pred
+    if gap <= 1e-8:
+        return 0.0
+    return (candidate - base_pred) / gap
 
 
 def print_paired_summary(rows: list[dict[str, float | int | str]], reference_model: str) -> None:

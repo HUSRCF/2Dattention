@@ -20,6 +20,7 @@ from scripts.train_det_real import (
     oracle_iou_score_multiplier,
     oracle_query_mask_logits,
     pearson_corr,
+    proposal_gap_closure,
     quality_score_multipliers,
     quality_head_loss_scale,
     query_quality_head_loss,
@@ -313,6 +314,14 @@ def test_real_det_ranking_gap_closure_tracks_oracle_headroom() -> None:
     assert ranking_gap_closure(base_score=0.8, quality_score=0.7, oracle_score=0.8) == 0.0
     assert ranking_gap_closure(base_score=0.5, quality_score=0.4, oracle_score=0.8) < 0.0
     assert ranking_gap_closure(base_score=0.5, quality_score=0.9, oracle_score=0.8) > 1.0
+
+
+def test_real_det_proposal_gap_closure_tracks_predicted_oracle_gap() -> None:
+    assert proposal_gap_closure(base_pred=0.2, candidate=0.2, oracle=0.6) == 0.0
+    assert abs(proposal_gap_closure(base_pred=0.2, candidate=0.4, oracle=0.6) - 0.5) < 1e-6
+    assert proposal_gap_closure(base_pred=0.2, candidate=0.7, oracle=0.6) > 1.0
+    assert proposal_gap_closure(base_pred=0.5, candidate=0.4, oracle=0.5) == 0.0
+    assert proposal_gap_closure(base_pred=0.5, candidate=0.6, oracle=0.4) == 0.0
 
 
 def test_real_det_oracle_iou_score_rescues_ap_ranking() -> None:
