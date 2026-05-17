@@ -1545,6 +1545,7 @@ Artifacts:
 - `results/det_real_quality_traincalib_offcenter_1000img_500step_3seed.csv`
 - `results/det_real_quality_traincalib_offcenter_calib_1000img_500step_3seed.csv`
 - `results/det_real_box_quality_traincalib_offcenter_1000img_500step_3seed.csv`
+- `results/det_real_quality_traincalib_small_1000img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1724,6 +1725,31 @@ Interpretation:
 - Adding detached predicted-box geometry to the quality head does not fix off-center AP or class-aware AP.
 - The behavior closely matches query-only quality on off-center-only eval: calibration improves, but AP/class ranking remains weak.
 - The remaining off-center blocker is therefore more likely query/object representation, query assignment, or the class/objectness branch, not missing box coordinates in the quality head input.
+
+Small-object slice-stress check:
+
+The small-object slice was tested separately with `--eval-slice-filter small`. The eval split contains `30/31/33` small-slice images across the three seeds, so this is a useful stress test but higher-variance than the off-center split.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.197 | 0.051 | 0.021 | 0.004 | 0.051 | 0.051 | 0.004 | 0.315 | 0.333 |
+| `local_anchor_residual_query_quality_head` | 0.206 | 0.071 | 0.024 | 0.006 | 0.084 | 0.084 | 0.012 | 0.075 | 0.031 |
+
+Paired deltas:
+
+- Final IoU: `+0.009`, `2/3` wins.
+- AP50: `+0.020`, `2/3` wins.
+- Class AP50: `+0.003`, `1/3` wins.
+- Pre-registered `q^2` AP50: `+0.033`, `3/3` wins.
+- Train-calibrated fixed AP50: `+0.032`, `3/3` wins.
+- Train-calibrated fixed AP75: `+0.008`, `2/3` wins.
+- Combined ECE-lite improves from `0.315/0.333` to `0.075/0.031`.
+
+Interpretation:
+
+- Small-object stress is positive for quality ranking despite the limited number of eval images.
+- This separates small-object robustness from off-center robustness: quality scoring helps small-slice AP, but off-center ranking remains weak.
+- The active robustness blocker should therefore be framed as off-center/query-position behavior rather than generic small-object failure.
 
 Quality-head generalization check:
 
