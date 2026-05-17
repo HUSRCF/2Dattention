@@ -1544,6 +1544,7 @@ Artifacts:
 - `results/det_real_quality_traincalib_1000img_500step_3seed.csv`
 - `results/det_real_quality_traincalib_offcenter_1000img_500step_3seed.csv`
 - `results/det_real_quality_traincalib_offcenter_calib_1000img_500step_3seed.csv`
+- `results/det_real_box_quality_traincalib_offcenter_1000img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1698,6 +1699,31 @@ Interpretation:
 - Slice-aware alpha selection does not fix the off-center AP weakness.
 - The quality head continues to improve calibration and slightly improves AP75, but AP50/class-aware AP are not improved on off-center-only eval.
 - The off-center problem is therefore not just aggregate alpha mismatch. The next useful work should target representation/query behavior on off-center objects or introduce an explicit slice-specific scoring model, not another global alpha sweep.
+
+Box-aware off-center quality check:
+
+This check asks whether the off-center weakness is simply because the quality head only sees query features. `local_anchor_residual_query_box_quality_head` concatenates the detached predicted box into the quality head input.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.332 | 0.130 | 0.072 | 0.012 | 0.130 | 0.130 | 0.012 | 0.302 | 0.340 |
+| `local_anchor_residual_query_box_quality_head` | 0.333 | 0.127 | 0.054 | 0.012 | 0.150 | 0.150 | 0.015 | 0.103 | 0.021 |
+
+Paired deltas:
+
+- Final IoU: `+0.001`, `2/3` wins.
+- AP50: `-0.003`, `2/3` wins.
+- Class AP50: `-0.018`, `2/3` wins.
+- Pre-registered `q^2` AP50: `+0.020`, `2/3` wins.
+- Train-calibrated fixed AP50: `+0.021`, `2/3` wins.
+- Offcenter fixed AP50: `-0.035`, `1/3` wins.
+- Combined ECE-lite improves from `0.302/0.340` to `0.103/0.021`.
+
+Interpretation:
+
+- Adding detached predicted-box geometry to the quality head does not fix off-center AP or class-aware AP.
+- The behavior closely matches query-only quality on off-center-only eval: calibration improves, but AP/class ranking remains weak.
+- The remaining off-center blocker is therefore more likely query/object representation, query assignment, or the class/objectness branch, not missing box coordinates in the quality head input.
 
 Quality-head generalization check:
 
