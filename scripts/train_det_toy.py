@@ -117,6 +117,14 @@ MODEL_CONFIGS = {
     ),
     "local_learned_querymask": ("local", "learned", "query_mask", "query", 0.1, "none"),
     "local_anchor_residual_query_querymask": ("local", "anchor_residual", "query_mask", "query", 0.01, "none"),
+    "local_anchor_residual_query_querymask_refine": (
+        "local",
+        "anchor_residual",
+        "query_mask_refine",
+        "query",
+        0.01,
+        "none",
+    ),
 }
 
 

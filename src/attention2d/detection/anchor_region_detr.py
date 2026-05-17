@@ -54,9 +54,17 @@ class TinyAnchorRegionDETR(nn.Module):
             "proposal_late_persistent",
             "proposal_persistent_stopgrad",
         }
-        if query_refine not in {"none", "mask_pool", "mask_bias", "query_mask", *proposal_refine_modes}:
+        if query_refine not in {
+            "none",
+            "mask_pool",
+            "mask_bias",
+            "query_mask",
+            "query_mask_refine",
+            *proposal_refine_modes,
+        }:
             raise ValueError(
                 "query_refine must be 'none', 'mask_pool', 'mask_bias', 'query_mask', "
+                "'query_mask_refine', "
                 "'proposal_decode2', 'proposal_reinject', 'proposal_persistent', "
                 "'proposal_late_persistent', or 'proposal_persistent_stopgrad'"
             )
@@ -88,9 +96,11 @@ class TinyAnchorRegionDETR(nn.Module):
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
             self.query_mask_proj = nn.Linear(embed_dim, embed_dim)
-        if query_refine == "query_mask":
+        if query_refine in {"query_mask", "query_mask_refine"}:
             self.query_mask_query_proj = nn.Linear(embed_dim, embed_dim)
             self.query_mask_feature_proj = nn.Conv2d(embed_dim, embed_dim, kernel_size=1)
+        if query_refine == "query_mask_refine":
+            self.query_box_refine_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine in proposal_refine_modes:
             self.proposal_state_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine in {"proposal_persistent", "proposal_late_persistent", "proposal_persistent_stopgrad"}:
@@ -214,13 +224,21 @@ class TinyAnchorRegionDETR(nn.Module):
         else:
             decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
         outputs = self.head(decoded)
-        if self.query_refine == "query_mask":
-            outputs["query_mask_logits_per_query"] = query_conditioned_mask_logits(
+        if self.query_refine in {"query_mask", "query_mask_refine"}:
+            query_mask_logits_per_query = query_conditioned_mask_logits(
                 decoded,
                 spatial_state,
                 self.query_mask_query_proj,
                 self.query_mask_feature_proj,
             )
+            outputs["query_mask_logits_per_query"] = query_mask_logits_per_query
+            if self.query_refine == "query_mask_refine":
+                raw_boxes = outputs["pred_boxes"]
+                mask_boxes = query_mask_boxes_from_logits(query_mask_logits_per_query)
+                gate = self.query_box_refine_gate * self.query_mask_gate_scale
+                outputs["pred_boxes_raw"] = raw_boxes
+                outputs["pred_boxes_mask"] = mask_boxes
+                outputs["pred_boxes"] = (raw_boxes + gate * (mask_boxes - raw_boxes)).clamp(0.0, 1.0)
         if query_mask_logits is not None:
             outputs["query_mask_logits"] = query_mask_logits
         if query_proposal_indices is not None:
@@ -357,6 +375,39 @@ def query_conditioned_mask_logits(
     projected_features = feature_proj(state)
     logits = torch.einsum("bqc,bchw->bqhw", projected_queries, projected_features)
     return logits * (queries.shape[-1] ** -0.5)
+
+
+def query_mask_boxes_from_logits(mask_logits: Tensor) -> Tensor:
+    """Convert query-specific mask logits into differentiable cxcywh boxes."""
+
+    batch, queries, height, width = mask_logits.shape
+    probs = mask_logits.sigmoid()
+    weights = probs.flatten(2)
+    mass = weights.sum(dim=-1).clamp_min(1e-6)
+    xs = torch.linspace(
+        0.5 / width,
+        1.0 - 0.5 / width,
+        width,
+        device=mask_logits.device,
+        dtype=mask_logits.dtype,
+    )
+    ys = torch.linspace(
+        0.5 / height,
+        1.0 - 0.5 / height,
+        height,
+        device=mask_logits.device,
+        dtype=mask_logits.dtype,
+    )
+    grid_y, grid_x = torch.meshgrid(ys, xs, indexing="ij")
+    flat_x = grid_x.flatten().view(1, 1, -1)
+    flat_y = grid_y.flatten().view(1, 1, -1)
+    cx = (weights * flat_x).sum(dim=-1) / mass
+    cy = (weights * flat_y).sum(dim=-1) / mass
+    abs_dev_x = (weights * (flat_x - cx.unsqueeze(-1)).abs()).sum(dim=-1) / mass
+    abs_dev_y = (weights * (flat_y - cy.unsqueeze(-1)).abs()).sum(dim=-1) / mass
+    box_w = (4.0 * abs_dev_x).clamp(1e-4, 1.0)
+    box_h = (4.0 * abs_dev_y).clamp(1e-4, 1.0)
+    return torch.stack((cx, cy, box_w, box_h), dim=-1).view(batch, queries, 4)
 
 
 def proposal_state_decode(

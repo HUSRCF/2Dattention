@@ -268,6 +268,47 @@ def test_tiny_anchor_region_detr_query_conditioned_mask_aux() -> None:
     assert float(model.query_mask_query_proj.weight.grad.detach().abs().sum()) > 0.0
 
 
+def test_tiny_anchor_region_detr_query_mask_refines_boxes() -> None:
+    torch.manual_seed(181)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor_residual",
+        query_refine="query_mask_refine",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["query_mask_logits_per_query"].shape == (2, 4, 8, 8)
+    assert outputs["pred_boxes_raw"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_mask"].shape == (2, 4, 4)
+    assert outputs["pred_boxes"].shape == (2, 4, 4)
+    assert not torch.allclose(outputs["pred_boxes"], outputs["pred_boxes_raw"])
+    mask_losses = query_mask_aux_loss(outputs, targets, criterion, dice_weight=1.0)
+    det_losses = criterion(outputs, targets)
+    total_loss = det_losses["loss"] + 0.5 * mask_losses["loss_mask_aux"]
+    total_loss.backward()
+
+    assert model.query_box_refine_gate.grad is not None
+    assert model.query_mask_query_proj.weight.grad is not None
+    assert model.query_mask_feature_proj.weight.grad is not None
+    assert torch.isfinite(model.query_box_refine_gate.grad).all()
+    assert float(model.query_box_refine_gate.grad.detach().abs().sum()) > 0.0
+
+
 def test_tiny_anchor_region_detr_oracle_mask_proposal_query_init() -> None:
     torch.manual_seed(19)
     model = TinyAnchorRegionDETR(

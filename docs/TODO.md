@@ -804,6 +804,20 @@ Interpretation:
     - As an auxiliary loss alone, querymask does not beat the residual-anchor detector on real DET mini box/AP at 300 steps.
     - Two-stage quality ranking gives only a small q-score recovery for querymask and does not make it competitive with residual-anchor quality.
     - This supports the next architectural step: use query masks for box refinement or query refinement, not merely as auxiliary supervision.
+  - Query-mask box moment refinement:
+    - Implemented `query_mask_refine`: each query predicts a mask, converts it to a differentiable soft cxcywh box moment, and applies a small gated interpolation from the raw box head toward that mask box.
+    - Smoke artifact: `results/det_real_querymask_refine_smoke_50step_2seed.csv`.
+    - Standard artifact: `results/det_real_querymask_refine_300step_2seed.csv`.
+
+| Model | Final IoU | Best IoU | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.266 | 0.135 | 0.000 |
+| `local_anchor_residual_query_querymask_refine` | 0.358 | 0.366 | 0.202 | 0.049 | 0.338 |
+
+  - Interpretation:
+    - Query-mask moment refinement is negative under the standard 300-step real DET mini protocol.
+    - The branch learns matched masks, but the mask-derived box interpolation hurts final IoU, best IoU, AP50, and class-aware AP50.
+    - This means the current query mask is not yet a reliable box-refinement signal. Do not continue this exact moment-refine design without a stronger coupling idea or a separate stabilization mechanism.
 
 ### Step 5: RF-DETR Distillation Track
 

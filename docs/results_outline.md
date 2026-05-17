@@ -1480,3 +1480,29 @@ Interpretation:
 - Longer training does not solve the refresh path.
 - The useful `g003` signal remains a best-checkpoint signal; final metrics degrade by 600 steps.
 - The next solution should be better checkpoint selection, ranking/calibration, or query-box coupling, not just more training steps.
+
+Query-mask box moment refinement:
+
+This control tests a direct query-box coupling path instead of treating query-specific masks as side auxiliary supervision. Each query mask is converted into a differentiable soft cxcywh box moment, then a small learned gate interpolates the detector's raw box toward that mask box.
+
+Implementation:
+
+- `query_refine="query_mask_refine"`
+- `local_anchor_residual_query_querymask_refine`
+
+Artifacts:
+
+- `results/det_real_querymask_refine_smoke_50step_2seed.csv`
+- `results/det_real_querymask_refine_300step_2seed.csv`
+
+| Variant | Final IoU | Best IoU | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.376 | 0.376 | 0.266 | 0.135 | 0.000 |
+| `local_anchor_residual_query_querymask_refine` | 0.358 | 0.366 | 0.202 | 0.049 | 0.338 |
+
+Interpretation:
+
+- Query-mask moment refinement does not rescue query-box coupling on real DET mini.
+- The model learns query-specific masks, but using soft mask moments to refine boxes hurts both localization and ranking.
+- This is now a concrete negative result: side query masks are insufficient, and naive mask-to-box moment interpolation is also insufficient.
+- The remaining strong real-mini AP route is still `local_anchor_residual_query + two-stage quality`; proposal refresh remains a geometry diagnostic rather than an active detector architecture.
