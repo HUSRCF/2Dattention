@@ -52,6 +52,29 @@ def test_detection_head_box_quality_mode_shapes() -> None:
     assert output["pred_quality_logits"].shape == (2, 5)
 
 
+def test_detection_head_box_class_mode_shapes() -> None:
+    head = DetectionHead(dim=16, num_classes=3, class_mode="box")
+    output = head(torch.randn(2, 5, 16))
+    assert output["pred_logits"].shape == (2, 5, 4)
+    assert output["pred_boxes"].shape == (2, 5, 4)
+    assert output["pred_quality_logits"].shape == (2, 5)
+
+
+def test_tiny_detector_box_class_mode_shapes() -> None:
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=2,
+        num_queries=4,
+        local_blocks=1,
+        feature_mode="local",
+        query_init="anchor_residual",
+        class_mode="box",
+    )
+    outputs = model(torch.randn(2, 3, 32, 32))
+    assert outputs["pred_logits"].shape == (2, 4, 3)
+    assert outputs["pred_boxes"].shape == (2, 4, 4)
+
+
 def test_hungarian_matcher_handles_variable_targets() -> None:
     matcher = HungarianMatcher()
     outputs = {

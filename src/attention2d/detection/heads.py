@@ -35,23 +35,36 @@ class MLP(nn.Module):
 class DetectionHead(nn.Module):
     """Class, box, and query-quality heads for object-query features."""
 
-    def __init__(self, dim: int, num_classes: int, quality_mode: str = "query") -> None:
+    def __init__(
+        self,
+        dim: int,
+        num_classes: int,
+        quality_mode: str = "query",
+        class_mode: str = "query",
+    ) -> None:
         super().__init__()
         if quality_mode not in {"query", "box"}:
             raise ValueError("quality_mode must be 'query' or 'box'")
+        if class_mode not in {"query", "box"}:
+            raise ValueError("class_mode must be 'query' or 'box'")
         self.quality_mode = quality_mode
-        self.class_head = nn.Linear(dim, num_classes + 1)
+        self.class_mode = class_mode
+        class_dim = dim + 4 if class_mode == "box" else dim
+        self.class_head = nn.Linear(class_dim, num_classes + 1)
         self.box_head = MLP(dim, dim, 4, num_layers=3)
         quality_dim = dim + 4 if quality_mode == "box" else dim
         self.quality_head = nn.Linear(quality_dim, 1)
 
     def forward(self, queries: Tensor) -> dict[str, Tensor]:
         pred_boxes = self.box_head(queries).sigmoid()
+        class_input = queries
+        if self.class_mode == "box":
+            class_input = torch.cat([queries, pred_boxes.detach()], dim=-1)
         quality_input = queries
         if self.quality_mode == "box":
             quality_input = torch.cat([queries, pred_boxes.detach()], dim=-1)
         return {
-            "pred_logits": self.class_head(queries),
+            "pred_logits": self.class_head(class_input),
             "pred_boxes": pred_boxes,
             "pred_quality_logits": self.quality_head(quality_input).squeeze(-1),
         }
