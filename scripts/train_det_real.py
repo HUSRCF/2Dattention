@@ -409,6 +409,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--calibration-slice-filter",
+        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        default="none",
+        help=(
+            "Optionally choose the alpha-calibration subset only from images containing "
+            "this robustness slice. Non-selected train-source candidates remain in train."
+        ),
+    )
+    parser.add_argument(
         "--eval-slice-filter",
         choices=("none", "small", "medium", "large", "center", "offcenter"),
         default="none",
@@ -507,6 +516,7 @@ def main() -> None:
     print("num_queries:", args.num_queries)
     print("label_map_source:", args.label_map_source)
     print("calibration_source:", args.calibration_source)
+    print("calibration_slice_filter:", args.calibration_slice_filter)
     print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
@@ -529,6 +539,7 @@ def main() -> None:
             train_frac=args.train_frac,
             calibration_frac=args.calibration_frac,
             calibration_source=args.calibration_source,
+            calibration_slice_filter=args.calibration_slice_filter,
             eval_slice_filter=args.eval_slice_filter,
             seed=run_seed,
         )
@@ -1853,11 +1864,14 @@ def build_splits(
     train_frac: float,
     calibration_frac: float,
     calibration_source: str = "heldout",
+    calibration_slice_filter: str = "none",
     eval_slice_filter: str = "none",
     seed: int = 0,
 ) -> tuple[Subset, Subset | None, Subset, list[dict[str, int | str]]]:
     if calibration_source not in {"heldout", "train"}:
         raise ValueError("calibration_source must be 'heldout' or 'train'")
+    if calibration_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
+        raise ValueError("unknown calibration slice filter")
     if eval_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
         raise ValueError("unknown eval slice filter")
     dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
@@ -1868,13 +1882,43 @@ def build_splits(
     calibration_indices: list[int] = []
     eval_indices = heldout_indices
     if calibration_frac > 0.0 and calibration_source == "heldout" and len(heldout_indices) > 1:
-        calibration_size = max(1, min(len(heldout_indices) - 1, int(len(heldout_indices) * calibration_frac)))
-        calibration_indices = heldout_indices[:calibration_size]
-        eval_indices = heldout_indices[calibration_size:]
+        if calibration_slice_filter == "none":
+            calibration_size = max(1, min(len(heldout_indices) - 1, int(len(heldout_indices) * calibration_frac)))
+            calibration_indices = heldout_indices[:calibration_size]
+        else:
+            calibration_candidates = [
+                idx
+                for idx in heldout_indices
+                if sample_matches_slice(samples[idx], max_objects=max_objects, slice_name=calibration_slice_filter)
+            ]
+            if not calibration_candidates:
+                raise ValueError(
+                    f"calibration slice filter produced an empty calibration split: {calibration_slice_filter}"
+                )
+            max_calibration = min(len(calibration_candidates), len(heldout_indices) - 1)
+            calibration_size = max(1, min(max_calibration, int(max_calibration * calibration_frac)))
+            calibration_indices = calibration_candidates[:calibration_size]
+        calibration_index_set = set(calibration_indices)
+        eval_indices = [idx for idx in heldout_indices if idx not in calibration_index_set]
     elif calibration_frac > 0.0 and calibration_source == "train" and len(train_indices) > 1:
-        calibration_size = max(1, min(len(train_indices) - 1, int(len(train_indices) * calibration_frac)))
-        calibration_indices = train_indices[-calibration_size:]
-        train_indices = train_indices[:-calibration_size]
+        if calibration_slice_filter == "none":
+            calibration_size = max(1, min(len(train_indices) - 1, int(len(train_indices) * calibration_frac)))
+            calibration_indices = train_indices[-calibration_size:]
+        else:
+            calibration_candidates = [
+                idx
+                for idx in train_indices
+                if sample_matches_slice(samples[idx], max_objects=max_objects, slice_name=calibration_slice_filter)
+            ]
+            if not calibration_candidates:
+                raise ValueError(
+                    f"calibration slice filter produced an empty calibration split: {calibration_slice_filter}"
+                )
+            max_calibration = min(len(calibration_candidates), len(train_indices) - 1)
+            calibration_size = max(1, min(max_calibration, int(max_calibration * calibration_frac)))
+            calibration_indices = calibration_candidates[-calibration_size:]
+        calibration_index_set = set(calibration_indices)
+        train_indices = [idx for idx in train_indices if idx not in calibration_index_set]
     if eval_slice_filter != "none":
         eval_indices = [
             idx

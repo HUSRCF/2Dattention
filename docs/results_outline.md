@@ -1518,6 +1518,7 @@ Field semantics:
 - `combined_*` calibration diagnostics use the same fixed/calibration-selected quality multiplier as final eval, not an implicit `q^1` multiplier.
 - Existing historical real-mini runs use the legacy `--label-map-source all` behavior, which selects top classes before the train/eval split. Future strict held-out runs should use `--label-map-source train` so held-out class frequencies do not affect the chosen label set.
 - `--calibration-source train` is now available for stricter calibration: alpha is selected from a held-out subset of the training split, while the final eval split is not touched by calibration.
+- `--calibration-slice-filter` can choose the alpha-calibration subset only from images containing a requested slice. This is intended to test whether aggregate calibration is mismatched for off-center/small examples.
 - Slice robustness fields are now emitted for `small`, `medium`, `large`, `center`, and `offcenter` AP50, plus their fixed-quality AP50 variants.
 - `--eval-slice-filter` can restrict the final eval subset to images containing `small`, `medium`, `large`, `center`, or `offcenter` targets. Training and calibration splits are unchanged. This is intended for slice-stress/OOD checks, not for the main aggregate protocol.
 
@@ -1525,6 +1526,7 @@ Implementation:
 
 - `--calibration-frac`
 - `--calibration-batches`
+- `--calibration-slice-filter`
 - `--eval-slice-filter`
 
 Artifacts:
