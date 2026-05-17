@@ -1543,6 +1543,7 @@ Artifacts:
 - `results/det_real_quality_calib_trainlabels_1000img_500step_3seed.csv`
 - `results/det_real_quality_traincalib_1000img_500step_3seed.csv`
 - `results/det_real_quality_traincalib_offcenter_1000img_500step_3seed.csv`
+- `results/det_real_quality_traincalib_offcenter_calib_1000img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1670,6 +1671,33 @@ Interpretation:
 - Quality ranking still improves calibration on off-center-only eval, but it does not produce the strong AP gain seen in the aggregate, large, and center-heavy settings.
 - This confirms the current robustness boundary: the quality route is strong overall, but off-center ranking/class behavior remains underfit or miscalibrated.
 - Next work should test slice-aware calibration or a calibration set enriched for off-center examples before changing the detector architecture.
+
+Off-center-calibrated slice-stress check:
+
+The next check uses `--calibration-slice-filter offcenter` together with `--calibration-source train` and `--eval-slice-filter offcenter`. The calibration split contains `66/67/66` off-center train-calibration images across seeds; eval still contains `90/83/86` off-center images.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.324 | 0.140 | 0.072 | 0.010 | 0.140 | 0.140 | 0.010 | 0.289 | 0.311 |
+| `local_anchor_residual_query_quality_head` | 0.327 | 0.136 | 0.061 | 0.014 | 0.142 | 0.139 | 0.013 | 0.192 | 0.169 |
+
+Paired deltas:
+
+- Final IoU: `+0.002`, `2/3` wins.
+- AP50: `-0.005`, `1/3` wins.
+- Class AP50: `-0.012`, `1/3` wins.
+- AP75: `+0.004`, `2/3` wins.
+- Pre-registered `q^2` AP50: `+0.001`, `1/3` wins.
+- Off-center-calibrated fixed AP50: `-0.001`, `1/3` wins.
+- Off-center-calibrated fixed AP75: `+0.004`, `2/3` wins.
+- Offcenter fixed AP50: `-0.015`, `1/3` wins.
+- Combined ECE-lite still improves from `0.289/0.311` to `0.192/0.169`.
+
+Interpretation:
+
+- Slice-aware alpha selection does not fix the off-center AP weakness.
+- The quality head continues to improve calibration and slightly improves AP75, but AP50/class-aware AP are not improved on off-center-only eval.
+- The off-center problem is therefore not just aggregate alpha mismatch. The next useful work should target representation/query behavior on off-center objects or introduce an explicit slice-specific scoring model, not another global alpha sweep.
 
 Quality-head generalization check:
 
