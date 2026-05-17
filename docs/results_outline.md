@@ -1571,3 +1571,24 @@ Interpretation:
 
 - The larger strict check strengthens the ranking/calibration interpretation. The main gain is AP/ranking and ECE, not a large localization shift.
 - The detector-side mainline remains `local_anchor_residual_query` as the base detector plus low-interference two-stage quality ranking.
+
+Quality-head generalization check:
+
+This check asks whether the two-stage frozen quality head is specific to residual-anchor queries or also helps a plain learned-query local detector.
+
+Artifact:
+
+- `results/det_real_quality_generalization_trainlabels_400step_3seed.csv`
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_learned` | 0.342 | 0.208 | 0.104 | 0.018 | 0.208 | 0.208 | 0.338 | 0.381 |
+| `local_learned_quality_head` | 0.353 | 0.299 | 0.156 | 0.039 | 0.303 | 0.289 | 0.144 | 0.073 |
+| `local_anchor_residual_query` | 0.345 | 0.216 | 0.089 | 0.006 | 0.216 | 0.216 | 0.346 | 0.391 |
+| `local_anchor_residual_query_quality_head` | 0.367 | 0.225 | 0.138 | 0.019 | 0.293 | 0.295 | 0.158 | 0.072 |
+
+Interpretation:
+
+- The two-stage quality head is not residual-anchor-specific. It also strongly improves `local_learned`: AP50 `+0.091`, class AP50 `+0.051`, q2 AP50 `+0.095`, fixed AP50 `+0.082`, all `3/3` paired against `local_learned`.
+- `local_learned_quality_head` is highly competitive on AP/ranking and ECE. It has the highest base AP50 in this 200-image check, while `local_anchor_residual_query_quality_head` keeps the strongest final IoU and slightly higher calibration-selected fixed AP50.
+- This updates the detector-side interpretation: the low-interference quality head is a general ranking fix, while residual-anchor remains a good base-detector/coupling candidate rather than the only viable quality route.
