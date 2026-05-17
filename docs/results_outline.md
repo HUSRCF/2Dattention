@@ -1816,6 +1816,26 @@ Interpretation:
 - The off-center failure is therefore not a global calibration or alpha-selection problem. It looks more like a query/object representation and high-score false-candidate problem for off-center targets.
 - Next work should target off-center-aware query representation or assignment/ranking diagnostics, not another alpha sweep, persistent proposal-state rescue, or detached-box head concatenation.
 
+Combined top-k off-center rerun:
+
+Artifact:
+
+- `results/det_real_offcenter_combined_topk_1000img_500step_3seed.csv`
+
+This rerun adds fixed-quality combined top-k false-positive diagnostics.
+
+| Variant | Top-k FP | Combined Top-k FP | Center Top-k FP | Center Combined Top-k FP | Offcenter Top-k FP | Offcenter Combined Top-k FP |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.853 | 0.853 | 0.845 | 0.845 | 0.965 | 0.965 |
+| `local_anchor_residual_query_quality_head` | 0.853 | 0.819 | 0.758 | 0.679 | 0.981 | 0.982 |
+
+Interpretation:
+
+- Fixed-quality scoring reduces combined top-k false positives overall and on center examples.
+- It does not reduce off-center combined top-k false positives; off-center remains near-saturated at `0.982`.
+- This explains the split behavior: center fixed AP improves strongly, while offcenter fixed AP drops.
+- The next model-side change should target off-center query/position representation or off-center proposal selection, not more scoring calibration.
+
 Small-object slice-stress check:
 
 The small-object slice was tested separately with `--eval-slice-filter small`. The eval split contains `30/31/33` small-slice images across the three seeds, so this is a useful stress test but higher-variance than the off-center split.
