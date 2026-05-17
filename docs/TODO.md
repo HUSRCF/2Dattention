@@ -273,6 +273,23 @@ Interpretation:
 - This suggests the issue is not that proposal queries replaced learned queries too aggressively. A naive residual mixture can dilute both learned-query ranking and proposal coverage.
 - Downgrade proposal-residual query init. Keep pure `g003` refresh as the coverage path and residual-anchor quality as the AP path.
 
+Longer refresh training check:
+
+- Artifact: `results/det_real_reinject_longer_600step_2seed.csv`.
+- Protocol: `reinject_g003` vs default `reinject_g01`, 600 steps, 2 seeds, no quality head.
+
+| Model | Final IoU | Best IoU | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|
+| `reinject_g003` | 0.354 | 0.377 | 0.208 | 0.104 | 0.460 |
+| `reinject_g01` | 0.351 | 0.379 | 0.243 | 0.111 | 0.477 |
+
+Interpretation:
+
+- Longer training does not rescue refresh final performance.
+- `g003` still has good best-IoU behavior, but final AP drops by 600 steps. Its signal is an early/best-checkpoint signal, not a "train longer" signal.
+- Default `g01` is slightly better on final AP under 600 steps, but it also drops compared with its 300-step result.
+- This supports the best-checkpoint restore path and argues against simply extending training length as the next solution.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

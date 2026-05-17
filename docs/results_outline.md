@@ -1461,3 +1461,22 @@ Interpretation:
 - A naive learned-plus-proposal residual query does not improve the tradeoff.
 - It loses coverage relative to pure `g003` proposal refresh and loses ranking/class behavior relative to residual-anchor quality.
 - The next useful work should not be more query-init mixing. The stronger direction is query-box coupling or calibration targeted specifically at refreshed proposal boxes.
+
+Longer refresh training:
+
+This control checks whether the unstable refresh results simply need more optimization.
+
+Artifact:
+
+- `results/det_real_reinject_longer_600step_2seed.csv`
+
+| Variant | Final IoU | Best IoU | AP50 | Class AP50 | Mask IoU |
+|---|---:|---:|---:|---:|---:|
+| `reinject_g003` | 0.354 | 0.377 | 0.208 | 0.104 | 0.460 |
+| `reinject_g01` | 0.351 | 0.379 | 0.243 | 0.111 | 0.477 |
+
+Interpretation:
+
+- Longer training does not solve the refresh path.
+- The useful `g003` signal remains a best-checkpoint signal; final metrics degrade by 600 steps.
+- The next solution should be better checkpoint selection, ranking/calibration, or query-box coupling, not just more training steps.
