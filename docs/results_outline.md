@@ -1540,6 +1540,7 @@ Artifacts:
 - `results/det_real_quality_calib_trainlabels_500img_500step_3seed.csv`
 - `results/det_real_quality_calib_trainlabels_1000img_500step_3seed.csv`
 - `results/det_real_quality_traincalib_1000img_500step_3seed.csv`
+- `results/det_real_quality_traincalib_offcenter_1000img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1641,6 +1642,32 @@ Interpretation:
 - The quality signal is strongest on large and center objects, where fixed-quality scoring improves AP robustly across all seeds.
 - Small-object evidence is absent in this slice protocol, and off-center performance gets worse under the current fixed-quality score. This is the clearest robustness weakness left in the detector-side route.
 - The next detector work should target off-center/small calibration robustness, OOD/slice calibration, and larger real-det protocols. It should not reopen persistent proposal state as an active architecture unless it beats the current residual-anchor quality route under these stricter diagnostics.
+
+Off-center-only slice-stress check:
+
+The off-center weakness was then tested directly with `--eval-slice-filter offcenter`. The eval split contains `90/83/86` off-center images across the three seeds, while training and train-sourced alpha calibration stay unchanged.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | q2 AP50 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.332 | 0.130 | 0.072 | 0.012 | 0.130 | 0.130 | 0.012 | 0.302 | 0.340 |
+| `local_anchor_residual_query_quality_head` | 0.333 | 0.127 | 0.054 | 0.012 | 0.150 | 0.150 | 0.015 | 0.106 | 0.032 |
+
+Paired deltas:
+
+- Final IoU: `+0.001`, `2/3` wins.
+- AP50: `-0.003`, `2/3` wins.
+- Class AP50: `-0.018`, `2/3` wins.
+- Pre-registered `q^2` AP50: `+0.021`, `2/3` wins.
+- Train-calibrated fixed AP50: `+0.021`, `2/3` wins.
+- Train-calibrated fixed AP75: `+0.003`, `2/3` wins.
+- Offcenter fixed AP50: `-0.035`, `1/3` wins.
+- Combined ECE-lite still improves from `0.302/0.340` to `0.106/0.032`.
+
+Interpretation:
+
+- Quality ranking still improves calibration on off-center-only eval, but it does not produce the strong AP gain seen in the aggregate, large, and center-heavy settings.
+- This confirms the current robustness boundary: the quality route is strong overall, but off-center ranking/class behavior remains underfit or miscalibrated.
+- Next work should test slice-aware calibration or a calibration set enriched for off-center examples before changing the detector architecture.
 
 Quality-head generalization check:
 
