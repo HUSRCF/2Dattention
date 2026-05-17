@@ -232,6 +232,27 @@ Interpretation:
 - It still does not beat residual-anchor quality on fixed-q2 AP (`0.319` vs `0.338`) or class-aware fixed-q2 AP (`0.116` vs `0.201`).
 - Current conclusion: restore-best makes layerwise refresh viable as a geometry path, but ranking/class calibration is still the blocker. Do not add new proposal architecture until fixed scoring for refreshed proposal boxes improves.
 
+Box-aware quality head check:
+
+- Added `quality_mode="box"` for `DetectionHead`. The quality head can now receive `[query_feature, detached_pred_box]` instead of query feature alone.
+- Added variants:
+  - `local_anchor_residual_query_box_quality_head`
+  - `local_mask_proposal_nms_query_reinject_g003_box_quality_head`
+- Artifact: `results/det_real_box_quality_head_bestrestore_400step_2seed.csv`.
+- Protocol: same two-stage frozen quality setup with `--restore-best-before-quality-head`.
+
+| Model | Final IoU | AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_box_quality_head` | 0.376 | 0.276 | 0.340 | 0.202 | 0.397 |
+| `local_mask_proposal_nms_query_reinject_g003_box_quality_head` | 0.377 | 0.272 | 0.310 | 0.116 | 0.419 |
+
+Interpretation:
+
+- Adding detached predicted box geometry to the quality head does not materially improve refreshed-proposal scoring.
+- For residual-anchor, box-aware quality is effectively tied with query-only quality.
+- For `g003` refresh, box-aware quality is slightly worse than query-only quality under fixed `q^2` (`0.310` vs `0.319`).
+- Current blocker is not solved by a simple box-aware quality input. The next scoring work should change target/calibration or query-box coupling, not just concatenate box geometry into the quality head.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

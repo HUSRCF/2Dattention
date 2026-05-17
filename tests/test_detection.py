@@ -44,6 +44,14 @@ def test_detection_head_shapes() -> None:
     assert float(output["pred_boxes"].detach().max()) <= 1.0
 
 
+def test_detection_head_box_quality_mode_shapes() -> None:
+    head = DetectionHead(dim=16, num_classes=3, quality_mode="box")
+    output = head(torch.randn(2, 5, 16))
+    assert output["pred_logits"].shape == (2, 5, 4)
+    assert output["pred_boxes"].shape == (2, 5, 4)
+    assert output["pred_quality_logits"].shape == (2, 5)
+
+
 def test_hungarian_matcher_handles_variable_targets() -> None:
     matcher = HungarianMatcher()
     outputs = {

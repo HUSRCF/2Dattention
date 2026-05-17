@@ -63,6 +63,7 @@ REAL_MODEL_CONFIGS = {
     "local_learned_quality_head": ("local", "learned", "none", "none", 0.1, "none"),
     "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
+    "local_anchor_residual_query_box_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_learned_querymask": ("local", "learned", "query_mask", "query", 0.1, "none"),
     "local_anchor_residual_query_querymask": ("local", "anchor_residual", "query_mask", "query", 0.01, "none"),
     "local_anchor_residual_query_querymask_quality_head": (
@@ -114,6 +115,14 @@ REAL_MODEL_CONFIGS = {
         "none",
     ),
     "local_mask_proposal_nms_query_reinject_g003_quality_head": (
+        "local",
+        "mask_proposal_nms",
+        "proposal_reinject",
+        "proposal",
+        0.03,
+        "none",
+    ),
+    "local_mask_proposal_nms_query_reinject_g003_box_quality_head": (
         "local",
         "mask_proposal_nms",
         "proposal_reinject",
@@ -268,12 +277,19 @@ QUALITY_HEAD_MODELS = {
     "local_learned_quality_head",
     "local_anchor_quality_head",
     "local_anchor_residual_query_quality_head",
+    "local_anchor_residual_query_box_quality_head",
     "local_anchor_residual_query_querymask_quality_head",
     "local_mask_proposal_nms_query_quality_head",
     "local_mask_proposal_nms_query_reinject_quality_head",
     "local_mask_proposal_nms_query_reinject_g003_quality_head",
+    "local_mask_proposal_nms_query_reinject_g003_box_quality_head",
     "local_mask_proposal_oracle_nms_query_quality_head",
     "local_mask_proposal_oracle_nms_query_reinject_quality_head",
+}
+
+BOX_QUALITY_HEAD_MODELS = {
+    "local_anchor_residual_query_box_quality_head",
+    "local_mask_proposal_nms_query_reinject_g003_box_quality_head",
 }
 
 QUALITY_SCORE_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
@@ -485,6 +501,7 @@ def train_one_model(
         query_init=query_init,
         query_refine=query_refine,
         query_mask_gate_init=gate_init,
+        quality_mode="box" if model_name in BOX_QUALITY_HEAD_MODELS else "query",
     ).to(device)
     criterion = DetectionCriterion(num_classes=num_classes).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)

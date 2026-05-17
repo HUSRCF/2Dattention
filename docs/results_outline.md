@@ -1421,3 +1421,23 @@ Interpretation:
 - This makes `g003` refresh a credible geometry/coverage path, roughly matching residual-anchor final IoU.
 - It does not solve AP/class scoring. Fixed-q2 AP remains lower than residual-anchor quality (`0.319` vs `0.338`), and class-aware fixed-q2 AP is much lower (`0.116` vs `0.201`).
 - The next blocker is therefore refreshed-box scoring/calibration, not more persistent proposal state.
+
+Box-aware quality head:
+
+The next scoring check asks whether the refreshed boxes are hard to rank because the quality head only sees the query feature. `quality_mode="box"` concatenates the detached predicted box to the query feature before predicting quality.
+
+Artifact:
+
+- `results/det_real_box_quality_head_bestrestore_400step_2seed.csv`
+
+| Variant | Final IoU | AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_box_quality_head` | 0.376 | 0.276 | 0.340 | 0.202 | 0.397 |
+| `local_mask_proposal_nms_query_reinject_g003_box_quality_head` | 0.377 | 0.272 | 0.310 | 0.116 | 0.419 |
+
+Interpretation:
+
+- Box-aware quality does not fix refreshed-proposal AP.
+- It is roughly tied with query-only quality for residual-anchor.
+- It is slightly worse than query-only quality for `g003` refresh under fixed-q2 scoring.
+- The scoring blocker is therefore not simply missing predicted-box geometry in the quality input.

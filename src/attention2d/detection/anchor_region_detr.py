@@ -25,6 +25,7 @@ class TinyAnchorRegionDETR(nn.Module):
         query_init: str = "learned",
         query_refine: str = "none",
         query_mask_gate_init: float = 0.1,
+        quality_mode: str = "query",
     ) -> None:
         super().__init__()
         if feature_mode not in {"local", "anchor"}:
@@ -88,7 +89,7 @@ class TinyAnchorRegionDETR(nn.Module):
                 nn.Linear(embed_dim, embed_dim),
             )
         self.query_decoder = SimpleCrossAttentionDecoder(embed_dim)
-        self.head = DetectionHead(embed_dim, num_classes=num_classes)
+        self.head = DetectionHead(embed_dim, num_classes=num_classes, quality_mode=quality_mode)
 
     def set_query_mask_gate_scale(self, scale: float) -> None:
         """Set a runtime multiplier for mask-conditioned query refinement."""
