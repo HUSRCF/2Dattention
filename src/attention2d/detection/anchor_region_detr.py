@@ -37,6 +37,9 @@ class TinyAnchorRegionDETR(nn.Module):
             "anchor_detached",
             "anchor_residual",
             "anchor_residual_detached",
+            "grid",
+            "grid_residual",
+            "grid_residual_detached",
             "mask_proposal",
             "mask_proposal_nms",
             "mask_proposal_residual",
@@ -46,7 +49,7 @@ class TinyAnchorRegionDETR(nn.Module):
         }:
             raise ValueError(
                 "query_init must be a supported learned, anchor, residual-anchor, "
-                "mask-proposal, or oracle mask-proposal mode"
+                "grid-anchor, mask-proposal, or oracle mask-proposal mode"
             )
         proposal_refine_modes = {
             "proposal_decode2",
@@ -89,6 +92,8 @@ class TinyAnchorRegionDETR(nn.Module):
         if query_init in {
             "anchor_residual",
             "anchor_residual_detached",
+            "grid_residual",
+            "grid_residual_detached",
             "mask_proposal_residual",
             "mask_proposal_residual_nms",
         }:
@@ -191,6 +196,18 @@ class TinyAnchorRegionDETR(nn.Module):
             )
         elif self.query_init == "anchor_residual_detached":
             queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
+                spatial_state.detach(),
+                self.num_queries,
+            )
+        elif self.query_init == "grid":
+            queries = grid_queries_from_state(spatial_state, self.num_queries)
+        elif self.query_init == "grid_residual":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * grid_queries_from_state(
+                spatial_state,
+                self.num_queries,
+            )
+        elif self.query_init == "grid_residual_detached":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * grid_queries_from_state(
                 spatial_state.detach(),
                 self.num_queries,
             )
@@ -311,6 +328,27 @@ def anchor_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
         return tokens[:, positions]
     repeats = (num_queries + tokens.shape[1] - 1) // tokens.shape[1]
     return tokens.repeat(1, repeats, 1)[:, :num_queries]
+
+
+def grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
+    """Create query seeds from a coarse 2D grid over the feature lattice."""
+
+    batch, channels, height, width = state.shape
+    cols = max(1, int(num_queries**0.5))
+    while cols > 1 and num_queries % cols != 0:
+        cols -= 1
+    rows = (num_queries + cols - 1) // cols
+    ys = torch.linspace(0, height - 1, rows, device=state.device).round().long()
+    xs = torch.linspace(0, width - 1, cols, device=state.device).round().long()
+    yy, xx = torch.meshgrid(ys, xs, indexing="ij")
+    flat_y = yy.flatten()[:num_queries]
+    flat_x = xx.flatten()[:num_queries]
+    if flat_y.numel() < num_queries:
+        repeats = (num_queries + flat_y.numel() - 1) // flat_y.numel()
+        flat_y = flat_y.repeat(repeats)[:num_queries]
+        flat_x = flat_x.repeat(repeats)[:num_queries]
+    tokens = state.permute(0, 2, 3, 1)
+    return tokens[:, flat_y, flat_x, :].reshape(batch, num_queries, channels)
 
 
 def mask_proposal_queries_from_state(

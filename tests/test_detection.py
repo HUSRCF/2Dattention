@@ -162,6 +162,9 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             "anchor_detached",
             "anchor_residual",
             "anchor_residual_detached",
+            "grid",
+            "grid_residual",
+            "grid_residual_detached",
             "mask_proposal",
             "mask_proposal_nms",
             "mask_proposal_residual",
@@ -246,6 +249,37 @@ def test_tiny_anchor_region_detr_anchor_residual_query_init() -> None:
         },
     ]
     outputs = model(images)
+    losses = criterion(outputs, targets)
+    losses["loss"].backward()
+    assert model.anchor_query_gate.grad is not None
+    assert torch.isfinite(model.anchor_query_gate.grad).all()
+    assert float(model.anchor_query_gate.grad.detach().abs().sum()) > 0.0
+
+
+def test_tiny_anchor_region_detr_grid_residual_query_init() -> None:
+    torch.manual_seed(19)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=6,
+        feature_mode="local",
+        query_init="grid_residual",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["pred_logits"].shape == (2, 6, 2)
     losses = criterion(outputs, targets)
     losses["loss"].backward()
     assert model.anchor_query_gate.grad is not None

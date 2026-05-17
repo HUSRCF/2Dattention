@@ -73,6 +73,8 @@ REAL_MODEL_CONFIGS = {
         0.01,
         "none",
     ),
+    "local_grid_residual_query": ("local", "grid_residual", "none", "none", 0.01, "none"),
+    "local_grid_residual_query_quality_head": ("local", "grid_residual", "none", "none", 0.01, "none"),
     "local_learned_querymask": ("local", "learned", "query_mask", "query", 0.1, "none"),
     "local_anchor_residual_query_querymask": ("local", "anchor_residual", "query_mask", "query", 0.01, "none"),
     "local_anchor_residual_query_querymask_refine": (
@@ -304,6 +306,7 @@ QUALITY_HEAD_MODELS = {
     "local_anchor_residual_query_quality_head",
     "local_anchor_residual_query_box_quality_head",
     "local_anchor_residual_query_box_class_quality_head",
+    "local_grid_residual_query_quality_head",
     "local_anchor_residual_query_querymask_quality_head",
     "local_mask_proposal_nms_query_quality_head",
     "local_mask_proposal_nms_query_reinject_quality_head",

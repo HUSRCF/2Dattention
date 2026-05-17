@@ -1836,6 +1836,21 @@ Interpretation:
 - This explains the split behavior: center fixed AP improves strongly, while offcenter fixed AP drops.
 - The next model-side change should target off-center query/position representation or off-center proposal selection, not more scoring calibration.
 
+Grid-residual query hook:
+
+The first off-center representation hook adds grid-based residual query initialization:
+
+- `local_grid_residual_query`
+- `local_grid_residual_query_quality_head`
+
+Unlike the existing row/column/global anchor queries, grid-residual queries sample a coarse 2D grid from the feature lattice before adding the learned-query residual. This directly tests whether explicit coverage of off-center lattice positions helps the off-center high-score false-candidate problem.
+
+Smoke artifact:
+
+- `results/det_real_grid_residual_offcenter_smoke.csv`
+
+This smoke only validates wiring and CSV output. It is not a formal architecture comparison.
+
 Small-object slice-stress check:
 
 The small-object slice was tested separately with `--eval-slice-filter small`. The eval split contains `30/31/33` small-slice images across the three seeds, so this is a useful stress test but higher-variance than the off-center split.
