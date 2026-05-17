@@ -38,6 +38,8 @@ class TinyAnchorRegionDETR(nn.Module):
             "anchor_residual_detached",
             "mask_proposal",
             "mask_proposal_nms",
+            "mask_proposal_residual",
+            "mask_proposal_residual_nms",
             "mask_proposal_oracle",
             "mask_proposal_oracle_nms",
         }:
@@ -68,9 +70,19 @@ class TinyAnchorRegionDETR(nn.Module):
         self.local_blocks = nn.ModuleList(LocalMixBlock(embed_dim) for _ in range(local_blocks))
         self.anchor_block = AnchorOnlyMemoryReadBlock(embed_dim)
         self.learned_queries = LearnedObjectQueries(num_queries, embed_dim)
-        if query_init in {"mask_proposal", "mask_proposal_nms"} or query_refine in {"mask_pool", "mask_bias"}:
+        if query_init in {
+            "mask_proposal",
+            "mask_proposal_nms",
+            "mask_proposal_residual",
+            "mask_proposal_residual_nms",
+        } or query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
-        if query_init in {"anchor_residual", "anchor_residual_detached"}:
+        if query_init in {
+            "anchor_residual",
+            "anchor_residual_detached",
+            "mask_proposal_residual",
+            "mask_proposal_residual_nms",
+        }:
             self.anchor_query_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
@@ -122,6 +134,8 @@ class TinyAnchorRegionDETR(nn.Module):
         if self.query_init in {
             "mask_proposal",
             "mask_proposal_nms",
+            "mask_proposal_residual",
+            "mask_proposal_residual_nms",
             "mask_proposal_oracle",
             "mask_proposal_oracle_nms",
         }:
@@ -135,15 +149,21 @@ class TinyAnchorRegionDETR(nn.Module):
             else:
                 query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             proposal_suppression_radius = (
-                2 if self.query_init in {"mask_proposal_nms", "mask_proposal_oracle_nms"} else 0
+                2
+                if self.query_init
+                in {"mask_proposal_nms", "mask_proposal_residual_nms", "mask_proposal_oracle_nms"}
+                else 0
             )
-            queries, query_proposal_indices = mask_proposal_queries_from_state(
+            proposal_queries, query_proposal_indices = mask_proposal_queries_from_state(
                 spatial_state,
                 query_mask_logits,
                 self.num_queries,
                 suppression_radius=proposal_suppression_radius,
             )
-            proposal_queries = queries
+            if self.query_init in {"mask_proposal_residual", "mask_proposal_residual_nms"}:
+                queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * proposal_queries
+            else:
+                queries = proposal_queries
         elif self.query_init == "anchor":
             queries = anchor_queries_from_state(spatial_state, self.num_queries)
         elif self.query_init == "anchor_detached":

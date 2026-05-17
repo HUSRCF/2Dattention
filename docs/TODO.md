@@ -253,6 +253,26 @@ Interpretation:
 - For `g003` refresh, box-aware quality is slightly worse than query-only quality under fixed `q^2` (`0.310` vs `0.319`).
 - Current blocker is not solved by a simple box-aware quality input. The next scoring work should change target/calibration or query-box coupling, not just concatenate box geometry into the quality head.
 
+Proposal-residual query init check:
+
+- Added `mask_proposal_residual_nms`: query initialization becomes `learned_query + gate * proposal_query`, instead of replacing learned queries with proposal tokens.
+- Added variant:
+  - `local_mask_proposal_residual_nms_query_reinject_g003_quality_head`
+- Artifact: `results/det_real_proposal_residual_query_400step_2seed.csv`.
+- Protocol: same two-stage frozen quality setup with best-detector restore.
+
+| Model | Final IoU | AP50 | Class AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.276 | 0.168 | 0.338 | 0.201 | 0.397 |
+| `local_mask_proposal_nms_query_reinject_g003_quality_head` | 0.377 | 0.272 | 0.120 | 0.319 | 0.116 | 0.419 |
+| `local_mask_proposal_residual_nms_query_reinject_g003_quality_head` | 0.369 | 0.259 | 0.078 | 0.309 | 0.091 | 0.362 |
+
+Interpretation:
+
+- Simple `learned + proposal residual` query initialization does not help. It loses to pure `g003` refresh on final IoU, AP50, class AP50, fixed-q2 AP, and IoU-reference AP.
+- This suggests the issue is not that proposal queries replaced learned queries too aggressively. A naive residual mixture can dilute both learned-query ranking and proposal coverage.
+- Downgrade proposal-residual query init. Keep pure `g003` refresh as the coverage path and residual-anchor quality as the AP path.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:

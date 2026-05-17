@@ -141,6 +141,8 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             "anchor_residual_detached",
             "mask_proposal",
             "mask_proposal_nms",
+            "mask_proposal_residual",
+            "mask_proposal_residual_nms",
         ):
             model = TinyAnchorRegionDETR(
                 embed_dim=16,

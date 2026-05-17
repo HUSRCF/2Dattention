@@ -130,6 +130,14 @@ REAL_MODEL_CONFIGS = {
         0.03,
         "none",
     ),
+    "local_mask_proposal_residual_nms_query_reinject_g003_quality_head": (
+        "local",
+        "mask_proposal_residual_nms",
+        "proposal_reinject",
+        "proposal",
+        0.03,
+        "none",
+    ),
     "local_mask_proposal_nms_query_reinject_g03": (
         "local",
         "mask_proposal_nms",
@@ -283,6 +291,7 @@ QUALITY_HEAD_MODELS = {
     "local_mask_proposal_nms_query_reinject_quality_head",
     "local_mask_proposal_nms_query_reinject_g003_quality_head",
     "local_mask_proposal_nms_query_reinject_g003_box_quality_head",
+    "local_mask_proposal_residual_nms_query_reinject_g003_quality_head",
     "local_mask_proposal_oracle_nms_query_quality_head",
     "local_mask_proposal_oracle_nms_query_reinject_quality_head",
 }

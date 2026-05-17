@@ -75,6 +75,14 @@ MODEL_CONFIGS = {
         0.1,
         "none",
     ),
+    "local_mask_proposal_residual_nms_query_reinject_g003": (
+        "local",
+        "mask_proposal_residual_nms",
+        "proposal_reinject",
+        "proposal",
+        0.03,
+        "none",
+    ),
     "local_mask_proposal_nms_query_persistent": (
         "local",
         "mask_proposal_nms",

@@ -1441,3 +1441,23 @@ Interpretation:
 - It is roughly tied with query-only quality for residual-anchor.
 - It is slightly worse than query-only quality for `g003` refresh under fixed-q2 scoring.
 - The scoring blocker is therefore not simply missing predicted-box geometry in the quality input.
+
+Proposal-residual query init:
+
+This control tries to preserve learned-query ranking while adding proposal coverage by initializing queries as `learned_query + gate * proposal_query`, then applying `g003` refresh and two-stage quality.
+
+Artifact:
+
+- `results/det_real_proposal_residual_query_400step_2seed.csv`
+
+| Variant | Final IoU | AP50 | Class AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.276 | 0.168 | 0.338 | 0.201 | 0.397 |
+| `local_mask_proposal_nms_query_reinject_g003_quality_head` | 0.377 | 0.272 | 0.120 | 0.319 | 0.116 | 0.419 |
+| `local_mask_proposal_residual_nms_query_reinject_g003_quality_head` | 0.369 | 0.259 | 0.078 | 0.309 | 0.091 | 0.362 |
+
+Interpretation:
+
+- A naive learned-plus-proposal residual query does not improve the tradeoff.
+- It loses coverage relative to pure `g003` proposal refresh and loses ranking/class behavior relative to residual-anchor quality.
+- The next useful work should not be more query-init mixing. The stronger direction is query-box coupling or calibration targeted specifically at refreshed proposal boxes.
