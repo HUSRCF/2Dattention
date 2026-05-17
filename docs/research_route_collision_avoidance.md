@@ -90,7 +90,7 @@ local_anchor_residual_query
 
 | 高风险表述 | 更安全表述 |
 |---|---|
-| 新的 DETR query initialization | init-only 与 persistent proposal consumption 的性能缺口诊断 |
+| 新的 DETR query initialization | layerwise proposal refresh / `reinject` 与 frozen ranking calibration 的机制诊断 |
 | 新的 quality score | frozen, post-detector, held-out calibrated ranking head |
 | 新的 local-global backbone | ambiguity-triggered interaction schedule |
 | 新的 detector distillation | hard-negative query ranking 与 proposal-use behavior 的 targeted distillation |
@@ -103,15 +103,15 @@ local_anchor_residual_query
 建议把 6-12 个月主项目定义为：
 
 ```text
-Proposal Consumption + Frozen Rank Calibration
+Layerwise Proposal Refresh + Frozen Rank Calibration
 ```
 
 分两阶段执行：
 
 1. 低成本验证：冻结式排序校准头。
-2. 中风险创新：持久化 proposal state decoder。
+2. 中风险创新：轻量 layerwise proposal refresh / `reinject`。
 
-这样可以先回答 ranking/calibration 是否真是瓶颈；如果成立，再推进 proposal 在 decoder 中是否被持续消费。
+这样可以先回答 ranking/calibration 是否真是瓶颈；如果成立，再推进 proposal 在 decoder 中以轻量方式被持续消费。`persistent proposal state` 已经在标准 mini 协议下未能救回 predicted proposal，因此不再作为 active detector architecture；只作为 oracle/proposal-quality 诊断分支保留。
 
 ## 方向 A：冻结式排序校准头
 
@@ -142,13 +142,13 @@ Proposal Consumption + Frozen Rank Calibration
 AP75 +0.8 或 ECE 下降 15% 以上，才继续扩大 calibration 线。
 ```
 
-## 方向 B：持久化 Proposal State Decoder
+## 方向 B：Layerwise Proposal Refresh / Reinject
 
 目标：
 
 ```text
 proposal 不只初始化 query；
-proposal geometry / mask / pooled feature / uncertainty 在 decoder 多层中持续被 query 消费。
+proposal geometry / mask / pooled feature 在 decoder 后续层以轻量 refresh 方式再次暴露给 query。
 ```
 
 核心问题：
@@ -156,7 +156,8 @@ proposal geometry / mask / pooled feature / uncertainty 在 decoder 多层中持
 ```text
 predicted proposal 与 oracle proposal 存在缺口；
 当前 proposal 多数是 init-only 或 hard proposal；
-decoder 没有被证明持续消费 proposal state。
+stateful persistent consumer 在 predicted proposal 下不稳定；
+layerwise refresh / reinject 是当前更可靠的 predicted-proposal 路径。
 ```
 
 建议对照：
@@ -165,8 +166,8 @@ decoder 没有被证明持续消费 proposal state。
 - anchor residual query
 - proposal init-only
 - layerwise proposal re-injection
-- persistent proposal state
-- oracle proposal state
+- oracle proposal re-injection
+- persistent proposal state only as oracle/proposal-quality diagnostic
 
 主指标：
 
@@ -180,7 +181,8 @@ decoder 没有被证明持续消费 proposal state。
 阶段门：
 
 ```text
-oracle-gap 缩小 25% 或 ambiguity split AP 明显高于 clean split 改进，才继续深挖。
+reinject/refresh 必须同时改善 geometry 与 AP，才继续扩大。
+persistent 只有在 future proposal-quality 或 oracle-gap run 同时超过 reinject 的 geometry/AP 后，才允许回到 mainline。
 ```
 
 ## 方向 C：任务自适应 Local-State Interaction
@@ -227,8 +229,8 @@ oracle-gap 缩小 25% 或 ambiguity split AP 明显高于 clean split 改进，�
 | 2026-06 | 固定 baseline、slice 协议、predicted-vs-oracle proposal gap |
 | 2026-07 | frozen rank calibrator 原型与 calibration split |
 | 2026-08 | calibration / ranking 消融，阶段门 1 |
-| 2026-09 | persistent proposal state decoder 原型 |
-| 2026-10 | init-only / re-inject / persistent-state 对照 |
+| 2026-09 | layerwise proposal refresh / reinject 原型 |
+| 2026-10 | init-only / re-inject / oracle proposal 对照，persistent 仅保留为诊断 |
 | 2026-11 | ambiguity split 大规模评测，阶段门 2 |
 | 2026-12 | 可选 teacher-guided proposal-ranking distillation |
 | 2027-01 | license / IP / FTO 复核，阶段门 3 |
@@ -263,9 +265,10 @@ P0:
 
 P1:
 
-- 实现 persistent proposal state decoder 的最小版本。
-- 做 init-only vs layerwise re-inject vs persistent-state 对照。
+- 以 `reinject` / layerwise refresh 作为 active predicted-proposal 路线。
+- 做 init-only vs layerwise re-inject vs oracle-proposal refresh 对照。
 - 记录 oracle-gap closing ratio。
+- 不再继续抢救 predicted persistent；persistent 只用于 oracle/proposal-quality branch。
 
 P2:
 
@@ -302,5 +305,5 @@ real DET 的 AP ranking 需要低干扰 quality calibration。
 
 ```text
 先用 frozen ranking calibrator 低成本确认 score-quality gap；
-再用 persistent proposal state decoder 解决 proposal consumption gap。
+再用 layerwise proposal refresh / reinject 解决 predicted proposal consumption gap。
 ```

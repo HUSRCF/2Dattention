@@ -17,9 +17,10 @@ Boundary:
 - Current unsupported claims: early prefill, stale history pools, full prefill-lattice memory, graph-prefill, side-only DenseMaskAux, quality loss on class logits, and old memory-first routing.
 - RF-DETR-level performance requires a real detector, not just classification or bbox-mask probes.
 
-Collision-avoidance route:
+Active collision-avoidance route:
 
-- Avoid claiming "new DETR query initialization"; frame the next step as diagnosing and reducing the init-only vs persistent proposal consumption gap.
+- Avoid claiming "new DETR query initialization"; frame the detector path as layerwise proposal refresh / `reinject` plus ranking calibration.
+- Do not frame persistent proposal state as the active architecture. The standard stability matrix did not rescue predicted persistent; keep it only as an oracle/proposal-quality diagnostic branch.
 - Avoid claiming "new quality score"; frame the quality path as a frozen, post-detector, held-out calibrated ranking head.
 - Avoid claiming "new local-global backbone"; if this route returns, frame it as ambiguity-triggered interaction scheduling.
 - See `docs/research_route_collision_avoidance.md` for the detailed roadmap, stage gates, and IP/literature risk framing.
@@ -27,7 +28,7 @@ Collision-avoidance route:
 Immediate stage gates:
 
 - P0 calibration gate: frozen ranking should produce meaningful held-out AP75/ECE or score-IoU correlation gains before expanding calibration.
-- P1 proposal-consumption gate: persistent proposal state should close at least part of the predicted-vs-oracle proposal gap and improve ambiguity slices before becoming the main model claim.
+- P1 proposal-consumption gate: layerwise proposal refresh / `reinject` is the active predicted-proposal path. Persistent state can only return to mainline if a future proposal-quality/oracle-gap run beats `reinject` on both geometry and AP without post-hoc tuning.
 
 ### Step 0: Persistent Proposal-State Mini Probe
 
