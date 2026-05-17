@@ -164,6 +164,30 @@ Interpretation:
 - Oracle `persistent_stopgrad` is positive: final IoU `+0.047`, AP50 `+0.034`, class AP50 `+0.025`, all `2/2` paired wins vs predicted init-only. This means the consumer idea can work when proposal quality/state inputs are idealized, but the current predicted-proposal state path is too unstable.
 - Mainline decision: shrink the active proposal-consumption path to lighter layerwise proposal refresh / `reinject` for predicted proposals. Keep persistent only as an oracle/proposal-quality follow-up, not as the current main architecture.
 
+Layerwise refresh + two-stage quality follow-up:
+
+- Added quality-head variants for the active refresh path:
+  - `local_mask_proposal_nms_query_reinject_quality_head`
+  - `local_mask_proposal_oracle_nms_query_reinject_quality_head`
+- Standard artifact: `results/det_real_reinject_quality_head_400step_2seed.csv`.
+- Protocol: top-10 classes, 200 images, max 3 objects, 6 queries, 400 steps, 2 seeds. First 300 steps train the detector normally; after step 301, freeze the detector and train only the quality head. Formal quality score uses fixed `q^2`, `temperature=1.0`.
+
+| Model | Final IoU | Best IoU | AP50 | Class AP50 | Fixed-q2 AP50 | Fixed-q2 Class AP50 | IoU-ref AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.266 | 0.135 | 0.341 | 0.185 | 0.421 |
+| `local_mask_proposal_nms_query_quality_head` | 0.357 | 0.366 | 0.266 | 0.093 | 0.282 | 0.108 | 0.364 |
+| `local_mask_proposal_nms_query_reinject_quality_head` | 0.367 | 0.373 | 0.258 | 0.111 | 0.284 | 0.124 | 0.390 |
+| `local_mask_proposal_oracle_nms_query_quality_head` | 0.399 | 0.421 | 0.259 | 0.138 | 0.325 | 0.173 | 0.372 |
+| `local_mask_proposal_oracle_nms_query_reinject_quality_head` | 0.402 | 0.416 | 0.279 | 0.103 | 0.313 | 0.116 | 0.402 |
+
+Interpretation:
+
+- `reinject_quality_head` keeps the geometry gain of layerwise refresh: final/best IoU `0.367/0.373`, above init-only proposal quality `0.357/0.366`.
+- Fixed-q2 quality scoring does not turn predicted `reinject` into the best AP route: AP50 is `0.284`, essentially tied with init-only proposal quality `0.282`, and far below residual-anchor quality `0.341`.
+- `reinject` improves class-aware fixed-q2 AP over init-only proposal quality (`0.124` vs `0.108`), so refresh helps class/region coupling somewhat.
+- Oracle `reinject` improves geometry and base AP over oracle init-only, but fixed-q2 AP is lower (`0.313` vs `0.325`). This suggests current quality calibration does not fully align with the refreshed proposal boxes.
+- Mainline status: keep `reinject` as the active predicted-proposal geometry/coverage path, but do not claim it solves AP. The AP route remains `local_anchor_residual_query + two-stage quality`; proposal refresh remains a coverage path that needs better quality calibration or box-score coupling.
+
 ### Step 1: Detection Scaffold
 
 Implement minimal DETR-style components under `src/attention2d/detection/`:
