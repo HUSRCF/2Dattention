@@ -1520,15 +1520,16 @@ Artifacts:
 
 - `results/det_real_quality_calib_split_smoke.csv`
 - `results/det_real_quality_calib_split_400step_2seed.csv`
+- `results/det_real_quality_calib_split_400step_3seed.csv`
 
 | Variant | Final IoU | Best IoU | AP50 | Class AP50 | Calibrated fixed AP50 | Calibrated fixed Class AP50 | Fixed alpha |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `local_anchor_residual_query` | 0.358 | 0.376 | 0.222 | 0.071 | 0.222 | 0.071 | 0.00 |
-| `local_anchor_residual_query_quality_head` | 0.376 | 0.376 | 0.236 | 0.143 | 0.295 | 0.189 | 1.12 |
+| `local_anchor_residual_query` | 0.345 | 0.367 | 0.216 | 0.089 | 0.216 | 0.089 | 0.00 |
+| `local_anchor_residual_query_quality_head` | 0.367 | 0.367 | 0.225 | 0.138 | 0.295 | 0.180 | 2.08 |
 
 Interpretation:
 
 - The frozen two-stage quality head keeps a positive signal under held-out alpha calibration.
-- It improves final IoU, base AP50, class-aware AP50, calibrated fixed AP50, and calibrated fixed class-aware AP50 over the residual-anchor base on the same split.
-- The calibrated fixed AP50 is close to the final-eval best-q AP50, so the quality route is not relying entirely on eval-set post-hoc alpha selection.
+- In the 3-seed run, it improves final IoU, base AP50, class-aware AP50, calibrated fixed AP50, and calibrated fixed class-aware AP50 over the residual-anchor base on the same split, with `3/3` paired wins on the AP fields.
+- The calibrated fixed AP50 (`0.295`) is close to the final-eval best-q AP50 (`0.298`), so the quality route is not relying entirely on eval-set post-hoc alpha selection.
 - This strengthens the detector-side claim: the most reliable current positive result is still low-interference post-detector quality ranking, not proposal persistence or mask-moment box refinement.
