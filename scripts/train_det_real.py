@@ -732,10 +732,14 @@ def train_one_model(
                 "tp50_class_acc": metrics["tp50_class_acc"],
                 "score_iou_corr": metrics["score_iou_corr"],
                 "objectness_auc": metrics["objectness_auc"],
+                "objectness_ece50": metrics["objectness_ece50"],
+                "objectness_ece75": metrics["objectness_ece75"],
                 "quality_iou_corr": metrics["quality_iou_corr"],
                 "quality_auc": metrics["quality_auc"],
                 "combined_iou_corr": metrics["combined_iou_corr"],
                 "combined_auc": metrics["combined_auc"],
+                "combined_ece50": metrics["combined_ece50"],
+                "combined_ece75": metrics["combined_ece75"],
                 "topk_fp_rate": metrics["topk_fp_rate"],
                 "duplicate_per_gt": metrics["duplicate_per_gt"],
                 "query_assignment_entropy": metrics["query_assignment_entropy"],
@@ -939,10 +943,14 @@ def evaluate_real(
     tp50_class_correct = []
     score_iou_corrs = []
     objectness_aucs = []
+    objectness_ece50s = []
+    objectness_ece75s = []
     quality_iou_corrs = []
     quality_aucs = []
     combined_iou_corrs = []
     combined_aucs = []
+    combined_ece50s = []
+    combined_ece75s = []
     topk_fp_rates = []
     duplicate_per_gt_values = []
     query_assignment_counts = torch.zeros(model.num_queries, dtype=torch.float32)
@@ -991,10 +999,14 @@ def evaluate_real(
             tp50_class_correct.append(diagnostics["tp50_class_correct"].cpu())
             score_iou_corrs.append(diagnostics["score_iou_corr"].cpu())
             objectness_aucs.append(diagnostics["objectness_auc"].cpu())
+            objectness_ece50s.append(diagnostics["objectness_ece50"].cpu())
+            objectness_ece75s.append(diagnostics["objectness_ece75"].cpu())
             quality_iou_corrs.append(diagnostics["quality_iou_corr"].cpu())
             quality_aucs.append(diagnostics["quality_auc"].cpu())
             combined_iou_corrs.append(diagnostics["combined_iou_corr"].cpu())
             combined_aucs.append(diagnostics["combined_auc"].cpu())
+            combined_ece50s.append(diagnostics["combined_ece50"].cpu())
+            combined_ece75s.append(diagnostics["combined_ece75"].cpu())
             topk_fp_rates.append(diagnostics["topk_fp_rate"].cpu())
             duplicate_per_gt_values.append(diagnostics["duplicate_per_gt"].cpu())
             query_assignment_counts += diagnostics["matched_query_counts"].cpu()
@@ -1275,10 +1287,14 @@ def evaluate_real(
         "tp50_class_acc": tp50_class_acc,
         "score_iou_corr": float(torch.stack(score_iou_corrs).mean().item()) if score_iou_corrs else 0.0,
         "objectness_auc": float(torch.stack(objectness_aucs).mean().item()) if objectness_aucs else 0.0,
+        "objectness_ece50": float(torch.stack(objectness_ece50s).mean().item()) if objectness_ece50s else 0.0,
+        "objectness_ece75": float(torch.stack(objectness_ece75s).mean().item()) if objectness_ece75s else 0.0,
         "quality_iou_corr": float(torch.stack(quality_iou_corrs).mean().item()) if quality_iou_corrs else 0.0,
         "quality_auc": float(torch.stack(quality_aucs).mean().item()) if quality_aucs else 0.0,
         "combined_iou_corr": float(torch.stack(combined_iou_corrs).mean().item()) if combined_iou_corrs else 0.0,
         "combined_auc": float(torch.stack(combined_aucs).mean().item()) if combined_aucs else 0.0,
+        "combined_ece50": float(torch.stack(combined_ece50s).mean().item()) if combined_ece50s else 0.0,
+        "combined_ece75": float(torch.stack(combined_ece75s).mean().item()) if combined_ece75s else 0.0,
         "topk_fp_rate": float(torch.stack(topk_fp_rates).mean().item()) if topk_fp_rates else 0.0,
         "duplicate_per_gt": float(torch.stack(duplicate_per_gt_values).mean().item()) if duplicate_per_gt_values else 0.0,
         "query_assignment_entropy": assignment_entropy(query_assignment_counts),
@@ -1391,10 +1407,14 @@ def query_ranking_diagnostics(
             "tp50_class_correct": pred_logits.new_zeros((0,)),
             "score_iou_corr": pred_logits.new_tensor(0.0),
             "objectness_auc": pred_logits.new_tensor(0.5),
+            "objectness_ece50": calibration_ece(objectness, torch.zeros_like(objectness, dtype=torch.bool)),
+            "objectness_ece75": calibration_ece(objectness, torch.zeros_like(objectness, dtype=torch.bool)),
             "quality_iou_corr": pred_logits.new_tensor(0.0),
             "quality_auc": pred_logits.new_tensor(0.5),
             "combined_iou_corr": pred_logits.new_tensor(0.0),
             "combined_auc": pred_logits.new_tensor(0.5),
+            "combined_ece50": calibration_ece(combined_scores, torch.zeros_like(combined_scores, dtype=torch.bool)),
+            "combined_ece75": calibration_ece(combined_scores, torch.zeros_like(combined_scores, dtype=torch.bool)),
             "topk_fp_rate": pred_logits.new_tensor(0.0),
             "duplicate_per_gt": pred_logits.new_tensor(0.0),
             "matched_query_counts": torch.zeros(
@@ -1424,6 +1444,7 @@ def query_ranking_diagnostics(
     topk_fp_rate = (max_iou_per_query[topk] < 0.5).float().mean()
     duplicate_per_gt = duplicate_predictions_per_gt(iou_matrix, threshold=0.5)
     positive = max_iou_per_query >= 0.5
+    positive75 = max_iou_per_query >= 0.75
     matched_query_counts = torch.zeros(pred_boxes.shape[0], device=pred_boxes.device)
     if matched_queries.numel() > 0:
         matched_query_counts.scatter_add_(
@@ -1436,6 +1457,8 @@ def query_ranking_diagnostics(
         "tp50_class_correct": tp50_class_correct,
         "score_iou_corr": pearson_corr(objectness, max_iou_per_query),
         "objectness_auc": binary_auc(objectness, positive),
+        "objectness_ece50": calibration_ece(objectness, positive),
+        "objectness_ece75": calibration_ece(objectness, positive75),
         "quality_iou_corr": pearson_corr(quality_scores, max_iou_per_query)
         if quality_scores is not None
         else pred_logits.new_tensor(0.0),
@@ -1444,6 +1467,8 @@ def query_ranking_diagnostics(
         else pred_logits.new_tensor(0.5),
         "combined_iou_corr": pearson_corr(combined_scores, max_iou_per_query),
         "combined_auc": binary_auc(combined_scores, positive),
+        "combined_ece50": calibration_ece(combined_scores, positive),
+        "combined_ece75": calibration_ece(combined_scores, positive75),
         "topk_fp_rate": topk_fp_rate,
         "duplicate_per_gt": duplicate_per_gt,
         "matched_query_counts": matched_query_counts,
@@ -1530,6 +1555,29 @@ def binary_auc(scores: Tensor, positive: Tensor) -> Tensor:
     greater = positive_scores[:, None] > negative_scores[None, :]
     equal = positive_scores[:, None] == negative_scores[None, :]
     return greater.float().mean() + 0.5 * equal.float().mean()
+
+
+def calibration_ece(scores: Tensor, positive: Tensor, bins: int = 10) -> Tensor:
+    """Expected calibration error for query-level detection confidence."""
+
+    if scores.numel() == 0:
+        return scores.new_tensor(0.0)
+    clipped = scores.clamp(0.0, 1.0)
+    positive_float = positive.to(device=scores.device, dtype=scores.dtype)
+    ece = scores.new_tensor(0.0)
+    for bin_idx in range(bins):
+        lower = bin_idx / bins
+        upper = (bin_idx + 1) / bins
+        if bin_idx == bins - 1:
+            in_bin = (clipped >= lower) & (clipped <= upper)
+        else:
+            in_bin = (clipped >= lower) & (clipped < upper)
+        if not bool(in_bin.any()):
+            continue
+        confidence = clipped[in_bin].mean()
+        accuracy = positive_float[in_bin].mean()
+        ece = ece + in_bin.float().mean() * (confidence - accuracy).abs()
+    return ece
 
 
 def assignment_entropy(counts: Tensor) -> float:
@@ -1800,10 +1848,14 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "tp50_class_acc",
         "score_iou_corr",
         "objectness_auc",
+        "objectness_ece50",
+        "objectness_ece75",
         "quality_iou_corr",
         "quality_auc",
         "combined_iou_corr",
         "combined_auc",
+        "combined_ece50",
+        "combined_ece75",
         "topk_fp_rate",
         "duplicate_per_gt",
         "query_assignment_entropy",
@@ -1846,8 +1898,10 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
         "ap50_class_q_best_gap_to_iou_reference_mean,"
         "ap50_class_q_best_raw_iou_reference_closure_mean,"
         "matched_assignment_class_acc_mean,tp50_class_acc_mean,"
-        "score_iou_corr_mean,objectness_auc_mean,quality_iou_corr_mean,quality_auc_mean,"
-        "combined_iou_corr_mean,combined_auc_mean,topk_fp_rate_mean,"
+        "score_iou_corr_mean,objectness_auc_mean,objectness_ece50_mean,objectness_ece75_mean,"
+        "quality_iou_corr_mean,quality_auc_mean,"
+        "combined_iou_corr_mean,combined_auc_mean,combined_ece50_mean,combined_ece75_mean,"
+        "topk_fp_rate_mean,"
         "duplicate_per_gt_mean,query_assignment_entropy_mean,"
         "mask_iou_mean,mask_dice_mean,small_iou_mean,medium_iou_mean,large_iou_mean,"
         "center_iou_mean,offcenter_iou_mean,images_per_sec_mean"
@@ -1898,10 +1952,14 @@ def print_summary(rows: list[dict[str, float | int | str]]) -> None:
             f"{mean([float(row['tp50_class_acc']) for row in model_rows]):.3f},"
             f"{mean([float(row['score_iou_corr']) for row in model_rows]):.3f},"
             f"{mean([float(row['objectness_auc']) for row in model_rows]):.3f},"
+            f"{mean([float(row['objectness_ece50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['objectness_ece75']) for row in model_rows]):.3f},"
             f"{mean([float(row['quality_iou_corr']) for row in model_rows]):.3f},"
             f"{mean([float(row['quality_auc']) for row in model_rows]):.3f},"
             f"{mean([float(row['combined_iou_corr']) for row in model_rows]):.3f},"
             f"{mean([float(row['combined_auc']) for row in model_rows]):.3f},"
+            f"{mean([float(row['combined_ece50']) for row in model_rows]):.3f},"
+            f"{mean([float(row['combined_ece75']) for row in model_rows]):.3f},"
             f"{mean([float(row['topk_fp_rate']) for row in model_rows]):.3f},"
             f"{mean([float(row['duplicate_per_gt']) for row in model_rows]):.3f},"
             f"{mean([float(row['query_assignment_entropy']) for row in model_rows]):.3f},"

@@ -1522,16 +1522,18 @@ Artifacts:
 - `results/det_real_quality_calib_split_400step_2seed.csv`
 - `results/det_real_quality_calib_split_400step_3seed.csv`
 - `results/det_real_quality_calib_split_ap75_400step_3seed.csv`
+- `results/det_real_quality_calib_split_ece_400step_3seed.csv`
 
-| Variant | Final IoU | AP50 | Class AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | Fixed alpha |
+| Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `local_anchor_residual_query` | 0.345 | 0.216 | 0.089 | 0.006 | 0.216 | 0.006 | 0.00 |
-| `local_anchor_residual_query_quality_head` | 0.367 | 0.225 | 0.138 | 0.019 | 0.295 | 0.054 | 2.08 |
+| `local_anchor_residual_query` | 0.345 | 0.216 | 0.006 | 0.216 | 0.006 | 0.346 | 0.391 |
+| `local_anchor_residual_query_quality_head` | 0.367 | 0.225 | 0.019 | 0.295 | 0.054 | 0.144 | 0.052 |
 
 Interpretation:
 
 - The frozen two-stage quality head keeps a positive signal under held-out alpha calibration.
 - In the 3-seed run, it improves final IoU, base AP50, class-aware AP50, calibrated fixed AP50, and calibrated fixed class-aware AP50 over the residual-anchor base on the same split, with `3/3` paired wins on the AP fields.
 - AP75-lite also improves from `0.006` to `0.019`, and calibrated fixed AP75 improves from `0.006` to `0.054`.
+- Query-level ECE-lite improves sharply: ECE50 drops from `0.346` to `0.144`, and ECE75 drops from `0.391` to `0.052`.
 - The calibrated fixed AP50 (`0.295`) is close to the final-eval best-q AP50 (`0.298`), so the quality route is not relying entirely on eval-set post-hoc alpha selection.
 - This strengthens the detector-side claim: the most reliable current positive result is still low-interference post-detector quality ranking, not proposal persistence or mask-moment box refinement.

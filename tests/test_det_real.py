@@ -12,6 +12,7 @@ from scripts.train_det_real import (
     build_label_map,
     build_splits,
     binary_auc,
+    calibration_ece,
     det_collate,
     duplicate_predictions_per_gt,
     filter_samples,
@@ -127,6 +128,8 @@ def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> Non
     assert torch.allclose(diagnostics["matched_assignment_class_correct"], torch.tensor([1.0]))
     assert torch.allclose(diagnostics["tp50_class_correct"], torch.tensor([1.0]))
     assert float(diagnostics["objectness_auc"]) < 0.5
+    assert "objectness_ece50" in diagnostics
+    assert "combined_ece50" in diagnostics
     assert float(diagnostics["topk_fp_rate"]) == 0.0
     assert float(diagnostics["duplicate_per_gt"]) == 1.0
     assert diagnostics["matched_query_counts"].shape == (3,)
@@ -140,6 +143,14 @@ def test_real_det_scalar_diagnostics() -> None:
     assert torch.allclose(
         binary_auc(torch.tensor([0.9, 0.8, 0.1]), torch.tensor([True, True, False])),
         torch.tensor(1.0),
+    )
+    assert torch.allclose(
+        calibration_ece(torch.tensor([0.9, 0.1]), torch.tensor([True, False]), bins=2),
+        torch.tensor(0.1),
+    )
+    assert torch.allclose(
+        calibration_ece(torch.tensor([0.1, 0.9]), torch.tensor([True, False]), bins=2),
+        torch.tensor(0.9),
     )
     iou_matrix = torch.tensor([[0.6, 0.1], [0.7, 0.2], [0.0, 0.8]])
     assert torch.allclose(duplicate_predictions_per_gt(iou_matrix, threshold=0.5), torch.tensor(0.5))
