@@ -1531,6 +1531,7 @@ Artifacts:
 - `results/det_real_quality_calib_split_ap75_400step_3seed.csv`
 - `results/det_real_quality_calib_split_ece_400step_3seed.csv`
 - `results/det_real_quality_calib_trainlabels_400step_3seed.csv`
+- `results/det_real_quality_calib_trainlabels_500img_500step_3seed.csv`
 
 | Variant | Final IoU | AP50 | AP75 | Calibrated fixed AP50 | Calibrated fixed AP75 | ECE50 | ECE75 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -1546,3 +1547,27 @@ Interpretation:
 - The calibrated fixed AP50 (`0.295`) is close to the final-eval best-q AP50 (`0.298`), so the quality route is not relying entirely on eval-set post-hoc alpha selection.
 - This strengthens the detector-side claim: the most reliable current positive result is still low-interference post-detector quality ranking, not proposal persistence or mask-moment box refinement.
 - The strict `--label-map-source train` rerun preserves the same AP pattern while avoiding held-out label-frequency leakage: final IoU `+0.021` (`3/3`), AP50 `+0.010` (`3/3`), class AP50 `+0.049` (`3/3`), calibrated fixed AP50 `+0.079` (`3/3`), and calibrated fixed AP75 `+0.048` (`2/3`).
+
+Larger strict train-label-map check:
+
+The same route was expanded to 500 images, 500 steps, 3 seeds, `--label-map-source train`, and held-out alpha calibration.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | Fixed AP50 | Fixed AP75 | Combined ECE50 | Combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.401 | 0.302 | 0.151 | 0.042 | 0.302 | 0.042 | 0.291 | 0.320 |
+| `local_anchor_residual_query_quality_head` | 0.407 | 0.348 | 0.174 | 0.042 | 0.384 | 0.052 | 0.196 | 0.104 |
+
+Paired deltas:
+
+- Final IoU: `+0.006`, `2/3` wins.
+- AP50: `+0.046`, `3/3` wins.
+- Class AP50: `+0.023`, `3/3` wins.
+- Pre-registered `q^2` AP50: `+0.078`, `3/3` wins.
+- Calibration-selected fixed AP50: `+0.082`, `3/3` wins.
+- Calibration-selected fixed AP75: `+0.010`, `2/3` wins.
+- Combined ECE-lite improves from `0.291/0.320` to `0.196/0.104` for AP50/AP75 targets.
+
+Interpretation:
+
+- The larger strict check strengthens the ranking/calibration interpretation. The main gain is AP/ranking and ECE, not a large localization shift.
+- The detector-side mainline remains `local_anchor_residual_query` as the base detector plus low-interference two-stage quality ranking.

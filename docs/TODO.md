@@ -33,6 +33,7 @@ Immediate stage gates:
 - Protocol correction: existing historical real-mini artifacts used legacy `--label-map-source all`; future strict held-out detector runs should use `--label-map-source train` to avoid held-out label-frequency leakage when selecting top classes.
 - Reporting tool: use `scripts/summarize_det_real_results.py` to summarize final-step CSV metrics and paired deltas. Its default columns include both pre-registered `eval_ap50_q2` and calibration/fixed-score `eval_ap50_q_fixed` plus `eval_ap50_q_fixed_alpha`.
 - Strict protocol check: `results/det_real_quality_calib_trainlabels_400step_3seed.csv` confirms the quality-ranking signal survives `--label-map-source train` with the same key paired gains as the legacy label-map run.
+- Larger strict check: `results/det_real_quality_calib_trainlabels_500img_500step_3seed.csv` strengthens the same conclusion. Quality ranking gives AP50 `+0.046` (`3/3`), fixed AP50 `+0.082` (`3/3`), and combined ECE50/ECE75 drops from `0.291/0.320` to `0.196/0.104`, while final IoU only moves `+0.006`.
 
 ### Step 0: Persistent Proposal-State Mini Probe
 
