@@ -1519,16 +1519,19 @@ Field semantics:
 - Existing historical real-mini runs use the legacy `--label-map-source all` behavior, which selects top classes before the train/eval split. Future strict held-out runs should use `--label-map-source train` so held-out class frequencies do not affect the chosen label set.
 - `--calibration-source train` is now available for stricter calibration: alpha is selected from a held-out subset of the training split, while the final eval split is not touched by calibration.
 - Slice robustness fields are now emitted for `small`, `medium`, `large`, `center`, and `offcenter` AP50, plus their fixed-quality AP50 variants.
+- `--eval-slice-filter` can restrict the final eval subset to images containing `small`, `medium`, `large`, `center`, or `offcenter` targets. Training and calibration splits are unchanged. This is intended for slice-stress/OOD checks, not for the main aggregate protocol.
 
 Implementation:
 
 - `--calibration-frac`
 - `--calibration-batches`
+- `--eval-slice-filter`
 
 Artifacts:
 
 - `results/det_real_quality_calib_split_smoke.csv`
 - `results/det_real_traincalib_slice_smoke.csv`
+- `results/det_real_offcenter_slice_smoke.csv`
 - `results/det_real_quality_calib_split_400step_2seed.csv`
 - `results/det_real_quality_calib_split_400step_3seed.csv`
 - `results/det_real_quality_calib_split_ap75_400step_3seed.csv`

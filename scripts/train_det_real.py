@@ -408,6 +408,15 @@ def parse_args() -> argparse.Namespace:
             "behavior; 'train' keeps the eval split independent of alpha selection."
         ),
     )
+    parser.add_argument(
+        "--eval-slice-filter",
+        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        default="none",
+        help=(
+            "Optionally restrict the final eval subset to images containing at least one "
+            "object in this robustness slice. Training and calibration splits are unchanged."
+        ),
+    )
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=64)
@@ -497,6 +506,8 @@ def main() -> None:
     print("max_objects:", args.max_objects)
     print("num_queries:", args.num_queries)
     print("label_map_source:", args.label_map_source)
+    print("calibration_source:", args.calibration_source)
+    print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
         "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
@@ -518,6 +529,7 @@ def main() -> None:
             train_frac=args.train_frac,
             calibration_frac=args.calibration_frac,
             calibration_source=args.calibration_source,
+            eval_slice_filter=args.eval_slice_filter,
             seed=run_seed,
         )
         split_rows.extend(seed_split_rows)
@@ -1437,6 +1449,24 @@ def summarize_slice_ap(values: dict[str, list[Tensor]]) -> dict[str, float]:
     }
 
 
+def sample_matches_slice(sample: RealDetSample, max_objects: int, slice_name: str) -> bool:
+    """Return whether ranked target boxes include the requested robustness slice."""
+
+    if slice_name == "none":
+        return True
+    ranked_boxes = sorted(sample.boxes, key=lambda box: box_area(box), reverse=True)[:max_objects]
+    normalized = torch.tensor(
+        [normalize_box(box, sample.width, sample.height) for box in ranked_boxes],
+        dtype=torch.float32,
+    )
+    if normalized.numel() == 0:
+        return False
+    masks = box_slice_masks(normalized)
+    if slice_name not in masks:
+        raise ValueError(f"unknown eval slice filter: {slice_name}")
+    return bool(masks[slice_name].any())
+
+
 def ranking_gap_closure(base_score: float, quality_score: float, oracle_score: float) -> float:
     """Return raw, unclamped fraction of the IoU-reference ranking gap closed."""
 
@@ -1823,10 +1853,13 @@ def build_splits(
     train_frac: float,
     calibration_frac: float,
     calibration_source: str = "heldout",
+    eval_slice_filter: str = "none",
     seed: int = 0,
 ) -> tuple[Subset, Subset | None, Subset, list[dict[str, int | str]]]:
     if calibration_source not in {"heldout", "train"}:
         raise ValueError("calibration_source must be 'heldout' or 'train'")
+    if eval_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
+        raise ValueError("unknown eval slice filter")
     dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
     indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(seed)).tolist()
     train_size = max(1, min(len(indices) - 1, int(len(indices) * train_frac)))
@@ -1842,6 +1875,14 @@ def build_splits(
         calibration_size = max(1, min(len(train_indices) - 1, int(len(train_indices) * calibration_frac)))
         calibration_indices = train_indices[-calibration_size:]
         train_indices = train_indices[:-calibration_size]
+    if eval_slice_filter != "none":
+        eval_indices = [
+            idx
+            for idx in eval_indices
+            if sample_matches_slice(samples[idx], max_objects=max_objects, slice_name=eval_slice_filter)
+        ]
+        if not eval_indices:
+            raise ValueError(f"eval slice filter produced an empty eval split: {eval_slice_filter}")
     split_rows = []
     split_defs = [("train", train_indices)]
     if calibration_indices:

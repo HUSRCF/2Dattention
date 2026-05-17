@@ -31,6 +31,7 @@ from scripts.train_det_real import (
     query_quality_head_loss,
     query_ranking_diagnostics,
     ranking_gap_closure,
+    sample_matches_slice,
     score_iou_calibration_loss,
     set_quality_head_only_trainable,
     summarize_slice_ap,
@@ -156,6 +157,44 @@ def test_real_det_slice_masks_and_ap_summary() -> None:
     summary = summarize_slice_ap({"small": [torch.tensor(0.25), torch.tensor(0.75)], "large": []})
     assert summary["small"] == 0.5
     assert summary["large"] == 0.0
+
+
+def test_real_det_build_splits_can_filter_eval_by_slice() -> None:
+    samples = [
+        RealDetSample(
+            image_id="center_large",
+            image_path=Path("center_large.JPEG"),
+            width=100,
+            height=100,
+            boxes=(RealBox("class_a", 25, 25, 75, 75),),
+        ),
+        RealDetSample(
+            image_id="offcenter_small",
+            image_path=Path("offcenter_small.JPEG"),
+            width=100,
+            height=100,
+            boxes=(RealBox("class_a", 80, 80, 90, 90),),
+        ),
+    ]
+
+    assert sample_matches_slice(samples[0], max_objects=1, slice_name="center")
+    assert not sample_matches_slice(samples[0], max_objects=1, slice_name="offcenter")
+    assert sample_matches_slice(samples[1], max_objects=1, slice_name="offcenter")
+    assert sample_matches_slice(samples[1], max_objects=1, slice_name="small")
+
+    _, _, eval_set, split_rows = build_splits(
+        samples=samples,
+        label_to_id={"class_a": 0},
+        image_size=64,
+        max_objects=1,
+        train_frac=0.5,
+        calibration_frac=0.0,
+        eval_slice_filter="offcenter",
+        seed=0,
+    )
+
+    assert len(eval_set) == 1
+    assert [row["image_id"] for row in split_rows if row["split"] == "eval"] == ["offcenter_small"]
 
 
 def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> None:
