@@ -838,6 +838,24 @@ def train_one_model(
                 "offcenter_topk_fp_rate": metrics["offcenter_topk_fp_rate"],
                 "center_combined_topk_fp_rate": metrics["center_combined_topk_fp_rate"],
                 "offcenter_combined_topk_fp_rate": metrics["offcenter_combined_topk_fp_rate"],
+                "center_topk_slice_match_rate": metrics["center_topk_slice_match_rate"],
+                "offcenter_topk_slice_match_rate": metrics["offcenter_topk_slice_match_rate"],
+                "center_topk_non_slice_match_rate": metrics["center_topk_non_slice_match_rate"],
+                "offcenter_topk_non_slice_match_rate": metrics["offcenter_topk_non_slice_match_rate"],
+                "center_topk_no_gt_match_rate": metrics["center_topk_no_gt_match_rate"],
+                "offcenter_topk_no_gt_match_rate": metrics["offcenter_topk_no_gt_match_rate"],
+                "center_combined_topk_slice_match_rate": metrics["center_combined_topk_slice_match_rate"],
+                "offcenter_combined_topk_slice_match_rate": metrics["offcenter_combined_topk_slice_match_rate"],
+                "center_combined_topk_non_slice_match_rate": metrics[
+                    "center_combined_topk_non_slice_match_rate"
+                ],
+                "offcenter_combined_topk_non_slice_match_rate": metrics[
+                    "offcenter_combined_topk_non_slice_match_rate"
+                ],
+                "center_combined_topk_no_gt_match_rate": metrics["center_combined_topk_no_gt_match_rate"],
+                "offcenter_combined_topk_no_gt_match_rate": metrics[
+                    "offcenter_combined_topk_no_gt_match_rate"
+                ],
                 "center_topk_center_distance": metrics["center_topk_center_distance"],
                 "offcenter_topk_center_distance": metrics["offcenter_topk_center_distance"],
                 "center_combined_topk_center_distance": metrics["center_combined_topk_center_distance"],
@@ -1089,6 +1107,12 @@ def evaluate_real(
             "objectness_auc": [],
             "topk_fp_rate": [],
             "combined_topk_fp_rate": [],
+            "topk_slice_match_rate": [],
+            "topk_non_slice_match_rate": [],
+            "topk_no_gt_match_rate": [],
+            "combined_topk_slice_match_rate": [],
+            "combined_topk_non_slice_match_rate": [],
+            "combined_topk_no_gt_match_rate": [],
             "topk_center_distance": [],
             "combined_topk_center_distance": [],
             "duplicate_per_gt": [],
@@ -1098,6 +1122,12 @@ def evaluate_real(
             "objectness_auc": [],
             "topk_fp_rate": [],
             "combined_topk_fp_rate": [],
+            "topk_slice_match_rate": [],
+            "topk_non_slice_match_rate": [],
+            "topk_no_gt_match_rate": [],
+            "combined_topk_slice_match_rate": [],
+            "combined_topk_non_slice_match_rate": [],
+            "combined_topk_no_gt_match_rate": [],
             "topk_center_distance": [],
             "combined_topk_center_distance": [],
             "duplicate_per_gt": [],
@@ -1230,6 +1260,7 @@ def evaluate_real(
                         target_labels=slice_labels,
                         quality_logits=quality_logits,
                         combined_quality_scores=fixed_quality_scores,
+                        all_target_boxes=target["boxes"],
                     )
                     for metric_name, values in slice_diag_vectors[slice_name].items():
                         source_name = (
@@ -1674,6 +1705,7 @@ def query_ranking_diagnostics(
     target_labels: Tensor,
     quality_logits: Tensor | None = None,
     combined_quality_scores: Tensor | None = None,
+    all_target_boxes: Tensor | None = None,
 ) -> dict[str, Tensor]:
     objectness = pred_logits.softmax(dim=-1)[:, :-1].max(dim=-1).values
     quality_scores = quality_logits.sigmoid() if quality_logits is not None else None
@@ -1701,6 +1733,12 @@ def query_ranking_diagnostics(
             "combined_ece75": calibration_ece(combined_scores, torch.zeros_like(combined_scores, dtype=torch.bool)),
             "topk_fp_rate": pred_logits.new_tensor(0.0),
             "combined_topk_fp_rate": pred_logits.new_tensor(0.0),
+            "topk_slice_match_rate": pred_logits.new_tensor(0.0),
+            "topk_non_slice_match_rate": pred_logits.new_tensor(0.0),
+            "topk_no_gt_match_rate": pred_logits.new_tensor(0.0),
+            "combined_topk_slice_match_rate": pred_logits.new_tensor(0.0),
+            "combined_topk_non_slice_match_rate": pred_logits.new_tensor(0.0),
+            "combined_topk_no_gt_match_rate": pred_logits.new_tensor(0.0),
             "topk_center_distance": pred_logits.new_tensor(0.0),
             "combined_topk_center_distance": pred_logits.new_tensor(0.0),
             "duplicate_per_gt": pred_logits.new_tensor(0.0),
@@ -1731,6 +1769,18 @@ def query_ranking_diagnostics(
     topk_fp_rate = (max_iou_per_query[topk] < 0.5).float().mean()
     combined_topk = combined_scores.argsort(descending=True)[:target_count]
     combined_topk_fp_rate = (max_iou_per_query[combined_topk] < 0.5).float().mean()
+    topk_match_rates = topk_target_match_rates(
+        pred_boxes=pred_boxes,
+        slice_target_boxes=target_boxes,
+        all_target_boxes=all_target_boxes,
+        topk=topk,
+    )
+    combined_topk_match_rates = topk_target_match_rates(
+        pred_boxes=pred_boxes,
+        slice_target_boxes=target_boxes,
+        all_target_boxes=all_target_boxes,
+        topk=combined_topk,
+    )
     center_reference = pred_boxes.new_tensor([0.5, 0.5])
     pred_center_distance = (pred_boxes[:, :2] - center_reference).norm(dim=-1)
     topk_center_distance = pred_center_distance[topk].mean()
@@ -1764,10 +1814,50 @@ def query_ranking_diagnostics(
         "combined_ece75": calibration_ece(combined_scores, positive75),
         "topk_fp_rate": topk_fp_rate,
         "combined_topk_fp_rate": combined_topk_fp_rate,
+        "topk_slice_match_rate": topk_match_rates["slice"],
+        "topk_non_slice_match_rate": topk_match_rates["non_slice"],
+        "topk_no_gt_match_rate": topk_match_rates["no_gt"],
+        "combined_topk_slice_match_rate": combined_topk_match_rates["slice"],
+        "combined_topk_non_slice_match_rate": combined_topk_match_rates["non_slice"],
+        "combined_topk_no_gt_match_rate": combined_topk_match_rates["no_gt"],
         "topk_center_distance": topk_center_distance,
         "combined_topk_center_distance": combined_topk_center_distance,
         "duplicate_per_gt": duplicate_per_gt,
         "matched_query_counts": matched_query_counts,
+    }
+
+
+def topk_target_match_rates(
+    pred_boxes: Tensor,
+    slice_target_boxes: Tensor,
+    all_target_boxes: Tensor | None,
+    topk: Tensor,
+    iou_threshold: float = 0.5,
+) -> dict[str, Tensor]:
+    """Split top-k predictions by slice-target, non-slice-target, and no-GT matches."""
+
+    if topk.numel() == 0:
+        zero = pred_boxes.new_tensor(0.0)
+        return {"slice": zero, "non_slice": zero, "no_gt": zero}
+    slice_iou = box_iou(
+        box_cxcywh_to_xyxy(pred_boxes[topk]),
+        box_cxcywh_to_xyxy(slice_target_boxes),
+    )
+    slice_match = slice_iou.max(dim=1).values >= iou_threshold
+    if all_target_boxes is None or all_target_boxes.numel() == 0:
+        all_match = slice_match
+    else:
+        all_iou = box_iou(
+            box_cxcywh_to_xyxy(pred_boxes[topk]),
+            box_cxcywh_to_xyxy(all_target_boxes),
+        )
+        all_match = all_iou.max(dim=1).values >= iou_threshold
+    non_slice_match = all_match & ~slice_match
+    no_gt_match = ~all_match
+    return {
+        "slice": slice_match.float().mean(),
+        "non_slice": non_slice_match.float().mean(),
+        "no_gt": no_gt_match.float().mean(),
     }
 
 
@@ -2230,6 +2320,18 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "offcenter_topk_fp_rate",
         "center_combined_topk_fp_rate",
         "offcenter_combined_topk_fp_rate",
+        "center_topk_slice_match_rate",
+        "offcenter_topk_slice_match_rate",
+        "center_topk_non_slice_match_rate",
+        "offcenter_topk_non_slice_match_rate",
+        "center_topk_no_gt_match_rate",
+        "offcenter_topk_no_gt_match_rate",
+        "center_combined_topk_slice_match_rate",
+        "offcenter_combined_topk_slice_match_rate",
+        "center_combined_topk_non_slice_match_rate",
+        "offcenter_combined_topk_non_slice_match_rate",
+        "center_combined_topk_no_gt_match_rate",
+        "offcenter_combined_topk_no_gt_match_rate",
         "center_topk_center_distance",
         "offcenter_topk_center_distance",
         "center_combined_topk_center_distance",

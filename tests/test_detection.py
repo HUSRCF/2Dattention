@@ -18,6 +18,7 @@ from attention2d.detection import (
     box_cxcywh_to_xyxy,
     box_iou,
 )
+from attention2d.detection.anchor_region_detr import grid_queries_from_state
 from scripts.train_det_toy import (
     DenseMaskAuxHead,
     ap50_for_image,
@@ -285,6 +286,22 @@ def test_tiny_anchor_region_detr_grid_residual_query_init() -> None:
     assert model.anchor_query_gate.grad is not None
     assert torch.isfinite(model.anchor_query_gate.grad).all()
     assert float(model.anchor_query_gate.grad.detach().abs().sum()) > 0.0
+
+
+def test_grid_queries_keep_2d_coverage_for_prime_query_count() -> None:
+    state = torch.zeros(1, 1, 4, 4)
+    for y in range(4):
+        for x in range(4):
+            state[0, 0, y, x] = y * 10 + x
+
+    queries = grid_queries_from_state(state, num_queries=7)
+    values = queries[0, :, 0].tolist()
+    ys = {int(value) // 10 for value in values}
+    xs = {int(value) % 10 for value in values}
+
+    assert queries.shape == (1, 7, 1)
+    assert len(ys) > 1
+    assert len(xs) > 1
 
 
 def test_tiny_anchor_region_detr_query_conditioned_mask_aux() -> None:

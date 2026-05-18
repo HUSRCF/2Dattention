@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import Tensor, nn
 
@@ -337,6 +339,8 @@ def grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
     cols = max(1, int(num_queries**0.5))
     while cols > 1 and num_queries % cols != 0:
         cols -= 1
+    if cols == 1 and num_queries > 1:
+        cols = int(math.ceil(num_queries**0.5))
     rows = (num_queries + cols - 1) // cols
     ys = torch.linspace(0, height - 1, rows, device=state.device).round().long()
     xs = torch.linspace(0, width - 1, cols, device=state.device).round().long()

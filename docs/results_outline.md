@@ -1889,6 +1889,42 @@ Smoke artifact:
 
 - `results/det_real_topk_center_distance_smoke.csv`
 
+Formal off-center rerun:
+
+- `results/det_real_topk_center_distance_1000img_500step_3seed.csv`
+- `results/det_real_slice_match_breakdown_1000img_500step_3seed.csv`
+
+The formal 1000-image / 500-step / 3-seed off-center rerun shows that the high-score off-center failures are center-biased, not merely arbitrary off-center ranking errors.
+
+Key paired deltas vs `local_anchor_residual_query`:
+
+- q/fixed AP50: `+0.021` (`2/3`).
+- center fixed AP50: `+0.130` (`3/3`).
+- offcenter fixed AP50: `-0.035` (`1/3`).
+- class AP50: `-0.018` (`2/3`).
+- combined top-k FP: `0.853 -> 0.819` overall, but `0.965 -> 0.982` on off-center targets.
+
+Top-k center-distance diagnostics:
+
+- overall combined top-k center distance: `0.183 -> 0.121`;
+- center combined top-k center distance: `0.168 -> 0.064`;
+- offcenter combined top-k center distance: `0.165 -> 0.073`;
+- offcenter objectness AUC remains weak: `0.525 -> 0.507`.
+
+Slice-match breakdown:
+
+- offcenter combined top-k slice-GT match rate: `0.035 -> 0.018`;
+- offcenter combined top-k non-slice-GT match rate: `0.121 -> 0.199`;
+- offcenter combined top-k no-GT match rate: `0.844 -> 0.783`;
+- center combined top-k slice-GT match rate: `0.155 -> 0.321`;
+- center combined top-k no-GT match rate: `0.797 -> 0.673`.
+
+Interpretation:
+
+- The quality head improves global/center ranking and calibration, but its official combined score increasingly selects center-near high-score boxes.
+- On off-center images, the combined-score top-k predictions become even more center-near while AP drops. A code-review follow-up showed that the old off-center FP rate partly counted same-image non-slice GT matches as off-center misses, so the stronger interpretation is: quality ranking prefers center-near candidates that are mostly no-GT matches, with a smaller but real shift toward non-slice GT instead of the off-center object.
+- The next detector work should target off-center object-specific query assignment/proposal selection and should keep the slice/non-slice/no-GT breakdown as an official diagnostic. Do not continue alpha/temperature sweeps, persistent proposal-state rescue, or generic class/quality box-feature concatenation unless a new diagnostic contradicts this result.
+
 Use these fields to distinguish two off-center failure modes:
 
 - center-biased false positives: high-score predictions remain near the image center even for off-center targets;

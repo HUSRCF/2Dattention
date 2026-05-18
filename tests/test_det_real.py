@@ -271,6 +271,49 @@ def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> Non
     assert diagnostics["matched_query_counts"].shape == (3,)
 
 
+def test_real_det_slice_diagnostics_split_non_slice_gt_matches() -> None:
+    pred_logits = torch.tensor(
+        [
+            [5.0, -2.0, -3.0],
+            [4.0, -2.0, -3.0],
+            [3.0, -2.0, -3.0],
+        ]
+    )
+    pred_boxes = torch.tensor(
+        [
+            [0.50, 0.50, 0.20, 0.20],
+            [0.80, 0.50, 0.20, 0.20],
+            [0.10, 0.10, 0.10, 0.10],
+        ]
+    )
+    all_target_boxes = torch.tensor(
+        [
+            [0.50, 0.50, 0.20, 0.20],
+            [0.80, 0.50, 0.20, 0.20],
+        ]
+    )
+    offcenter_target_boxes = all_target_boxes[1:]
+    target_labels = torch.tensor([0])
+
+    diagnostics = query_ranking_diagnostics(
+        pred_logits,
+        pred_boxes,
+        offcenter_target_boxes,
+        target_labels,
+        combined_quality_scores=torch.tensor([0.01, 1.0, 0.01]),
+        all_target_boxes=all_target_boxes,
+    )
+
+    assert float(diagnostics["topk_fp_rate"]) == 1.0
+    assert float(diagnostics["topk_slice_match_rate"]) == 0.0
+    assert float(diagnostics["topk_non_slice_match_rate"]) == 1.0
+    assert float(diagnostics["topk_no_gt_match_rate"]) == 0.0
+    assert float(diagnostics["combined_topk_fp_rate"]) == 0.0
+    assert float(diagnostics["combined_topk_slice_match_rate"]) == 1.0
+    assert float(diagnostics["combined_topk_non_slice_match_rate"]) == 0.0
+    assert float(diagnostics["combined_topk_no_gt_match_rate"]) == 0.0
+
+
 def test_real_det_combined_diagnostics_use_fixed_quality_multiplier() -> None:
     pred_logits = torch.tensor(
         [
