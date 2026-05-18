@@ -2153,3 +2153,34 @@ Interpretation:
 - Offcenter query assignment entropy is not collapsed; it slightly increases from `0.868` to `0.879`.
 - Offcenter top-k no-GT rate stays extremely high (`0.855`), so high-score predictions still often do not correspond to offcenter targets.
 - The next model-side problem is candidate generation/ranking under offcenter ambiguity, not simply query-slot diversity.
+
+## Stronger Background / No-Object Weight Control
+
+The next control asks whether the high no-GT top-k rate is caused by weak background supervision. The original DETR-style criterion used `no_object_weight=0.1`; this run uses `--no-object-weight 0.3`.
+
+Artifact:
+
+- `results/det_real_no_object_w03_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_querymask`.
+- Training change only: `--no-object-weight 0.3`.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | Center AP50 | Offcenter AP50 | Center no-GT top-k | Offcenter no-GT top-k | ECE50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.422 | 0.323 | 0.147 | 0.052 | 0.400 | 0.082 | 0.690 | 0.807 | 0.208 |
+| `local_anchor_residual_query_querymask` | 0.413 | 0.309 | 0.116 | 0.043 | 0.379 | 0.094 | 0.675 | 0.803 | 0.214 |
+
+Comparison to the default `no_object_weight=0.1` runs:
+
+- Residual-anchor improves strongly: AP50 `0.246 -> 0.323`, class AP50 `0.116 -> 0.147`, center AP50 `0.298 -> 0.400`, offcenter AP50 `0.071 -> 0.082`.
+- Querymask stays around the same aggregate AP (`0.307 -> 0.309`) and improves offcenter AP (`0.062 -> 0.094`), but it no longer beats the stronger residual-anchor baseline.
+- Offcenter no-GT top-k decreases only modestly for residual-anchor (`0.865 -> 0.807`), so stronger background helps but does not solve offcenter ranking.
+
+Interpretation:
+
+- Weak no-object/background supervision was a real bottleneck for the residual-anchor detector.
+- Once background is strengthened, plain querymask is no longer the best AP route, although it keeps a small offcenter AP advantage.
+- The next control should combine stronger background with two-stage quality ranking, because the strongest path still looks like detector scoring/ranking plus better background handling rather than more query-position heuristics.

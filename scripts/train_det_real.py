@@ -513,6 +513,12 @@ def parse_args() -> argparse.Namespace:
         help="Weight for matched query-mask soft-center binding when using query_center mask aux mode.",
     )
     parser.add_argument("--score-iou-weight", type=float, default=0.5)
+    parser.add_argument(
+        "--no-object-weight",
+        type=float,
+        default=0.1,
+        help="Cross-entropy weight for the DETR background/no-object class.",
+    )
     parser.add_argument("--quality-cls-weight", type=float, default=1.0)
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
     parser.add_argument("--quality-head-start-step", type=int, default=1)
@@ -569,6 +575,8 @@ def main() -> None:
         raise ValueError("--fixed-quality-alpha must be >= 0")
     if args.quality_score_temperature <= 0:
         raise ValueError("--quality-score-temperature must be > 0")
+    if args.no_object_weight <= 0:
+        raise ValueError("--no-object-weight must be > 0")
     if not 0.0 <= args.calibration_frac < 1.0:
         raise ValueError("--calibration-frac must be in [0, 1)")
     if args.train_slice_oversample_factor <= 0:
@@ -600,6 +608,7 @@ def main() -> None:
     print("train_slice_filter:", args.train_slice_filter)
     print("train_slice_oversample:", args.train_slice_oversample)
     print("train_slice_oversample_factor:", args.train_slice_oversample_factor)
+    print("no_object_weight:", args.no_object_weight)
     print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
@@ -692,7 +701,7 @@ def train_one_model(
         quality_mode="box" if model_name in BOX_QUALITY_HEAD_MODELS else "query",
         class_mode="box" if model_name in BOX_CLASS_HEAD_MODELS else "query",
     ).to(device)
-    criterion = DetectionCriterion(num_classes=num_classes).to(device)
+    criterion = DetectionCriterion(num_classes=num_classes, no_object_weight=args.no_object_weight).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
     train_sampler = build_train_slice_sampler(
         train_set,

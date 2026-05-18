@@ -1291,3 +1291,39 @@ Interpretation:
 - Query assignment entropy is not lower for offcenter targets; querymask slightly increases it. The failure is therefore not a simple query-slot collapse.
 - The dominant offcenter ranking issue remains high-score no-GT candidates: offcenter top-k no-GT rate is still very high (`0.855`).
 - Next useful direction should target offcenter candidate generation/ranking under ambiguity, not query-count entropy or more center-position penalties.
+
+## Stronger Background / No-Object Weight Control
+
+This control asks whether the high no-GT top-k rate is caused by weak background supervision. The original DETR-style criterion used `no_object_weight=0.1`; this run uses `--no-object-weight 0.3`.
+
+Implementation:
+
+- Added `--no-object-weight` to `scripts/train_det_real.py`.
+- It passes through to `DetectionCriterion(no_object_weight=...)`.
+
+Artifact:
+
+- `results/det_real_no_object_w03_1000img_500step_3seed.csv`
+
+Protocol:
+
+- 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--no-object-weight 0.3`.
+- Compared `local_anchor_residual_query` and `local_anchor_residual_query_querymask`.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | Center AP50 | Offcenter AP50 | Center no-GT top-k | Offcenter no-GT top-k | ECE50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.422 | 0.323 | 0.147 | 0.052 | 0.400 | 0.082 | 0.690 | 0.807 | 0.208 |
+| `local_anchor_residual_query_querymask` | 0.413 | 0.309 | 0.116 | 0.043 | 0.379 | 0.094 | 0.675 | 0.803 | 0.214 |
+
+Comparison to default `no_object_weight=0.1`:
+
+- Residual-anchor baseline improves strongly: AP50 `0.246 -> 0.323`, class AP50 `0.116 -> 0.147`, center AP50 `0.298 -> 0.400`, offcenter AP50 `0.071 -> 0.082`.
+- Querymask stays around the same aggregate AP (`0.307 -> 0.309`) and improves offcenter AP (`0.062 -> 0.094`), but no longer beats the stronger residual-anchor baseline.
+- Offcenter no-GT top-k rate decreases only modestly (`0.865 -> 0.807` for residual-anchor), so background weighting helps but does not solve the offcenter ranking failure.
+
+Interpretation:
+
+- Weak no-object/background supervision was a real bottleneck for the residual-anchor detector.
+- Once background is strengthened, plain querymask is no longer the best AP route, although it retains a small offcenter AP advantage.
+- The next scoring/training control should combine stronger background with two-stage quality ranking, because the current best AP path is still detector scoring/ranking rather than more query-position heuristics.
