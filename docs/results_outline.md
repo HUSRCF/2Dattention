@@ -2499,3 +2499,38 @@ Interpretation:
 - Restoring by offcenter AP does not preserve the base detector's offcenter candidate benefit.
 - It slightly improves AP75/fixed AP75 but lowers AP50 and keeps offcenter fixed AP far below the base detector.
 - The offcenter issue is not primarily a checkpoint-selection problem. Stop restore-metric tweaks for this branch.
+
+### Late Quality Start
+
+This check asks whether the quality stage is suppressing offcenter candidates because it starts too early. The base detector trains through step 500 before the frozen quality-head stage starts at step 501.
+
+Artifact:
+
+- `results/det_real_no_object_w05_quality_late501_restore_ap50_offcenter_1000img_600step_3seed.csv`
+
+Protocol:
+
+- `--no-object-weight 0.5`.
+- `--eval-slice-filter offcenter`.
+- `--steps 600`.
+- `--quality-head-start-step 501 --quality-head-only-after-start`.
+- `--restore-best-before-quality-head --restore-best-metric ap50`.
+
+| Variant | Final IoU | AP50 | q-fixed AP50 | q-best AP50 | Offcenter AP50 | Offcenter q-fixed AP50 | AP75 | q-fixed AP75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0.5` base, 600 steps | 0.334 | 0.161 | 0.161 | 0.161 | 0.080 | 0.080 | 0.011 | 0.011 |
+| `0.5` quality, start 501 | 0.327 | 0.148 | 0.151 | 0.153 | 0.088 | 0.056 | 0.013 | 0.015 |
+
+Top-k breakdown:
+
+| Variant | offcenter slice match | offcenter non-slice match | offcenter no-GT | offcenter combined center distance |
+|---|---:|---:|---:|---:|
+| `0.5` base, 600 steps | 0.048 | 0.168 | 0.784 | 0.130 |
+| `0.5` quality, start 501 | 0.027 | 0.211 | 0.762 | 0.074 |
+
+Interpretation:
+
+- Delaying the quality stage reduces the geometry damage but does not recover AP.
+- The base detector's offcenter candidate binding remains stronger than the quality-ranked output.
+- The quality stage still shifts top-k predictions toward non-slice/center-near candidates.
+- Quality timing is not the core fix. Stop quality protocol tweaks here and move to object-specific query/proposal binding.
