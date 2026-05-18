@@ -1893,6 +1893,7 @@ Formal off-center rerun:
 
 - `results/det_real_topk_center_distance_1000img_500step_3seed.csv`
 - `results/det_real_slice_match_breakdown_1000img_500step_3seed.csv`
+- `results/det_real_center_penalty_1000img_500step_3seed.csv`
 
 The formal 1000-image / 500-step / 3-seed off-center rerun shows that the high-score off-center failures are center-biased, not merely arbitrary off-center ranking errors.
 
@@ -1924,6 +1925,24 @@ Interpretation:
 - The quality head improves global/center ranking and calibration, but its official combined score increasingly selects center-near high-score boxes.
 - On off-center images, the combined-score top-k predictions become even more center-near while AP drops. A code-review follow-up showed that the old off-center FP rate partly counted same-image non-slice GT matches as off-center misses, so the stronger interpretation is: quality ranking prefers center-near candidates that are mostly no-GT matches, with a smaller but real shift toward non-slice GT instead of the off-center object.
 - The next detector work should target off-center object-specific query assignment/proposal selection and should keep the slice/non-slice/no-GT breakdown as an official diagnostic. Do not continue alpha/temperature sweeps, persistent proposal-state rescue, or generic class/quality box-feature concatenation unless a new diagnostic contradicts this result.
+
+Eval-only center-distance penalty:
+
+The center-distance diagnostic multiplies scores by predicted-box distance from the image center. This tests whether off-center AP can be recovered by simply downranking center-near boxes.
+
+Key numbers:
+
+- base offcenter AP: `0.067`;
+- base offcenter center-distance AP: `0.085`;
+- quality offcenter fixed AP: `0.033`;
+- quality offcenter center-distance AP: `0.056`;
+- quality offcenter `q_fixed * center_distance` AP: `0.054`;
+- quality center `q_fixed * center_distance` AP: `0.256`.
+
+Interpretation:
+
+- Simple center suppression is not enough to recover off-center AP for the quality model.
+- The scoring-only path is therefore exhausted for this failure mode. Future work should change how queries/proposals bind to off-center objects, not continue alpha/temperature or center-penalty scoring tricks.
 
 Use these fields to distinguish two off-center failure modes:
 

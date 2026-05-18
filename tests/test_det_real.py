@@ -14,6 +14,7 @@ from scripts.train_det_real import (
     build_splits,
     binary_auc,
     calibration_ece,
+    center_distance_score_multiplier,
     det_collate,
     duplicate_predictions_per_gt,
     filter_samples,
@@ -352,6 +353,19 @@ def test_real_det_combined_diagnostics_use_fixed_quality_multiplier() -> None:
     assert float(suppressed_diagnostics["combined_topk_fp_rate"]) == 1.0
     assert float(q1_diagnostics["combined_topk_center_distance"]) < 0.05
     assert float(suppressed_diagnostics["combined_topk_center_distance"]) > 0.5
+
+
+def test_real_det_center_distance_multiplier_downranks_center_boxes() -> None:
+    pred_boxes = torch.tensor(
+        [
+            [0.50, 0.50, 0.20, 0.20],
+            [1.00, 1.00, 0.20, 0.20],
+        ]
+    )
+    scores = center_distance_score_multiplier(pred_boxes)
+
+    assert float(scores[0]) == 0.0
+    assert abs(float(scores[1]) - 1.0) < 1e-6
 
 
 def test_real_det_scalar_diagnostics() -> None:

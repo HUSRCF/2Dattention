@@ -772,6 +772,16 @@ def train_one_model(
                 "eval_large_ap50_q_fixed": metrics["large_ap50_q_fixed"],
                 "eval_center_ap50_q_fixed": metrics["center_ap50_q_fixed"],
                 "eval_offcenter_ap50_q_fixed": metrics["offcenter_ap50_q_fixed"],
+                "eval_ap50_center_dist1": metrics["ap50_center_dist1"],
+                "eval_ap50_q_fixed_center_dist1": metrics["ap50_q_fixed_center_dist1"],
+                "eval_center_ap50_center_dist1": metrics["center_ap50_center_dist1"],
+                "eval_offcenter_ap50_center_dist1": metrics["offcenter_ap50_center_dist1"],
+                "eval_center_ap50_q_fixed_center_dist1": metrics[
+                    "center_ap50_q_fixed_center_dist1"
+                ],
+                "eval_offcenter_ap50_q_fixed_center_dist1": metrics[
+                    "offcenter_ap50_q_fixed_center_dist1"
+                ],
                 "eval_ap50_q025": metrics["ap50_q025"],
                 "eval_ap50_q05": metrics["ap50_q05"],
                 "eval_ap50_q1": metrics["ap50_q1"],
@@ -1059,12 +1069,28 @@ def evaluate_real(
         "center": [],
         "offcenter": [],
     }
+    slice_aps_center_dist1: dict[str, list[Tensor]] = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
+    slice_aps_q_fixed_center_dist1: dict[str, list[Tensor]] = {
+        "small": [],
+        "medium": [],
+        "large": [],
+        "center": [],
+        "offcenter": [],
+    }
     aps_q025 = []
     aps_q05 = []
     aps_q1 = []
     aps_q2 = []
     aps_q4 = []
     aps_q_fixed = []
+    aps_center_dist1 = []
+    aps_q_fixed_center_dist1 = []
     aps_class_q025 = []
     aps_class_q05 = []
     aps_class_q1 = []
@@ -1171,6 +1197,12 @@ def evaluate_real(
                 alpha=fixed_quality_alpha,
                 temperature=quality_score_temperature,
             )
+            center_distance_scores = center_distance_score_multiplier(outputs["pred_boxes"][sample_idx])
+            q_fixed_center_distance_scores = (
+                fixed_quality_scores * center_distance_scores
+                if fixed_quality_scores is not None
+                else center_distance_scores
+            )
             diagnostics = query_ranking_diagnostics(
                 pred_logits=outputs["pred_logits"][sample_idx],
                 pred_boxes=outputs["pred_boxes"][sample_idx],
@@ -1252,6 +1284,22 @@ def evaluate_real(
                         score_multiplier=fixed_quality_scores,
                     ).cpu()
                 )
+                slice_aps_center_dist1[slice_name].append(
+                    objectness_ap50_for_image(
+                        outputs["pred_logits"][sample_idx],
+                        outputs["pred_boxes"][sample_idx],
+                        slice_boxes,
+                        score_multiplier=center_distance_scores,
+                    ).cpu()
+                )
+                slice_aps_q_fixed_center_dist1[slice_name].append(
+                    objectness_ap50_for_image(
+                        outputs["pred_logits"][sample_idx],
+                        outputs["pred_boxes"][sample_idx],
+                        slice_boxes,
+                        score_multiplier=q_fixed_center_distance_scores,
+                    ).cpu()
+                )
                 if slice_name in slice_diag_vectors:
                     slice_diagnostics = query_ranking_diagnostics(
                         pred_logits=outputs["pred_logits"][sample_idx],
@@ -1317,6 +1365,22 @@ def evaluate_real(
                     outputs["pred_boxes"][sample_idx],
                     target["boxes"],
                     score_multiplier=fixed_quality_scores,
+                ).cpu()
+            )
+            aps_center_dist1.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=center_distance_scores,
+                ).cpu()
+            )
+            aps_q_fixed_center_dist1.append(
+                objectness_ap50_for_image(
+                    outputs["pred_logits"][sample_idx],
+                    outputs["pred_boxes"][sample_idx],
+                    target["boxes"],
+                    score_multiplier=q_fixed_center_distance_scores,
                 ).cpu()
             )
             aps75_q_fixed.append(
@@ -1435,6 +1499,8 @@ def evaluate_real(
     ap75_oracle_iou = float(torch.stack(aps75_oracle_iou).mean().item()) if aps75_oracle_iou else 0.0
     slice_ap50 = summarize_slice_ap(slice_aps)
     slice_ap50_q_fixed = summarize_slice_ap(slice_aps_q_fixed)
+    slice_ap50_center_dist1 = summarize_slice_ap(slice_aps_center_dist1)
+    slice_ap50_q_fixed_center_dist1 = summarize_slice_ap(slice_aps_q_fixed_center_dist1)
     ap50_q_by_alpha = {
         0.25: float(torch.stack(aps_q025).mean().item()) if aps_q025 else 0.0,
         0.5: float(torch.stack(aps_q05).mean().item()) if aps_q05 else 0.0,
@@ -1443,6 +1509,12 @@ def evaluate_real(
         4.0: float(torch.stack(aps_q4).mean().item()) if aps_q4 else 0.0,
     }
     ap50_q_fixed = float(torch.stack(aps_q_fixed).mean().item()) if aps_q_fixed else 0.0
+    ap50_center_dist1 = float(torch.stack(aps_center_dist1).mean().item()) if aps_center_dist1 else 0.0
+    ap50_q_fixed_center_dist1 = (
+        float(torch.stack(aps_q_fixed_center_dist1).mean().item())
+        if aps_q_fixed_center_dist1
+        else 0.0
+    )
     ap50_class_q_by_alpha = {
         0.25: float(torch.stack(aps_class_q025).mean().item()) if aps_class_q025 else 0.0,
         0.5: float(torch.stack(aps_class_q05).mean().item()) if aps_class_q05 else 0.0,
@@ -1470,12 +1542,19 @@ def evaluate_real(
         "ap75_oracle_iou": ap75_oracle_iou,
         **{f"{name}_ap50": value for name, value in slice_ap50.items()},
         **{f"{name}_ap50_q_fixed": value for name, value in slice_ap50_q_fixed.items()},
+        **{f"{name}_ap50_center_dist1": value for name, value in slice_ap50_center_dist1.items()},
+        **{
+            f"{name}_ap50_q_fixed_center_dist1": value
+            for name, value in slice_ap50_q_fixed_center_dist1.items()
+        },
         "ap50_q025": ap50_q_by_alpha[0.25],
         "ap50_q05": ap50_q_by_alpha[0.5],
         "ap50_q1": ap50_q_by_alpha[1.0],
         "ap50_q2": ap50_q_by_alpha[2.0],
         "ap50_q4": ap50_q_by_alpha[4.0],
         "ap50_q_fixed": ap50_q_fixed,
+        "ap50_center_dist1": ap50_center_dist1,
+        "ap50_q_fixed_center_dist1": ap50_q_fixed_center_dist1,
         "ap50_q_fixed_alpha": fixed_quality_alpha if use_quality_scores else 0.0,
         "ap50_q_fixed_temperature": quality_score_temperature if use_quality_scores else 0.0,
         "ap50_q_best": best_q_ap50,
@@ -1565,6 +1644,17 @@ def fixed_quality_score_multiplier(
         raise ValueError("alpha must be >= 0")
     quality = (quality_logits / temperature).sigmoid().clamp(0.0, 1.0)
     return quality.pow(alpha)
+
+
+def center_distance_score_multiplier(pred_boxes: Tensor, power: float = 1.0) -> Tensor:
+    """Return an eval-only multiplier that downranks center-near predicted boxes."""
+
+    if power < 0:
+        raise ValueError("power must be >= 0")
+    center = pred_boxes.new_tensor([0.5, 0.5])
+    max_distance = float(0.5 * (2.0**0.5))
+    distance = (pred_boxes[:, :2] - center).norm(dim=-1) / max_distance
+    return distance.clamp(0.0, 1.0).pow(power)
 
 
 def box_slice_masks(boxes: Tensor) -> dict[str, Tensor]:
@@ -2254,6 +2344,12 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_large_ap50_q_fixed",
         "eval_center_ap50_q_fixed",
         "eval_offcenter_ap50_q_fixed",
+        "eval_ap50_center_dist1",
+        "eval_ap50_q_fixed_center_dist1",
+        "eval_center_ap50_center_dist1",
+        "eval_offcenter_ap50_center_dist1",
+        "eval_center_ap50_q_fixed_center_dist1",
+        "eval_offcenter_ap50_q_fixed_center_dist1",
         "eval_ap50_q025",
         "eval_ap50_q05",
         "eval_ap50_q1",
