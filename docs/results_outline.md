@@ -2255,3 +2255,36 @@ Interpretation:
 - Offcenter is still the weak slice, but it improves under the stronger protocol. This corrects the previous conclusion that quality-style ranking was simply ineffective on offcenter.
 - The offcenter AP gain comes mostly from stronger background plus AP50 checkpoint restore; fixed-quality offcenter AP does not improve (`0.054 -> 0.053`), so quality calibration itself is still not solving offcenter object ranking.
 - The remaining blocker is narrower: after stronger background, q-fixed scoring still cannot reliably select offcenter objects. Next work should focus on offcenter candidate generation or slice-aware quality calibration under this stronger protocol, not on alpha sweeps or persistent proposal state.
+
+## Stronger Background Querymask Offcenter Control
+
+This check asks whether the query-specific dense-mask route stacks with the stronger offcenter protocol.
+
+Artifact:
+
+- `results/det_real_no_object_w03_querymask_quality_restore_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Same offcenter-only eval protocol as above.
+- `--no-object-weight 0.3`.
+- `--restore-best-metric ap50`.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_querymask_quality_head`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | Mask IoU | top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.325 | 0.136 | 0.061 | 0.136 | 0.009 | 0.009 | 0.000 | 0.830 |
+| `local_anchor_residual_query_querymask_quality_head` | 0.317 | 0.145 | 0.067 | 0.147 | 0.010 | 0.010 | 0.328 | 0.825 |
+
+Paired deltas:
+
+- AP50: `+0.009`, `2/3` wins.
+- Class AP50: `+0.006`, `3/3` wins.
+- q-fixed AP50: `+0.010`, `2/3` wins.
+- Final IoU: `-0.007`; best IoU: `-0.012`.
+
+Interpretation:
+
+- Querymask gives a small offcenter ranking improvement under the stronger protocol, but it is not the main fix.
+- Compared with the plain residual quality-head run on the same stronger offcenter stress, querymask is weaker (`0.145` AP50 vs `0.171`) and hurts localization.
+- This keeps query-conditioned masks as a useful coupling probe, but the active offcenter detector route is still residual-anchor with stronger background and AP50-based quality-stage restore.

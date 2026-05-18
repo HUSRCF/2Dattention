@@ -1400,3 +1400,34 @@ Interpretation:
 - The gain is partly checkpoint/restoration and base-score ranking, not purely fixed-quality scoring: q-fixed offcenter AP does not improve.
 - This revises the offcenter conclusion: offcenter is still the hard slice, but it is not hopeless; no-object/background weight and checkpoint selection matter more than alpha sweeps, edge-grid seeding, or center penalties.
 - Next useful work should keep `no_object_weight=0.3` and `restore-best-metric ap50` as the detector-side protocol, then test whether the remaining offcenter q-fixed weakness is due to quality calibration or candidate generation.
+
+## Stronger Background Querymask Offcenter Control
+
+This checks whether query-specific dense masks stack with the stronger offcenter protocol.
+
+Artifact:
+
+- `results/det_real_no_object_w03_querymask_quality_restore_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Same offcenter stress as above.
+- Compared `local_anchor_residual_query` against `local_anchor_residual_query_querymask_quality_head`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | Mask IoU | top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.325 | 0.136 | 0.061 | 0.136 | 0.009 | 0.009 | 0.000 | 0.830 |
+| `local_anchor_residual_query_querymask_quality_head` | 0.317 | 0.145 | 0.067 | 0.147 | 0.010 | 0.010 | 0.328 | 0.825 |
+
+Paired result vs base:
+
+- AP50 `+0.009`, `2/3` wins.
+- Class AP50 `+0.006`, `3/3` wins.
+- q-fixed AP50 `+0.010`, `2/3` wins.
+- Final IoU `-0.007`, best IoU `-0.012`.
+
+Interpretation:
+
+- Querymask gives a small offcenter ranking gain under the stronger protocol, but it is much weaker than the plain residual quality route (`+0.009` vs `+0.035` AP50).
+- It also lowers geometry despite learning masks (`mask IoU 0.328`).
+- Keep querymask as a dense-coupling probe, not as the current offcenter mainline. The active detector protocol remains residual-anchor + `no_object_weight=0.3` + AP50 checkpoint restore for quality-stage runs.
