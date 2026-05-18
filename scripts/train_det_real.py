@@ -964,6 +964,8 @@ def train_one_model(
                 "center_duplicate_per_gt": metrics["center_duplicate_per_gt"],
                 "offcenter_duplicate_per_gt": metrics["offcenter_duplicate_per_gt"],
                 "query_assignment_entropy": metrics["query_assignment_entropy"],
+                "center_query_assignment_entropy": metrics["center_query_assignment_entropy"],
+                "offcenter_query_assignment_entropy": metrics["offcenter_query_assignment_entropy"],
                 "best_iou": best_iou,
                 "best_step": best_step,
                 "images_per_sec": speed,
@@ -1208,6 +1210,10 @@ def evaluate_real(
     combined_topk_center_distances = []
     duplicate_per_gt_values = []
     query_assignment_counts = torch.zeros(model.num_queries, dtype=torch.float32)
+    slice_query_assignment_counts = {
+        "center": torch.zeros(model.num_queries, dtype=torch.float32),
+        "offcenter": torch.zeros(model.num_queries, dtype=torch.float32),
+    }
     slice_diag_vectors: dict[str, dict[str, list[Tensor]]] = {
         "center": {
             "matched_assignment_class_acc": [],
@@ -1423,6 +1429,9 @@ def evaluate_real(
                         values.append(slice_diagnostics[source_name].cpu())
                     for metric_name, values in slice_diag_scalars[slice_name].items():
                         values.append(slice_diagnostics[metric_name].cpu())
+                    slice_query_assignment_counts[slice_name] += slice_diagnostics[
+                        "matched_query_counts"
+                    ].cpu()
             aps_q025.append(
                 objectness_ap50_for_image(
                     outputs["pred_logits"][sample_idx],
@@ -1725,6 +1734,8 @@ def evaluate_real(
         "duplicate_per_gt": float(torch.stack(duplicate_per_gt_values).mean().item()) if duplicate_per_gt_values else 0.0,
         **summarize_slice_ranking_diagnostics(slice_diag_vectors, slice_diag_scalars),
         "query_assignment_entropy": assignment_entropy(query_assignment_counts),
+        "center_query_assignment_entropy": assignment_entropy(slice_query_assignment_counts["center"]),
+        "offcenter_query_assignment_entropy": assignment_entropy(slice_query_assignment_counts["offcenter"]),
         "mask_iou": mask_iou,
         "mask_dice": mask_dice,
         "query_mask_center_l1": query_mask_center_l1,
@@ -2644,6 +2655,8 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "center_duplicate_per_gt",
         "offcenter_duplicate_per_gt",
         "query_assignment_entropy",
+        "center_query_assignment_entropy",
+        "offcenter_query_assignment_entropy",
         "best_iou",
         "best_step",
         "images_per_sec",

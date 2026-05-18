@@ -73,6 +73,9 @@ DEFAULT_METRICS = (
     "offcenter_combined_topk_center_distance",
     "center_duplicate_per_gt",
     "offcenter_duplicate_per_gt",
+    "query_assignment_entropy",
+    "center_query_assignment_entropy",
+    "offcenter_query_assignment_entropy",
 )
 
 

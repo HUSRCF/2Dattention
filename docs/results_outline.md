@@ -2128,3 +2128,28 @@ Interpretation:
 - Aggregate AP also drops from all-train querymask `0.307` to `0.211`.
 - Query-mask offcenter center L2 improves relative to all-train (`0.206` vs `0.223`), but this geometry improvement does not produce better AP.
 - Current conclusion: simple sample weighting is not enough. Offcenter remains an object-specific assignment/ranking/ambiguity problem rather than a pure sample-frequency problem.
+
+## Query Assignment Entropy Diagnostic
+
+This diagnostic checks whether querymask helps or hurts query-slot usage for center and offcenter targets.
+
+Artifact:
+
+- `results/det_real_query_assignment_entropy_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_querymask`.
+
+| Variant | AP50 | Center AP50 | Offcenter AP50 | Assignment Entropy | Center Entropy | Offcenter Entropy | Center no-GT top-k | Offcenter no-GT top-k |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.246 | 0.298 | 0.071 | 0.911 | 0.787 | 0.868 | 0.813 | 0.865 |
+| `local_anchor_residual_query_querymask` | 0.307 | 0.380 | 0.062 | 0.939 | 0.834 | 0.879 | 0.699 | 0.855 |
+
+Interpretation:
+
+- Querymask improves aggregate AP through center/large-object behavior, not offcenter.
+- Offcenter query assignment entropy is not collapsed; it slightly increases from `0.868` to `0.879`.
+- Offcenter top-k no-GT rate stays extremely high (`0.855`), so high-score predictions still often do not correspond to offcenter targets.
+- The next model-side problem is candidate generation/ranking under offcenter ambiguity, not simply query-slot diversity.

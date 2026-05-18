@@ -1261,3 +1261,33 @@ Interpretation:
 - It also hurts aggregate AP (`0.211` vs all-train querymask `0.307`).
 - Oversampling improves the query-mask center geometry versus all-train (`offcenter center L2 0.206` vs `0.223`) but that does not translate into AP.
 - Conclusion: the offcenter failure is not solved by simple data weighting. The remaining issue is more likely object-specific query assignment/ranking or feature ambiguity, not raw offcenter sample frequency alone.
+
+## Query Assignment Entropy Diagnostic
+
+This diagnostic asks whether offcenter failure comes from matched GTs collapsing onto too few query slots. It adds center/offcenter query-assignment entropy fields to the real-det evaluator.
+
+Implementation:
+
+- Added `center_query_assignment_entropy` and `offcenter_query_assignment_entropy`.
+- They are computed from Hungarian matched-query counts for center/offcenter target slices.
+
+Artifact:
+
+- `results/det_real_query_assignment_entropy_1000img_500step_3seed.csv`
+
+Protocol:
+
+- 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- Compared `local_anchor_residual_query` and `local_anchor_residual_query_querymask`.
+
+| Variant | AP50 | Center AP50 | Offcenter AP50 | Assignment Entropy | Center Entropy | Offcenter Entropy | Center no-GT top-k | Offcenter no-GT top-k |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.246 | 0.298 | 0.071 | 0.911 | 0.787 | 0.868 | 0.813 | 0.865 |
+| `local_anchor_residual_query_querymask` | 0.307 | 0.380 | 0.062 | 0.939 | 0.834 | 0.879 | 0.699 | 0.855 |
+
+Interpretation:
+
+- Querymask improves aggregate and center AP, but still does not improve offcenter AP.
+- Query assignment entropy is not lower for offcenter targets; querymask slightly increases it. The failure is therefore not a simple query-slot collapse.
+- The dominant offcenter ranking issue remains high-score no-GT candidates: offcenter top-k no-GT rate is still very high (`0.855`).
+- Next useful direction should target offcenter candidate generation/ranking under ambiguity, not query-count entropy or more center-position penalties.
