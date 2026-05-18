@@ -29,7 +29,9 @@ from scripts.train_det_toy import (
     match_targets_by_iou,
     query_mask_aux_loss,
     query_mask_aux_metrics,
+    query_mask_center_aux_loss,
     sample_square_detection_batch,
+    soft_mask_centers_from_logits,
     summarize_stratified_iou,
     update_stratified_iou_lists,
 )
@@ -352,6 +354,52 @@ def test_tiny_anchor_region_detr_query_conditioned_mask_aux() -> None:
 
     assert torch.isfinite(mask_losses["loss_mask_aux"])
     assert torch.isfinite(metrics["mask_iou"])
+    assert model.query_mask_query_proj.weight.grad is not None
+    assert model.query_mask_feature_proj.weight.grad is not None
+    assert float(model.query_mask_query_proj.weight.grad.detach().abs().sum()) > 0.0
+
+
+def test_soft_mask_centers_from_logits_uses_normalized_cell_centers() -> None:
+    logits = torch.full((2, 4, 4), -8.0)
+    logits[0, 0, 0] = 8.0
+    logits[1, 3, 2] = 8.0
+    centers = soft_mask_centers_from_logits(logits)
+
+    assert torch.allclose(centers[0], torch.tensor([0.125, 0.125]), atol=1e-3)
+    assert torch.allclose(centers[1], torch.tensor([0.625, 0.875]), atol=1e-3)
+
+
+def test_tiny_anchor_region_detr_query_mask_center_aux_backward() -> None:
+    torch.manual_seed(182)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor_residual",
+        query_refine="query_mask",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    center_losses = query_mask_center_aux_loss(outputs, targets, criterion)
+    det_losses = criterion(outputs, targets)
+    total_loss = det_losses["loss"] + 0.25 * center_losses["loss_query_center_aux"]
+    total_loss.backward()
+
+    assert torch.isfinite(center_losses["loss_query_center_aux"])
+    assert torch.isfinite(center_losses["query_mask_center_l1"])
     assert model.query_mask_query_proj.weight.grad is not None
     assert model.query_mask_feature_proj.weight.grad is not None
     assert float(model.query_mask_query_proj.weight.grad.detach().abs().sum()) > 0.0

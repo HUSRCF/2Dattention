@@ -29,6 +29,7 @@ from scripts.train_det_real import (
     proposal_gap_closure,
     quality_score_multipliers,
     quality_head_loss_scale,
+    query_mask_center_slice_metrics,
     query_quality_head_loss,
     query_ranking_diagnostics,
     ranking_gap_closure,
@@ -472,6 +473,34 @@ def test_real_det_oracle_query_mask_logits_from_targets() -> None:
     assert float(logits.max()) == 8.0
     assert float(logits.min()) == -8.0
     assert int((logits[0] > 0).sum().item()) > int((logits[1] > 0).sum().item())
+
+
+def test_query_mask_center_slice_metrics_tracks_center_and_offcenter() -> None:
+    criterion = DetectionCriterion(num_classes=1)
+    pred_boxes = torch.tensor([[[0.625, 0.625, 0.20, 0.20], [0.125, 0.125, 0.20, 0.20]]])
+    pred_logits = torch.tensor([[[5.0, -5.0], [5.0, -5.0]]])
+    mask_logits = torch.full((1, 2, 4, 4), -8.0)
+    mask_logits[0, 0, 2, 2] = 8.0
+    mask_logits[0, 1, 0, 0] = 8.0
+    outputs = {
+        "pred_boxes": pred_boxes,
+        "pred_logits": pred_logits,
+        "query_mask_logits_per_query": mask_logits,
+    }
+    targets = [
+        {
+            "labels": torch.tensor([0, 0]),
+            "boxes": torch.tensor([[0.625, 0.625, 0.20, 0.20], [0.125, 0.125, 0.20, 0.20]]),
+        }
+    ]
+
+    metrics = query_mask_center_slice_metrics(outputs, targets, criterion)
+
+    assert metrics["query_mask_center_l2"] < 1e-3
+    assert metrics["center_query_mask_center_l2"] < 1e-3
+    assert metrics["offcenter_query_mask_center_l2"] < 1e-3
+    assert metrics["center_query_mask_center_pck025"] == 1.0
+    assert metrics["offcenter_query_mask_center_pck025"] == 1.0
 
 
 def test_real_det_score_iou_calibration_loss_backpropagates_to_logits_only() -> None:

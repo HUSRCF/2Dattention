@@ -1152,3 +1152,50 @@ Next priority:
 P0 control update: the dual-reference 197-class run confirms that `xattnres_no_prefill` is a stronger reference than `xattnres_style`, and that `anchor_only_no_prefill` is cleaner than `anchor_no_prefill`. Future work should use `no_prefill_local_mix`, `xattnres_no_prefill`, and `anchor_only_no_prefill` as the active controls.
 
 Why later: classification can hide spatial-routing weaknesses behind global pooling.
+## Query-Specific Center Binding Check
+
+This check asks whether the off-center/query-binding issue can be fixed by making each Hungarian-matched query mask put its soft center near the matched GT box center.
+
+Implementation:
+
+- Added `query_mask_center_aux_loss` in `scripts/train_det_toy.py`.
+- Added `local_anchor_residual_query_querymask_centeraux`.
+- The loss only uses Hungarian matched queries and applies SmoothL1 to the softargmax center of `query_mask_logits_per_query`.
+- Added CSV fields `loss_query_center_aux`, `eval_query_mask_center_l1`, `eval_query_mask_center_l2`,
+  `eval_query_mask_center_pck025`, and center/offcenter query-mask center slice metrics.
+
+Artifact:
+
+- `results/det_real_query_center_aux_1000img_500step_3seed.csv`
+- `results/det_real_query_center_aux_slice_metrics_1000img_500step_3seed.csv`
+
+Protocol:
+
+- 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- Compared `local_anchor_residual_query`, `local_anchor_residual_query_querymask`, and `local_anchor_residual_query_querymask_centeraux`.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | Center AP50 | Offcenter AP50 | Mask IoU | Query-mask center L1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.414 | 0.246 | 0.116 | 0.045 | 0.298 | 0.071 | 0.000 | 0.000 |
+| `local_anchor_residual_query_querymask` | 0.415 | 0.307 | 0.132 | 0.045 | 0.380 | 0.062 | 0.422 | 0.109 |
+| `local_anchor_residual_query_querymask_centeraux` | 0.412 | 0.294 | 0.134 | 0.044 | 0.370 | 0.070 | 0.394 | 0.110 |
+
+Slice-level query-mask center diagnostics:
+
+| Variant | Center L2 | Offcenter L2 | Center PCK@0.25 | Offcenter PCK@0.25 |
+|---|---:|---:|---:|---:|
+| `local_anchor_residual_query_querymask` | 0.146 | 0.223 | 0.893 | 0.627 |
+| `local_anchor_residual_query_querymask_centeraux` | 0.139 | 0.238 | 0.911 | 0.596 |
+
+Paired against `local_anchor_residual_query`:
+
+- `querymask`: AP50 `+0.061`, `3/3` wins; class AP50 `+0.015`, `2/3` wins; final IoU only `+0.001`.
+- `querymask_centeraux`: AP50 `+0.049`, `3/3` wins; class AP50 `+0.017`, `2/3` wins; final IoU `-0.002`.
+
+Interpretation:
+
+- Query-conditioned masks have a real aggregate AP signal in this larger 1000-image protocol.
+- The center auxiliary does not improve the explicit query-mask center metric (`0.110` vs `0.109`) and does not improve detector AP over plain querymask.
+- Slice diagnostics make the failure sharper: centeraux slightly improves center-object query-mask center L2/PCK, but worsens offcenter L2/PCK.
+- Off-center AP remains weak and is not fixed by soft-center binding. The blocker is likely not just the query-mask center location, but object-specific query/proposal binding and ranking under off-center ambiguity.
+- Keep `querymask` as an active coupling probe. Treat `querymask_centeraux` as a weak/negative control unless a future off-center-specific training protocol changes the result.

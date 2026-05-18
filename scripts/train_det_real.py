@@ -47,6 +47,8 @@ from train_det_toy import (  # noqa: E402
     precision_recall_ap,
     query_mask_aux_loss,
     query_mask_aux_metrics,
+    query_mask_center_aux_loss,
+    soft_mask_centers_from_logits,
     summarize_stratified_iou,
     update_stratified_iou_lists,
 )
@@ -99,6 +101,22 @@ REAL_MODEL_CONFIGS = {
         "anchor_residual",
         "query_mask",
         "query",
+        0.01,
+        "none",
+    ),
+    "local_anchor_residual_query_querymask_centeraux": (
+        "local",
+        "anchor_residual",
+        "query_mask",
+        "query_center",
+        0.01,
+        "none",
+    ),
+    "local_anchor_residual_query_querymask_centeraux_quality_head": (
+        "local",
+        "anchor_residual",
+        "query_mask",
+        "query_center",
         0.01,
         "none",
     ),
@@ -318,6 +336,7 @@ QUALITY_HEAD_MODELS = {
     "local_grid_residual_query_quality_head",
     "local_edge_grid_residual_query_quality_head",
     "local_anchor_residual_query_querymask_quality_head",
+    "local_anchor_residual_query_querymask_centeraux_quality_head",
     "local_mask_proposal_nms_query_quality_head",
     "local_mask_proposal_nms_query_reinject_quality_head",
     "local_mask_proposal_nms_query_reinject_g003_quality_head",
@@ -463,6 +482,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--mask-aux-weight", type=float, default=0.5)
     parser.add_argument("--mask-dice-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--query-center-aux-weight",
+        type=float,
+        default=0.25,
+        help="Weight for matched query-mask soft-center binding when using query_center mask aux mode.",
+    )
     parser.add_argument("--score-iou-weight", type=float, default=0.5)
     parser.add_argument("--quality-cls-weight", type=float, default=1.0)
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
@@ -677,6 +702,7 @@ def train_one_model(
         loss_score_iou = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_cls = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_head = outputs["pred_logits"].new_tensor(0.0)
+        loss_query_center_aux = outputs["pred_logits"].new_tensor(0.0)
         quality_head_scale = quality_head_loss_scale(
             step=step,
             start_step=args.quality_head_start_step,
@@ -699,7 +725,7 @@ def train_one_model(
             )
             losses["loss_quality_cls"] = loss_quality_cls
             losses["loss"] = losses["loss"] + args.quality_cls_weight * loss_quality_cls
-        if mask_aux_mode == "query":
+        if mask_aux_mode in {"query", "query_center"}:
             mask_losses = query_mask_aux_loss(
                 outputs=outputs,
                 targets=targets,
@@ -707,6 +733,15 @@ def train_one_model(
                 dice_weight=args.mask_dice_weight,
             )
             losses["loss"] = losses["loss"] + args.mask_aux_weight * mask_losses["loss_mask_aux"]
+            if mask_aux_mode == "query_center":
+                center_losses = query_mask_center_aux_loss(
+                    outputs=outputs,
+                    targets=targets,
+                    criterion=criterion,
+                )
+                loss_query_center_aux = center_losses["loss_query_center_aux"]
+                losses["loss_query_center_aux"] = loss_query_center_aux
+                losses["loss"] = losses["loss"] + args.query_center_aux_weight * loss_query_center_aux
         elif mask_aux_mode != "none":
             mask_losses = dense_mask_aux_loss(
                 outputs=outputs,
@@ -764,6 +799,7 @@ def train_one_model(
                 "loss_score_iou": float(loss_score_iou.detach().item()),
                 "loss_quality_cls": float(loss_quality_cls.detach().item()),
                 "loss_quality_head": float(loss_quality_head.detach().item()),
+                "loss_query_center_aux": float(loss_query_center_aux.detach().item()),
                 "quality_head_scale": quality_head_scale,
                 "eval_iou": metrics["iou"],
                 "eval_recall50": metrics["recall50"],
@@ -824,6 +860,13 @@ def train_one_model(
                 "eval_ap50_class_q_best_oracle_closure": metrics["ap50_class_q_best_oracle_closure"],
                 "eval_mask_iou": metrics["mask_iou"],
                 "eval_mask_dice": metrics["mask_dice"],
+                "eval_query_mask_center_l1": metrics["query_mask_center_l1"],
+                "eval_query_mask_center_l2": metrics["query_mask_center_l2"],
+                "eval_query_mask_center_pck025": metrics["query_mask_center_pck025"],
+                "eval_center_query_mask_center_l2": metrics["center_query_mask_center_l2"],
+                "eval_offcenter_query_mask_center_l2": metrics["offcenter_query_mask_center_l2"],
+                "eval_center_query_mask_center_pck025": metrics["center_query_mask_center_pck025"],
+                "eval_offcenter_query_mask_center_pck025": metrics["offcenter_query_mask_center_pck025"],
                 "eval_small_iou": metrics["small_iou"],
                 "eval_medium_iou": metrics["medium_iou"],
                 "eval_large_iou": metrics["large_iou"],
@@ -1171,6 +1214,15 @@ def evaluate_real(
     }
     mask_ious = []
     mask_dices = []
+    query_mask_center_l1s = []
+    query_mask_center_metric_lists: dict[str, list[Tensor]] = {
+        "query_mask_center_l2": [],
+        "query_mask_center_pck025": [],
+        "center_query_mask_center_l2": [],
+        "offcenter_query_mask_center_l2": [],
+        "center_query_mask_center_pck025": [],
+        "offcenter_query_mask_center_pck025": [],
+    }
     strata: dict[str, list[Tensor]] = {
         "small": [],
         "medium": [],
@@ -1188,6 +1240,10 @@ def evaluate_real(
             mask_metrics = query_mask_aux_metrics(outputs, targets, criterion)
             mask_ious.append(mask_metrics["mask_iou"].cpu())
             mask_dices.append(mask_metrics["mask_dice"].cpu())
+            query_mask_center_l1s.append(mask_metrics["query_mask_center_l1"].cpu())
+            center_metrics = query_mask_center_slice_metrics(outputs, targets, criterion)
+            for key, value in center_metrics.items():
+                query_mask_center_metric_lists[key].append(value.cpu())
         elif "query_mask_logits" in outputs:
             mask_metrics = dense_mask_aux_metrics(outputs, targets, mask_head=None)
             mask_ious.append(mask_metrics["mask_iou"].cpu())
@@ -1502,6 +1558,13 @@ def evaluate_real(
     else:
         mask_iou = 0.0
         mask_dice = 0.0
+    query_mask_center_l1 = (
+        float(torch.stack(query_mask_center_l1s).mean().item()) if query_mask_center_l1s else 0.0
+    )
+    query_mask_center_metrics = {
+        key: float(torch.stack(values).mean().item()) if values else 0.0
+        for key, values in query_mask_center_metric_lists.items()
+    }
     ap50 = float(torch.stack(aps).mean().item()) if aps else 0.0
     ap50_class = float(torch.stack(aps_class).mean().item()) if aps_class else 0.0
     ap75 = float(torch.stack(aps75).mean().item()) if aps75 else 0.0
@@ -1626,8 +1689,51 @@ def evaluate_real(
         "query_assignment_entropy": assignment_entropy(query_assignment_counts),
         "mask_iou": mask_iou,
         "mask_dice": mask_dice,
+        "query_mask_center_l1": query_mask_center_l1,
+        **query_mask_center_metrics,
         **summarize_stratified_iou(strata),
     }
+
+
+@torch.no_grad()
+def query_mask_center_slice_metrics(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+    pck_threshold: float = 0.25,
+) -> dict[str, Tensor]:
+    """Report matched query-mask center errors overall and by center/offcenter target slice."""
+
+    logits = outputs["query_mask_logits_per_query"]
+    matches = criterion.matcher(outputs, targets)
+    all_errors = []
+    slice_errors: dict[str, list[Tensor]] = {"center": [], "offcenter": []}
+    for batch_idx, (src_idx, target_idx) in enumerate(matches):
+        if src_idx.numel() == 0:
+            continue
+        pred_centers = soft_mask_centers_from_logits(logits[batch_idx, src_idx])
+        target_boxes = targets[batch_idx]["boxes"][target_idx].to(logits.device)
+        errors = (pred_centers - target_boxes[:, :2]).norm(dim=1)
+        all_errors.append(errors)
+        masks = box_slice_masks(target_boxes)
+        for name in ("center", "offcenter"):
+            if masks[name].any():
+                slice_errors[name].append(errors[masks[name]])
+    zero = logits.new_tensor(0.0)
+    all_error_values = torch.cat(all_errors) if all_errors else logits.new_zeros(0)
+    metrics = {
+        "query_mask_center_l2": all_error_values.mean() if all_error_values.numel() else zero,
+        "query_mask_center_pck025": (
+            (all_error_values <= pck_threshold).float().mean() if all_error_values.numel() else zero
+        ),
+    }
+    for name in ("center", "offcenter"):
+        values = torch.cat(slice_errors[name]) if slice_errors[name] else logits.new_zeros(0)
+        metrics[f"{name}_query_mask_center_l2"] = values.mean() if values.numel() else zero
+        metrics[f"{name}_query_mask_center_pck025"] = (
+            (values <= pck_threshold).float().mean() if values.numel() else zero
+        )
+    return metrics
 
 
 def quality_score_multipliers(quality_logits: Tensor | None) -> dict[float, Tensor | None]:
@@ -2336,6 +2442,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "loss_score_iou",
         "loss_quality_cls",
         "loss_quality_head",
+        "loss_query_center_aux",
         "quality_head_scale",
         "eval_iou",
         "eval_recall50",
@@ -2392,6 +2499,13 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "eval_ap50_class_q_best_oracle_closure",
         "eval_mask_iou",
         "eval_mask_dice",
+        "eval_query_mask_center_l1",
+        "eval_query_mask_center_l2",
+        "eval_query_mask_center_pck025",
+        "eval_center_query_mask_center_l2",
+        "eval_offcenter_query_mask_center_l2",
+        "eval_center_query_mask_center_pck025",
+        "eval_offcenter_query_mask_center_pck025",
         "eval_small_iou",
         "eval_medium_iou",
         "eval_large_iou",

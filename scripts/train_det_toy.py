@@ -670,6 +670,27 @@ def query_mask_aux_loss(
     }
 
 
+def query_mask_center_aux_loss(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+) -> dict[str, Tensor]:
+    """Bind each matched query-specific mask distribution to its matched box center."""
+
+    logits = outputs["query_mask_logits_per_query"]
+    matched_logits, matched_centers = matched_query_mask_center_tensors(outputs, targets, criterion)
+    if matched_logits.numel() == 0:
+        zero = logits.sum() * 0.0
+        return {"loss_query_center_aux": zero, "query_mask_center_l1": zero}
+    pred_centers = soft_mask_centers_from_logits(matched_logits)
+    loss_center = F.smooth_l1_loss(pred_centers, matched_centers)
+    center_l1 = (pred_centers - matched_centers).abs().mean()
+    return {
+        "loss_query_center_aux": loss_center,
+        "query_mask_center_l1": center_l1,
+    }
+
+
 @torch.no_grad()
 def dense_mask_aux_metrics(
     outputs: dict[str, Tensor | list[Tensor]],
@@ -711,7 +732,7 @@ def query_mask_aux_metrics(
     matched_logits, matched_targets = matched_query_mask_tensors(outputs, targets, criterion)
     if matched_logits.numel() == 0:
         zero = logits.new_tensor(0.0)
-        return {"mask_iou": zero, "mask_dice": zero}
+        return {"mask_iou": zero, "mask_dice": zero, "query_mask_center_l1": zero}
     pred = matched_logits.sigmoid() >= threshold
     target_bool = matched_targets >= 0.5
     intersection = (pred & target_bool).float().flatten(1).sum(dim=1)
@@ -719,9 +740,13 @@ def query_mask_aux_metrics(
     pred_sum = pred.float().flatten(1).sum(dim=1)
     target_sum = target_bool.float().flatten(1).sum(dim=1)
     dice = (2 * intersection / (pred_sum + target_sum).clamp_min(1e-8)).mean()
+    _, matched_centers = matched_query_mask_center_tensors(outputs, targets, criterion)
+    pred_centers = soft_mask_centers_from_logits(matched_logits)
+    center_l1 = (pred_centers - matched_centers).abs().mean()
     return {
         "mask_iou": (intersection / union).mean(),
         "mask_dice": dice,
+        "query_mask_center_l1": center_l1,
     }
 
 
@@ -757,6 +782,47 @@ def matched_query_mask_tensors(
         empty_logits = logits.new_zeros((0, height, width))
         return empty_logits, empty_logits
     return torch.cat(matched_logits, dim=0), torch.cat(matched_masks, dim=0)
+
+
+def matched_query_mask_center_tensors(
+    outputs: dict[str, Tensor | list[Tensor]],
+    targets: list[dict[str, Tensor]],
+    criterion: DetectionCriterion,
+) -> tuple[Tensor, Tensor]:
+    """Return matched per-query mask logits and matched normalized box centers."""
+
+    logits = outputs["query_mask_logits_per_query"]
+    matches = criterion.matcher(outputs, targets)
+    matched_logits = []
+    matched_centers = []
+    height, width = logits.shape[-2:]
+    for batch_idx, (src_idx, target_idx) in enumerate(matches):
+        if src_idx.numel() == 0:
+            continue
+        matched_logits.append(logits[batch_idx, src_idx])
+        matched_centers.append(targets[batch_idx]["boxes"][target_idx, :2].to(logits.device))
+    if not matched_logits:
+        empty_logits = logits.new_zeros((0, height, width))
+        empty_centers = logits.new_zeros((0, 2))
+        return empty_logits, empty_centers
+    return torch.cat(matched_logits, dim=0), torch.cat(matched_centers, dim=0)
+
+
+def soft_mask_centers_from_logits(mask_logits: Tensor) -> Tensor:
+    """Convert per-query mask logits into normalized softargmax centers."""
+
+    if mask_logits.ndim != 3:
+        raise ValueError("mask_logits must have shape [N, H, W]")
+    num_masks, height, width = mask_logits.shape
+    if num_masks == 0:
+        return mask_logits.new_zeros((0, 2))
+    probs = mask_logits.flatten(1).softmax(dim=1)
+    ys = (torch.arange(height, device=mask_logits.device, dtype=mask_logits.dtype) + 0.5) / float(height)
+    xs = (torch.arange(width, device=mask_logits.device, dtype=mask_logits.dtype) + 0.5) / float(width)
+    grid_y, grid_x = torch.meshgrid(ys, xs, indexing="ij")
+    centers_x = (probs * grid_x.flatten()).sum(dim=1)
+    centers_y = (probs * grid_y.flatten()).sum(dim=1)
+    return torch.stack((centers_x, centers_y), dim=1)
 
 
 def dense_mask_logits(

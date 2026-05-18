@@ -2037,3 +2037,43 @@ Interpretation:
 - The 500-image run keeps the calibration/ECE benefit for `local_learned`, but the AP benefit is weaker and depends on using the quality-weighted score. The unmodified class/objectness AP is lower after the quality-only phase.
 - Compared with the 500-image residual-anchor quality route, learned-query quality is less strong on fixed AP50 (`0.360` vs `0.384`) and final IoU (`0.392` vs `0.407`).
 - Updated detector-side hierarchy: quality ranking is a broadly useful scoring layer, but the best current 500-image recipe remains residual-anchor base plus two-stage quality ranking.
+
+## Query-Specific Center Binding Control
+
+The next off-center/binding control adds a matched-query center auxiliary loss to query-conditioned masks. It is intended to test whether the off-center failure comes from query masks drifting away from matched GT centers.
+
+Artifact:
+
+- `results/det_real_query_center_aux_1000img_500step_3seed.csv`
+- `results/det_real_query_center_aux_slice_metrics_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_querymask`, `local_anchor_residual_query_querymask_centeraux`.
+
+| Variant | Final IoU | AP50 | Class AP50 | AP75 | Center AP50 | Offcenter AP50 | Mask IoU | Query-mask center L1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.414 | 0.246 | 0.116 | 0.045 | 0.298 | 0.071 | 0.000 | 0.000 |
+| `local_anchor_residual_query_querymask` | 0.415 | 0.307 | 0.132 | 0.045 | 0.380 | 0.062 | 0.422 | 0.109 |
+| `local_anchor_residual_query_querymask_centeraux` | 0.412 | 0.294 | 0.134 | 0.044 | 0.370 | 0.070 | 0.394 | 0.110 |
+
+Slice-level query-mask center diagnostics:
+
+| Variant | Center L2 | Offcenter L2 | Center PCK@0.25 | Offcenter PCK@0.25 |
+|---|---:|---:|---:|---:|
+| `local_anchor_residual_query_querymask` | 0.146 | 0.223 | 0.893 | 0.627 |
+| `local_anchor_residual_query_querymask_centeraux` | 0.139 | 0.238 | 0.911 | 0.596 |
+
+Paired against `local_anchor_residual_query`:
+
+- `querymask`: AP50 `+0.061`, `3/3` wins; class AP50 `+0.015`, `2/3` wins.
+- `querymask_centeraux`: AP50 `+0.049`, `3/3` wins; class AP50 `+0.017`, `2/3` wins.
+
+Interpretation:
+
+- Query-conditioned masks now show a stronger aggregate AP signal than the earlier 300-step/2-seed mini run.
+- The center auxiliary does not produce the intended mechanical gain: query-mask center L1 is essentially unchanged (`0.110` vs `0.109`).
+- Centeraux slightly improves center-object query-mask localization but worsens offcenter query-mask localization (`offcenter L2 0.238` vs `0.223`, PCK `0.596` vs `0.627`).
+- Plain querymask remains better on AP50, center AP50, mask IoU, center metric, and speed.
+- Current conclusion: query-specific dense coupling is useful, but soft-center binding is too weak or too indirect to solve off-center failures. The active route should keep querymask as a coupling probe and look next at object-specific assignment/ranking or off-center representation, not at stronger center penalties.
