@@ -1199,3 +1199,34 @@ Interpretation:
 - Slice diagnostics make the failure sharper: centeraux slightly improves center-object query-mask center L2/PCK, but worsens offcenter L2/PCK.
 - Off-center AP remains weak and is not fixed by soft-center binding. The blocker is likely not just the query-mask center location, but object-specific query/proposal binding and ranking under off-center ambiguity.
 - Keep `querymask` as an active coupling probe. Treat `querymask_centeraux` as a weak/negative control unless a future off-center-specific training protocol changes the result.
+
+## Offcenter-Only Training Slice Control
+
+This check asks whether the off-center failure is mainly caused by insufficient off-center training coverage. It adds `--train-slice-filter`, which restricts only the training split and leaves held-out eval unchanged.
+
+Implementation:
+
+- Added CLI flag `--train-slice-filter {none,small,medium,large,center,offcenter}` to `scripts/train_det_real.py`.
+- Added split-level unit coverage for offcenter-only train filtering.
+
+Artifact:
+
+- `results/det_real_train_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--train-slice-filter offcenter`.
+- Compared `local_anchor_residual_query` and `local_anchor_residual_query_querymask`.
+
+| Variant | Final IoU | AP50 | Class AP50 | Center AP50 | Offcenter AP50 | Mask IoU | Offcenter query-mask center L2 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.368 | 0.139 | 0.055 | 0.145 | 0.108 | 0.000 | 0.000 |
+| `local_anchor_residual_query_querymask` | 0.404 | 0.210 | 0.090 | 0.237 | 0.117 | 0.371 | 0.188 |
+
+Interpretation:
+
+- Offcenter-only training improves offcenter AP versus the all-train querymask run (`0.117` vs `0.062`) and improves the querymask offcenter center L2 (`0.188` vs `0.223`).
+- It substantially hurts aggregate AP versus all-train querymask (`0.210` vs `0.307`) and center AP (`0.237` vs `0.380`).
+- The offcenter weakness is partly representation/data-coverage related, but pure offcenter-only training is not a deployable fix.
+- Next active control should be balanced or oversampled offcenter training, not a new scoring alpha or persistent proposal state.

@@ -2077,3 +2077,28 @@ Interpretation:
 - Centeraux slightly improves center-object query-mask localization but worsens offcenter query-mask localization (`offcenter L2 0.238` vs `0.223`, PCK `0.596` vs `0.627`).
 - Plain querymask remains better on AP50, center AP50, mask IoU, center metric, and speed.
 - Current conclusion: query-specific dense coupling is useful, but soft-center binding is too weak or too indirect to solve off-center failures. The active route should keep querymask as a coupling probe and look next at object-specific assignment/ranking or off-center representation, not at stronger center penalties.
+
+## Offcenter-Only Training Slice Control
+
+After query center binding did not fix offcenter AP, the next control tests whether the failure is partly a training-distribution / representation coverage issue. `--train-slice-filter offcenter` restricts only the training split to images containing offcenter objects; eval remains the normal held-out split.
+
+Artifact:
+
+- `results/det_real_train_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_querymask`.
+
+| Variant | Final IoU | AP50 | Class AP50 | Center AP50 | Offcenter AP50 | Mask IoU | Offcenter query-mask center L2 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.368 | 0.139 | 0.055 | 0.145 | 0.108 | 0.000 | 0.000 |
+| `local_anchor_residual_query_querymask` | 0.404 | 0.210 | 0.090 | 0.237 | 0.117 | 0.371 | 0.188 |
+
+Interpretation:
+
+- Offcenter-only training increases offcenter AP relative to the all-train querymask run (`0.117` vs `0.062`) and improves offcenter query-mask center L2 (`0.188` vs `0.223`).
+- It also sharply hurts aggregate AP (`0.210` vs `0.307`) and center AP (`0.237` vs `0.380`).
+- This supports a narrower conclusion: offcenter failures are partly representation/data-distribution related, but offcenter-only training simply trades away the normal distribution.
+- The next useful protocol is balanced or oversampled offcenter training, not stronger center penalties or more quality-score tuning.

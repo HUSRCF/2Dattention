@@ -240,6 +240,44 @@ def test_real_det_build_splits_can_filter_calibration_by_slice() -> None:
     assert all(image_id.startswith("offcenter_") for image_id in calibration_ids)
 
 
+def test_real_det_build_splits_can_filter_train_by_slice() -> None:
+    samples = []
+    for idx in range(10):
+        if idx % 2 == 0:
+            box = RealBox("class_a", 25, 25, 75, 75)
+            image_id = f"center_{idx}"
+        else:
+            box = RealBox("class_a", 80, 80, 90, 90)
+            image_id = f"offcenter_{idx}"
+        samples.append(
+            RealDetSample(
+                image_id=image_id,
+                image_path=Path(f"{image_id}.JPEG"),
+                width=100,
+                height=100,
+                boxes=(box,),
+            )
+        )
+
+    train_set, calibration_set, eval_set, split_rows = build_splits(
+        samples=samples,
+        label_to_id={"class_a": 0},
+        image_size=64,
+        max_objects=1,
+        train_frac=0.8,
+        calibration_frac=0.0,
+        train_slice_filter="offcenter",
+        seed=0,
+    )
+
+    assert len(train_set) > 0
+    assert calibration_set is None
+    assert len(eval_set) > 0
+    train_ids = [str(row["image_id"]) for row in split_rows if row["split"] == "train"]
+    assert train_ids
+    assert all(image_id.startswith("offcenter_") for image_id in train_ids)
+
+
 def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> None:
     pred_logits = torch.tensor(
         [

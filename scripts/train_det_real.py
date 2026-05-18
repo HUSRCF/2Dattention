@@ -466,6 +466,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--train-slice-filter",
+        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        default="none",
+        help=(
+            "Optionally restrict the training split to images containing this robustness slice. "
+            "Calibration and eval splits are unchanged."
+        ),
+    )
+    parser.add_argument(
         "--eval-slice-filter",
         choices=("none", "small", "medium", "large", "center", "offcenter"),
         default="none",
@@ -571,6 +580,7 @@ def main() -> None:
     print("label_map_source:", args.label_map_source)
     print("calibration_source:", args.calibration_source)
     print("calibration_slice_filter:", args.calibration_slice_filter)
+    print("train_slice_filter:", args.train_slice_filter)
     print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
@@ -594,6 +604,7 @@ def main() -> None:
             calibration_frac=args.calibration_frac,
             calibration_source=args.calibration_source,
             calibration_slice_filter=args.calibration_slice_filter,
+            train_slice_filter=args.train_slice_filter,
             eval_slice_filter=args.eval_slice_filter,
             seed=run_seed,
         )
@@ -2303,6 +2314,7 @@ def build_splits(
     calibration_frac: float,
     calibration_source: str = "heldout",
     calibration_slice_filter: str = "none",
+    train_slice_filter: str = "none",
     eval_slice_filter: str = "none",
     seed: int = 0,
 ) -> tuple[Subset, Subset | None, Subset, list[dict[str, int | str]]]:
@@ -2310,6 +2322,8 @@ def build_splits(
         raise ValueError("calibration_source must be 'heldout' or 'train'")
     if calibration_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
         raise ValueError("unknown calibration slice filter")
+    if train_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
+        raise ValueError("unknown train slice filter")
     if eval_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
         raise ValueError("unknown eval slice filter")
     dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
@@ -2357,6 +2371,14 @@ def build_splits(
             calibration_indices = calibration_candidates[-calibration_size:]
         calibration_index_set = set(calibration_indices)
         train_indices = [idx for idx in train_indices if idx not in calibration_index_set]
+    if train_slice_filter != "none":
+        train_indices = [
+            idx
+            for idx in train_indices
+            if sample_matches_slice(samples[idx], max_objects=max_objects, slice_name=train_slice_filter)
+        ]
+        if not train_indices:
+            raise ValueError(f"train slice filter produced an empty train split: {train_slice_filter}")
     if eval_slice_filter != "none":
         eval_indices = [
             idx
