@@ -1431,3 +1431,11 @@ Interpretation:
 - Querymask gives a small offcenter ranking gain under the stronger protocol, but it is much weaker than the plain residual quality route (`+0.009` vs `+0.035` AP50).
 - It also lowers geometry despite learning masks (`mask IoU 0.328`).
 - Keep querymask as a dense-coupling probe, not as the current offcenter mainline. The active detector protocol remains residual-anchor + `no_object_weight=0.3` + AP50 checkpoint restore for quality-stage runs.
+
+Stronger-background offcenter slice-calibration control:
+
+- `results/det_real_no_object_w03_quality_restore_ap50_offcenter_calib_1000img_500step_3seed.csv`
+- Protocol: same stronger offcenter stress as above, but alpha calibration is restricted with `--calibration-slice-filter offcenter`.
+- Result vs base: final IoU `-0.008` (`1/3` wins), AP50 `-0.001` (`1/3`), class AP50 `+0.008` (`2/3`), q-fixed AP50 `+0.002` (`2/3`), AP75 `-0.013`, q-fixed AP75 `-0.007`, and q-best AP50 `+0.007` (`2/3`).
+- Interpretation: offcenter-only calibration does not recover the offcenter ranking failure. It slightly helps class-aware/q-best ranking but hurts geometry and AP75, and it removes offcenter samples from the detector training split. Do not use this as the default protocol.
+- Active decision: keep calibration protocol simple under the stronger detector setting. The next useful work should target candidate generation/query binding for offcenter objects, not slice-only alpha calibration, persistent proposal-state rescue, or more alpha/temperature sweeps.

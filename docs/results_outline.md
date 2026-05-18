@@ -2288,3 +2288,41 @@ Interpretation:
 - Querymask gives a small offcenter ranking improvement under the stronger protocol, but it is not the main fix.
 - Compared with the plain residual quality-head run on the same stronger offcenter stress, querymask is weaker (`0.145` AP50 vs `0.171`) and hurts localization.
 - This keeps query-conditioned masks as a useful coupling probe, but the active offcenter detector route is still residual-anchor with stronger background and AP50-based quality-stage restore.
+
+### Stronger Offcenter Slice-Calibration Control
+
+This check asks whether alpha selection should be calibrated only on offcenter images under the stronger-background detector protocol. It uses the same offcenter-only eval split, but adds `--calibration-slice-filter offcenter`.
+
+Artifact:
+
+- `results/det_real_no_object_w03_quality_restore_ap50_offcenter_calib_1000img_500step_3seed.csv`
+
+Protocol:
+
+- `--no-object-weight 0.3`.
+- `--eval-slice-filter offcenter`.
+- `--calibration-source train --calibration-frac 0.25 --calibration-slice-filter offcenter`.
+- Quality route: `--quality-head-start-step 401 --quality-head-only-after-start --restore-best-before-quality-head --restore-best-metric ap50`.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_quality_head`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | q-best AP50 | top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.326 | 0.144 | 0.063 | 0.144 | 0.021 | 0.021 | 0.144 | 0.816 |
+| `local_anchor_residual_query_quality_head` | 0.317 | 0.143 | 0.071 | 0.146 | 0.008 | 0.014 | 0.151 | 0.825 |
+
+Paired deltas:
+
+- Final IoU: `-0.008`, `1/3` wins.
+- AP50: `-0.001`, `1/3` wins.
+- Class AP50: `+0.008`, `2/3` wins.
+- q-fixed AP50: `+0.002`, `2/3` wins.
+- AP75: `-0.013`, `0/3` wins.
+- q-fixed AP75: `-0.007`, `1/3` wins.
+- q-best AP50: `+0.007`, `2/3` wins.
+
+Interpretation:
+
+- Offcenter-only calibration does not solve the offcenter robustness problem.
+- It gives a small class-aware/q-best ranking signal, but this comes with worse geometry and AP75.
+- The protocol also carves offcenter examples out of the detector training set, which is undesirable for a slice that already suffers from poor coverage.
+- Do not continue slice-only alpha/temperature tuning. The remaining blocker is still offcenter candidate generation/query binding, not aggregate score calibration.
