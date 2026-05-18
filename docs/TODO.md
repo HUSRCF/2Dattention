@@ -1364,3 +1364,39 @@ Interpretation:
 - No-restore and best-AP50 restore both preserve the stronger detector ranking and give small quality-weighted gains over the base AP50 (`0.398` and `0.389` q-fixed AP50 vs base `0.361`).
 - The quality gain is now much smaller than in the old `no_object_weight=0.1` route because stronger background supervision already fixes much of the ranking problem.
 - Future stronger-background quality runs should not use best-IoU restore. Use no-restore or `--restore-best-metric ap50`; keep `best_iou` only as a localization diagnostic.
+
+## Stronger Background Offcenter Stress
+
+This reruns the core offcenter stress with stronger background supervision and AP50-based quality restore.
+
+Artifact:
+
+- `results/det_real_no_object_w03_quality_restore_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--no-object-weight 0.3`.
+- `--eval-slice-filter offcenter`.
+- Quality route uses `--restore-best-before-quality-head --restore-best-metric ap50`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | Offcenter AP50 | Offcenter q-fixed AP50 | top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.325 | 0.136 | 0.061 | 0.136 | 0.009 | 0.009 | 0.054 | 0.054 | 0.830 |
+| `local_anchor_residual_query_quality_head` | 0.337 | 0.171 | 0.080 | 0.168 | 0.013 | 0.014 | 0.095 | 0.053 | 0.802 |
+
+Paired result vs base:
+
+- Final IoU `+0.012`, `3/3` wins.
+- AP50 `+0.035`, `3/3` wins.
+- Class AP50 `+0.019`, `3/3` wins.
+- q-fixed AP50 `+0.032`, `3/3` wins.
+- AP75 / q-fixed AP75 both `+0.004`, `3/3` wins.
+- Offcenter AP50 improves (`0.054 -> 0.095`), but offcenter q-fixed AP50 is essentially unchanged (`0.054 -> 0.053`).
+
+Interpretation:
+
+- Stronger background plus AP50 checkpoint restore gives the first clean positive offcenter-stress result for the quality route.
+- The gain is partly checkpoint/restoration and base-score ranking, not purely fixed-quality scoring: q-fixed offcenter AP does not improve.
+- This revises the offcenter conclusion: offcenter is still the hard slice, but it is not hopeless; no-object/background weight and checkpoint selection matter more than alpha sweeps, edge-grid seeding, or center penalties.
+- Next useful work should keep `no_object_weight=0.3` and `restore-best-metric ap50` as the detector-side protocol, then test whether the remaining offcenter q-fixed weakness is due to quality calibration or candidate generation.

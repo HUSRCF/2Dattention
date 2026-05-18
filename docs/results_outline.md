@@ -2221,3 +2221,37 @@ Interpretation:
 - No-restore and AP50-restore both preserve the stronger detector AP better than IoU-restore.
 - Quality scoring still adds a small ranking gain under stronger background (`q-fixed AP50` up to `0.398`), but the gain is much smaller than in the older weaker-background runs because the base detector AP is already much higher.
 - Current detector-side default should be: stronger background for the base detector, and if a quality-only stage is used, avoid best-IoU restore. Use no-restore or `--restore-best-metric ap50` depending on whether ranking or localization checkpointing is the target.
+
+## Stronger Background Offcenter Stress
+
+This run revisits the main robustness blocker after adding stronger background supervision and AP50-based detector restore.
+
+Artifact:
+
+- `results/det_real_no_object_w03_quality_restore_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--no-object-weight 0.3`.
+- `--eval-slice-filter offcenter`.
+- Quality route: `--quality-head-start-step 401 --quality-head-only-after-start --restore-best-before-quality-head --restore-best-metric ap50`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | Offcenter AP50 | Offcenter q-fixed AP50 | top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.325 | 0.136 | 0.061 | 0.136 | 0.009 | 0.009 | 0.054 | 0.054 | 0.830 |
+| `local_anchor_residual_query_quality_head` | 0.337 | 0.171 | 0.080 | 0.168 | 0.013 | 0.014 | 0.095 | 0.053 | 0.802 |
+
+Paired deltas:
+
+- Final IoU: `+0.012`, `3/3` wins.
+- AP50: `+0.035`, `3/3` wins.
+- Class AP50: `+0.019`, `3/3` wins.
+- q-fixed AP50: `+0.032`, `3/3` wins.
+- AP75 and q-fixed AP75: `+0.004`, `3/3` wins.
+
+Interpretation:
+
+- Offcenter is still the weak slice, but it improves under the stronger protocol. This corrects the previous conclusion that quality-style ranking was simply ineffective on offcenter.
+- The offcenter AP gain comes mostly from stronger background plus AP50 checkpoint restore; fixed-quality offcenter AP does not improve (`0.054 -> 0.053`), so quality calibration itself is still not solving offcenter object ranking.
+- The remaining blocker is narrower: after stronger background, q-fixed scoring still cannot reliably select offcenter objects. Next work should focus on offcenter candidate generation or slice-aware quality calibration under this stronger protocol, not on alpha sweeps or persistent proposal state.
