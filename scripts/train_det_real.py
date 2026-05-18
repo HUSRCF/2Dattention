@@ -521,6 +521,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--quality-cls-weight", type=float, default=1.0)
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--quality-head-slice",
+        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        default="none",
+        help="Optionally upweight matched query-quality targets belonging to a robustness slice.",
+    )
+    parser.add_argument(
+        "--quality-head-slice-weight",
+        type=float,
+        default=1.0,
+        help="Positive weight multiplier for --quality-head-slice matched targets.",
+    )
     parser.add_argument("--quality-head-start-step", type=int, default=1)
     parser.add_argument("--quality-head-warmup-steps", type=int, default=0)
     parser.add_argument(
@@ -583,6 +595,8 @@ def main() -> None:
         raise ValueError("--quality-score-temperature must be > 0")
     if args.no_object_weight <= 0:
         raise ValueError("--no-object-weight must be > 0")
+    if args.quality_head_slice_weight <= 0:
+        raise ValueError("--quality-head-slice-weight must be > 0")
     if not 0.0 <= args.calibration_frac < 1.0:
         raise ValueError("--calibration-frac must be in [0, 1)")
     if args.train_slice_oversample_factor <= 0:
@@ -615,6 +629,8 @@ def main() -> None:
     print("train_slice_oversample:", args.train_slice_oversample)
     print("train_slice_oversample_factor:", args.train_slice_oversample_factor)
     print("no_object_weight:", args.no_object_weight)
+    print("quality_head_slice:", args.quality_head_slice)
+    print("quality_head_slice_weight:", args.quality_head_slice_weight)
     print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
@@ -767,7 +783,13 @@ def train_one_model(
             losses["loss_score_iou"] = loss_score_iou
             losses["loss"] = losses["loss"] + args.score_iou_weight * loss_score_iou
         if model_name in QUALITY_HEAD_MODELS:
-            loss_quality_head = query_quality_head_loss(outputs, targets, criterion)
+            loss_quality_head = query_quality_head_loss(
+                outputs,
+                targets,
+                criterion,
+                slice_name=args.quality_head_slice,
+                slice_weight=args.quality_head_slice_weight,
+            )
             losses["loss_quality_head"] = loss_quality_head
             scaled_quality_loss = args.quality_head_weight * quality_head_scale * loss_quality_head
             losses["loss"] = scaled_quality_loss if quality_only_enabled else losses["loss"] + scaled_quality_loss
@@ -1100,12 +1122,15 @@ def query_quality_head_loss(
     outputs: dict[str, Tensor | list[Tensor]],
     targets: list[dict[str, Tensor]],
     criterion: DetectionCriterion,
+    slice_name: str = "none",
+    slice_weight: float = 1.0,
 ) -> Tensor:
     """Train an independent query-quality head with matched IoU targets."""
 
     pred_quality_logits = outputs["pred_quality_logits"]
     pred_boxes = outputs["pred_boxes"]
     quality_targets = torch.zeros_like(pred_quality_logits)
+    quality_weights = torch.ones_like(pred_quality_logits)
     matches = criterion.matcher(outputs, targets)
     for batch_idx, (src_idx, target_idx) in enumerate(matches):
         if src_idx.numel() == 0:
@@ -1117,7 +1142,11 @@ def query_quality_head_loss(
                 box_cxcywh_to_xyxy(target_boxes),
             ).diag().clamp(0.0, 1.0)
         quality_targets[batch_idx, src_idx] = matched_iou
-    return F.binary_cross_entropy_with_logits(pred_quality_logits, quality_targets)
+        if slice_name != "none" and slice_weight != 1.0:
+            slice_mask = box_slice_masks(target_boxes)[slice_name]
+            if slice_mask.numel():
+                quality_weights[batch_idx, src_idx[slice_mask]] = slice_weight
+    return F.binary_cross_entropy_with_logits(pred_quality_logits, quality_targets, weight=quality_weights)
 
 
 def quality_head_loss_scale(step: int, start_step: int, warmup_steps: int) -> float:

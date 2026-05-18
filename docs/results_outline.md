@@ -2429,3 +2429,41 @@ Interpretation:
 - Stronger background supervision helps the base detector generate or rank more offcenter candidates.
 - The frozen quality stage still suppresses offcenter candidates while improving aggregate/center ranking.
 - Next work should preserve the `0.5` base offcenter candidate benefit while changing quality/query binding. More alpha or temperature tuning is unlikely to address this.
+
+### Offcenter-Weighted Quality Head
+
+This check asks whether the frozen quality head suppresses offcenter candidates simply because offcenter matched quality targets are underweighted.
+
+Implementation:
+
+- Added `--quality-head-slice {small,medium,large,center,offcenter}`.
+- Added `--quality-head-slice-weight`.
+- The weight is applied only inside the independent query-quality BCE loss for matched targets in the selected slice. Default behavior is unchanged.
+
+Artifact:
+
+- `results/det_real_no_object_w05_quality_offcenter_weight3_restore_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Same `0.5` offcenter stress protocol as above.
+- Extra flags: `--quality-head-slice offcenter --quality-head-slice-weight 3.0`.
+
+| Variant | Final IoU | AP50 | q-fixed AP50 | q-best AP50 | Offcenter AP50 | Offcenter q-fixed AP50 | AP75 | q-fixed AP75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0.5` base | 0.336 | 0.142 | 0.142 | 0.142 | 0.101 | 0.101 | 0.013 | 0.013 |
+| `0.5` quality | 0.321 | 0.144 | 0.146 | 0.149 | 0.054 | 0.040 | 0.012 | 0.014 |
+| `0.5` quality, offcenter weight 3 | 0.321 | 0.144 | 0.147 | 0.149 | 0.054 | 0.047 | 0.012 | 0.014 |
+
+Top-k breakdown for quality models:
+
+| Variant | offcenter slice match | offcenter non-slice match | offcenter no-GT | offcenter combined center distance |
+|---|---:|---:|---:|---:|
+| `0.5` quality | 0.017 | 0.214 | 0.769 | 0.084 |
+| `0.5` quality, offcenter weight 3 | 0.028 | 0.204 | 0.767 | 0.096 |
+
+Interpretation:
+
+- Upweighting offcenter quality targets gives only a tiny slice-match/fixed-AP movement and does not recover the base detector's offcenter AP.
+- The problem is therefore not a simple positive-target weighting issue inside the quality BCE.
+- Stop this loss-weight branch. The remaining offcenter work should focus on preserving object-specific query binding from the base detector into the ranking stage.

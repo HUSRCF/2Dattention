@@ -683,6 +683,49 @@ def test_real_det_query_quality_head_loss_uses_quality_logits_only() -> None:
     assert pred_boxes.grad is None
 
 
+def test_real_det_query_quality_head_loss_can_upweight_target_slice() -> None:
+    pred_logits = torch.tensor(
+        [[[2.0, -2.0, -1.0], [-2.0, 2.0, -1.0]]],
+        requires_grad=True,
+    )
+    pred_boxes = torch.tensor(
+        [[[0.10, 0.10, 0.20, 0.20], [0.80, 0.80, 0.20, 0.20]]],
+        requires_grad=True,
+    )
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.10, 0.10, 0.20, 0.20]]),
+        }
+    ]
+    criterion = DetectionCriterion(num_classes=2)
+    plain_logits = torch.zeros(1, 2, requires_grad=True)
+    weighted_logits = torch.zeros(1, 2, requires_grad=True)
+
+    plain_loss = query_quality_head_loss(
+        {
+            "pred_logits": pred_logits,
+            "pred_boxes": pred_boxes,
+            "pred_quality_logits": plain_logits,
+        },
+        targets,
+        criterion,
+    )
+    weighted_loss = query_quality_head_loss(
+        {
+            "pred_logits": pred_logits,
+            "pred_boxes": pred_boxes,
+            "pred_quality_logits": weighted_logits,
+        },
+        targets,
+        criterion,
+        slice_name="offcenter",
+        slice_weight=3.0,
+    )
+
+    assert weighted_loss > plain_loss
+
+
 def test_real_det_quality_score_can_rescue_ap_ranking() -> None:
     target_boxes = torch.tensor([[0.50, 0.50, 0.40, 0.40]])
     pred_boxes = torch.tensor(
