@@ -2342,3 +2342,47 @@ This breakdown refines the failure mode:
 - The official top-k predictions still rarely bind to the offcenter GT.
 - Quality/querymask can lower no-GT rate slightly, but they also shift mass toward non-slice GT or center-near candidates.
 - The next control should test whether stronger background/no-object pressure reduces no-GT top-k candidates. If that fails, the main remaining path is query/object binding rather than scoring calibration.
+
+### No-Object Weight 0.5 Offcenter Stress
+
+This control increases the DETR background/no-object weight from `0.3` to `0.5` under the stronger offcenter stress protocol.
+
+Artifact:
+
+- `results/det_real_no_object_w05_quality_restore_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- `--no-object-weight 0.5`.
+- `--eval-slice-filter offcenter`.
+- Quality route: `--quality-head-start-step 401 --quality-head-only-after-start --restore-best-before-quality-head --restore-best-metric ap50`.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_quality_head`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | offcenter AP50 | offcenter q-fixed AP50 | top-k FP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.336 | 0.142 | 0.067 | 0.142 | 0.013 | 0.013 | 0.101 | 0.101 | 0.836 |
+| `local_anchor_residual_query_quality_head` | 0.321 | 0.144 | 0.065 | 0.146 | 0.012 | 0.014 | 0.054 | 0.040 | 0.819 |
+
+Paired deltas vs `0.5` base:
+
+- Final IoU: `-0.015`, `0/3` wins.
+- AP50: `+0.002`, `1/3` wins.
+- Class AP50: `-0.002`, `1/3` wins.
+- q-fixed AP50: `+0.004`, `1/3` wins.
+- AP75: `-0.001`; q-fixed AP75 `+0.001`.
+
+Top-k breakdown:
+
+| Variant | offcenter slice match | offcenter non-slice match | offcenter no-GT | offcenter combined center distance |
+|---|---:|---:|---:|---:|
+| `0.3` base | 0.024 | 0.170 | 0.806 | 0.084 |
+| `0.3` quality | 0.005 | 0.222 | 0.773 | 0.067 |
+| `0.5` base | 0.085 | 0.088 | 0.827 | 0.182 |
+| `0.5` quality | 0.017 | 0.214 | 0.769 | 0.084 |
+
+Interpretation:
+
+- Increasing background pressure to `0.5` helps the base detector bind offcenter targets: offcenter AP50 and offcenter slice-match both increase.
+- It does not reduce no-GT top-k candidates, and the quality-stage model loses the base offcenter gain.
+- This separates two issues: the base detector may benefit from stronger background supervision, but the current frozen quality stage is not compatible with the improved offcenter candidate set.
+- Next check `no_object_weight=0.5` on the normal heldout split. If aggregate AP survives, keep it as a base-detector candidate; if not, keep `0.3` as default and move on to query/object binding.
