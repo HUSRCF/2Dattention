@@ -2386,3 +2386,46 @@ Interpretation:
 - It does not reduce no-GT top-k candidates, and the quality-stage model loses the base offcenter gain.
 - This separates two issues: the base detector may benefit from stronger background supervision, but the current frozen quality stage is not compatible with the improved offcenter candidate set.
 - Next check `no_object_weight=0.5` on the normal heldout split. If aggregate AP survives, keep it as a base-detector candidate; if not, keep `0.3` as default and move on to query/object binding.
+
+### No-Object Weight 0.5 Normal Heldout
+
+This check asks whether the stronger `0.5` background weight survives on the normal heldout split, rather than only helping the offcenter stress protocol.
+
+Artifact:
+
+- `results/det_real_no_object_w05_quality_restore_ap50_1000img_500step_3seed.csv`
+
+Protocol:
+
+- `--no-object-weight 0.5`.
+- Normal heldout eval, no slice filter.
+- Quality route: `--quality-head-start-step 401 --quality-head-only-after-start --restore-best-before-quality-head --restore-best-metric ap50`.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_quality_head`.
+
+| Variant | Final IoU | AP50 | Class AP50 | q-fixed AP50 | q-best AP50 | AP75 | q-fixed AP75 | Center AP50 | Offcenter AP50 | Center q-fixed AP50 | Offcenter q-fixed AP50 | combined ECE50 | combined ECE75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.422 | 0.278 | 0.135 | 0.278 | 0.278 | 0.040 | 0.040 | 0.329 | 0.104 | 0.329 | 0.104 | 0.181 | 0.179 |
+| `local_anchor_residual_query_quality_head` | 0.410 | 0.368 | 0.165 | 0.375 | 0.376 | 0.050 | 0.050 | 0.460 | 0.055 | 0.481 | 0.035 | 0.142 | 0.018 |
+
+Paired result vs `0.5` base:
+
+- Final IoU: `-0.012`, `0/3` wins.
+- AP50: `+0.090`, `3/3` wins.
+- Class AP50: `+0.030`, `2/3` wins.
+- AP75: `+0.011`, `3/3` wins.
+- q-fixed AP50: `+0.097`, `3/3` wins.
+- q-best AP50: `+0.098`, `3/3` wins.
+
+Comparison to the previous normal `0.3` AP50-restore quality run:
+
+- `0.3` quality AP50/q-fixed AP50: `0.388/0.389`.
+- `0.5` quality AP50/q-fixed AP50: `0.368/0.375`.
+- `0.5` has slightly lower AP50 but better ECE75 (`0.018` vs `0.036`).
+- The `0.5` base detector has a much stronger offcenter AP50 than its quality-stage version (`0.104 -> 0.035` fixed), matching the offcenter stress result.
+
+Interpretation:
+
+- `no_object_weight=0.5` is a viable aggregate/background candidate, but it is not a complete replacement for `0.3`.
+- Stronger background supervision helps the base detector generate or rank more offcenter candidates.
+- The frozen quality stage still suppresses offcenter candidates while improving aggregate/center ranking.
+- Next work should preserve the `0.5` base offcenter candidate benefit while changing quality/query binding. More alpha or temperature tuning is unlikely to address this.
