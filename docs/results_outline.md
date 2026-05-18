@@ -2467,3 +2467,35 @@ Interpretation:
 - Upweighting offcenter quality targets gives only a tiny slice-match/fixed-AP movement and does not recover the base detector's offcenter AP.
 - The problem is therefore not a simple positive-target weighting issue inside the quality BCE.
 - Stop this loss-weight branch. The remaining offcenter work should focus on preserving object-specific query binding from the base detector into the ranking stage.
+
+### Offcenter-AP Checkpoint Restore
+
+This check asks whether the quality-stage suppression is caused by restoring the detector checkpoint with the wrong metric. The CLI now supports `--restore-best-metric center_ap50` and `--restore-best-metric offcenter_ap50`.
+
+Artifact:
+
+- `results/det_real_no_object_w05_quality_restore_offcenter_ap50_offcenter_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Same `0.5` offcenter stress protocol.
+- Quality route: `--quality-head-start-step 401 --quality-head-only-after-start --restore-best-before-quality-head --restore-best-metric offcenter_ap50`.
+
+| Variant | Final IoU | AP50 | q-fixed AP50 | q-best AP50 | Offcenter AP50 | Offcenter q-fixed AP50 | AP75 | q-fixed AP75 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0.5` base | 0.336 | 0.142 | 0.142 | 0.142 | 0.101 | 0.101 | 0.013 | 0.013 |
+| `0.5` quality, AP50 restore | 0.321 | 0.144 | 0.146 | 0.149 | 0.054 | 0.040 | 0.012 | 0.014 |
+| `0.5` quality, offcenter-AP restore | 0.321 | 0.123 | 0.135 | 0.141 | 0.077 | 0.050 | 0.015 | 0.021 |
+
+Top-k breakdown:
+
+| Variant | offcenter slice match | offcenter non-slice match | offcenter no-GT | offcenter combined center distance |
+|---|---:|---:|---:|---:|
+| `0.5` quality, AP50 restore | 0.017 | 0.214 | 0.769 | 0.084 |
+| `0.5` quality, offcenter-AP restore | 0.019 | 0.184 | 0.797 | 0.083 |
+
+Interpretation:
+
+- Restoring by offcenter AP does not preserve the base detector's offcenter candidate benefit.
+- It slightly improves AP75/fixed AP75 but lowers AP50 and keeps offcenter fixed AP far below the base detector.
+- The offcenter issue is not primarily a checkpoint-selection problem. Stop restore-metric tweaks for this branch.

@@ -559,7 +559,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--restore-best-metric",
-        choices=("iou", "ap50", "ap50_class", "ap75"),
+        choices=("iou", "ap50", "ap50_class", "ap75", "center_ap50", "offcenter_ap50"),
         default="iou",
         help="Metric used by --restore-best-before-quality-head when choosing the detector checkpoint.",
     )
@@ -1168,6 +1168,8 @@ def detector_restore_metric(metrics: dict[str, float], metric_name: str) -> floa
         "ap50": "ap50",
         "ap50_class": "ap50_class",
         "ap75": "ap75",
+        "center_ap50": "center_ap50",
+        "offcenter_ap50": "offcenter_ap50",
     }
     if metric_name not in metric_to_key:
         raise ValueError(f"unknown restore metric: {metric_name}")

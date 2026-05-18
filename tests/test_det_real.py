@@ -883,12 +883,21 @@ def test_real_det_quality_head_loss_scale_supports_late_start_and_warmup() -> No
 
 
 def test_real_det_detector_restore_metric_selects_requested_score() -> None:
-    metrics = {"iou": 0.4, "ap50": 0.3, "ap50_class": 0.2, "ap75": 0.1}
+    metrics = {
+        "iou": 0.4,
+        "ap50": 0.3,
+        "ap50_class": 0.2,
+        "ap75": 0.1,
+        "center_ap50": 0.6,
+        "offcenter_ap50": 0.7,
+    }
 
     assert detector_restore_metric(metrics, "iou") == 0.4
     assert detector_restore_metric(metrics, "ap50") == 0.3
     assert detector_restore_metric(metrics, "ap50_class") == 0.2
     assert detector_restore_metric(metrics, "ap75") == 0.1
+    assert detector_restore_metric(metrics, "center_ap50") == 0.6
+    assert detector_restore_metric(metrics, "offcenter_ap50") == 0.7
 
 
 def test_real_det_set_quality_head_only_trainable_freezes_detector() -> None:
