@@ -24,7 +24,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset, Subset, WeightedRandomSampler
 from torchvision import transforms
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -475,6 +475,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--train-slice-oversample",
+        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        default="none",
+        help=(
+            "Optionally keep the full training split but sample images containing this slice "
+            "with a larger weight."
+        ),
+    )
+    parser.add_argument(
+        "--train-slice-oversample-factor",
+        type=float,
+        default=3.0,
+        help="Sampling weight multiplier for --train-slice-oversample; ignored when set to none.",
+    )
+    parser.add_argument(
         "--eval-slice-filter",
         choices=("none", "small", "medium", "large", "center", "offcenter"),
         default="none",
@@ -556,6 +571,8 @@ def main() -> None:
         raise ValueError("--quality-score-temperature must be > 0")
     if not 0.0 <= args.calibration_frac < 1.0:
         raise ValueError("--calibration-frac must be in [0, 1)")
+    if args.train_slice_oversample_factor <= 0:
+        raise ValueError("--train-slice-oversample-factor must be > 0")
     device = get_best_device()
     all_samples = load_real_det_samples(args.anno_root, args.image_root)
     label_source_samples = all_samples
@@ -581,6 +598,8 @@ def main() -> None:
     print("calibration_source:", args.calibration_source)
     print("calibration_slice_filter:", args.calibration_slice_filter)
     print("train_slice_filter:", args.train_slice_filter)
+    print("train_slice_oversample:", args.train_slice_oversample)
+    print("train_slice_oversample_factor:", args.train_slice_oversample_factor)
     print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
@@ -675,13 +694,21 @@ def train_one_model(
     ).to(device)
     criterion = DetectionCriterion(num_classes=num_classes).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
+    train_sampler = build_train_slice_sampler(
+        train_set,
+        slice_name=args.train_slice_oversample,
+        factor=args.train_slice_oversample_factor,
+        max_objects=args.max_objects,
+        seed=20_000_000 + run_seed,
+    )
     train_loader = DataLoader(
         train_set,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
         num_workers=0,
         collate_fn=det_collate,
-        generator=torch.Generator().manual_seed(10_000_000 + run_seed),
+        generator=None if train_sampler is not None else torch.Generator().manual_seed(10_000_000 + run_seed),
     )
     rows = []
     loader_iter = cycle(train_loader)
@@ -2405,6 +2432,42 @@ def build_splits(
             )
     calibration_subset = Subset(dataset, calibration_indices) if calibration_indices else None
     return Subset(dataset, train_indices), calibration_subset, Subset(dataset, eval_indices), split_rows
+
+
+def build_train_slice_sampler(
+    train_set: Subset,
+    slice_name: str,
+    factor: float,
+    max_objects: int,
+    seed: int,
+) -> WeightedRandomSampler | None:
+    """Return a deterministic weighted sampler that oversamples one robustness slice."""
+
+    if slice_name == "none":
+        return None
+    if slice_name not in {"small", "medium", "large", "center", "offcenter"}:
+        raise ValueError("unknown train slice oversample")
+    if factor <= 0:
+        raise ValueError("oversample factor must be > 0")
+    dataset = train_set.dataset
+    if not isinstance(dataset, RealDetDataset):
+        raise TypeError("train_set must wrap RealDetDataset")
+    weights = []
+    selected = 0
+    for raw_index in train_set.indices:
+        sample = dataset.samples[int(raw_index)]
+        matches = sample_matches_slice(sample, max_objects=max_objects, slice_name=slice_name)
+        selected += int(matches)
+        weights.append(float(factor if matches else 1.0))
+    if selected == 0:
+        raise ValueError(f"train slice oversample produced no selected samples: {slice_name}")
+    weight_tensor = torch.tensor(weights, dtype=torch.double)
+    return WeightedRandomSampler(
+        weights=weight_tensor,
+        num_samples=len(weights),
+        replacement=True,
+        generator=torch.Generator().manual_seed(seed),
+    )
 
 
 def det_collate(batch: list[tuple[Tensor, dict[str, Tensor]]]) -> tuple[Tensor, list[dict[str, Tensor]]]:

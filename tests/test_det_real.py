@@ -12,6 +12,7 @@ from scripts.train_det_real import (
     box_slice_masks,
     build_label_map,
     build_splits,
+    build_train_slice_sampler,
     binary_auc,
     calibration_ece,
     center_distance_score_multiplier,
@@ -276,6 +277,41 @@ def test_real_det_build_splits_can_filter_train_by_slice() -> None:
     train_ids = [str(row["image_id"]) for row in split_rows if row["split"] == "train"]
     assert train_ids
     assert all(image_id.startswith("offcenter_") for image_id in train_ids)
+
+
+def test_real_det_build_train_slice_sampler_oversamples_slice() -> None:
+    image_root = Path("/unused")
+    samples = []
+    for idx in range(6):
+        if idx < 2:
+            box = RealBox("class_a", 80, 80, 90, 90)
+            image_id = f"offcenter_{idx}"
+        else:
+            box = RealBox("class_a", 25, 25, 75, 75)
+            image_id = f"center_{idx}"
+        samples.append(
+            RealDetSample(
+                image_id=image_id,
+                image_path=image_root / f"{image_id}.JPEG",
+                width=100,
+                height=100,
+                boxes=(box,),
+            )
+        )
+    dataset = RealDetDataset(samples, {"class_a": 0}, image_size=64, max_objects=1)
+    train_set = torch.utils.data.Subset(dataset, list(range(len(samples))))
+
+    sampler = build_train_slice_sampler(
+        train_set,
+        slice_name="offcenter",
+        factor=4.0,
+        max_objects=1,
+        seed=123,
+    )
+
+    assert sampler is not None
+    assert sampler.weights.tolist() == [4.0, 4.0, 1.0, 1.0, 1.0, 1.0]
+    assert sampler.num_samples == len(samples)
 
 
 def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> None:

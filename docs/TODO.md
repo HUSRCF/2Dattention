@@ -1230,3 +1230,34 @@ Interpretation:
 - It substantially hurts aggregate AP versus all-train querymask (`0.210` vs `0.307`) and center AP (`0.237` vs `0.380`).
 - The offcenter weakness is partly representation/data-coverage related, but pure offcenter-only training is not a deployable fix.
 - Next active control should be balanced or oversampled offcenter training, not a new scoring alpha or persistent proposal state.
+
+## Offcenter Oversampling Control
+
+This check keeps the full training split but samples offcenter-containing images more often. It tests whether the offcenter-only gain can be kept without discarding normal center-distribution samples.
+
+Implementation:
+
+- Added `--train-slice-oversample` and `--train-slice-oversample-factor`.
+- Uses a deterministic `WeightedRandomSampler` over the training subset.
+
+Artifact:
+
+- `results/det_real_train_offcenter_oversample3_1000img_500step_3seed.csv`
+
+Protocol:
+
+- 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--train-slice-oversample offcenter --train-slice-oversample-factor 3`.
+- Compared `local_anchor_residual_query` and `local_anchor_residual_query_querymask`.
+
+| Variant | Final IoU | AP50 | Class AP50 | Center AP50 | Offcenter AP50 | Mask IoU | Offcenter query-mask center L2 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.413 | 0.261 | 0.119 | 0.332 | 0.067 | 0.000 | 0.000 |
+| `local_anchor_residual_query_querymask` | 0.415 | 0.211 | 0.089 | 0.262 | 0.055 | 0.440 | 0.206 |
+
+Interpretation:
+
+- Offcenter oversampling at factor 3 does not recover the offcenter-only positive signal. Querymask offcenter AP is `0.055`, below the all-train querymask result (`0.062`) and well below offcenter-only querymask (`0.117`).
+- It also hurts aggregate AP (`0.211` vs all-train querymask `0.307`).
+- Oversampling improves the query-mask center geometry versus all-train (`offcenter center L2 0.206` vs `0.223`) but that does not translate into AP.
+- Conclusion: the offcenter failure is not solved by simple data weighting. The remaining issue is more likely object-specific query assignment/ranking or feature ambiguity, not raw offcenter sample frequency alone.

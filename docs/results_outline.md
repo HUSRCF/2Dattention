@@ -2102,3 +2102,29 @@ Interpretation:
 - It also sharply hurts aggregate AP (`0.210` vs `0.307`) and center AP (`0.237` vs `0.380`).
 - This supports a narrower conclusion: offcenter failures are partly representation/data-distribution related, but offcenter-only training simply trades away the normal distribution.
 - The next useful protocol is balanced or oversampled offcenter training, not stronger center penalties or more quality-score tuning.
+
+## Offcenter Oversampling Control
+
+This control keeps the full training set but gives offcenter-containing images a larger sampling weight. It asks whether offcenter-only training helped through extra offcenter exposure or through a distribution shift that cannot be used directly.
+
+Artifact:
+
+- `results/det_real_train_offcenter_oversample3_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--train-slice-oversample offcenter --train-slice-oversample-factor 3`.
+- Models: `local_anchor_residual_query`, `local_anchor_residual_query_querymask`.
+
+| Variant | Final IoU | AP50 | Class AP50 | Center AP50 | Offcenter AP50 | Mask IoU | Offcenter query-mask center L2 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | 0.413 | 0.261 | 0.119 | 0.332 | 0.067 | 0.000 | 0.000 |
+| `local_anchor_residual_query_querymask` | 0.415 | 0.211 | 0.089 | 0.262 | 0.055 | 0.440 | 0.206 |
+
+Interpretation:
+
+- Offcenter oversampling factor 3 does not improve offcenter AP. Querymask offcenter AP is `0.055`, lower than the all-train querymask run (`0.062`) and far below offcenter-only training (`0.117`).
+- Aggregate AP also drops from all-train querymask `0.307` to `0.211`.
+- Query-mask offcenter center L2 improves relative to all-train (`0.206` vs `0.223`), but this geometry improvement does not produce better AP.
+- Current conclusion: simple sample weighting is not enough. Offcenter remains an object-specific assignment/ranking/ambiguity problem rather than a pure sample-frequency problem.
