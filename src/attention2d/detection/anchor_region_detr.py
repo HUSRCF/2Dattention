@@ -42,6 +42,9 @@ class TinyAnchorRegionDETR(nn.Module):
             "grid",
             "grid_residual",
             "grid_residual_detached",
+            "edge_grid",
+            "edge_grid_residual",
+            "edge_grid_residual_detached",
             "mask_proposal",
             "mask_proposal_nms",
             "mask_proposal_residual",
@@ -96,6 +99,8 @@ class TinyAnchorRegionDETR(nn.Module):
             "anchor_residual_detached",
             "grid_residual",
             "grid_residual_detached",
+            "edge_grid_residual",
+            "edge_grid_residual_detached",
             "mask_proposal_residual",
             "mask_proposal_residual_nms",
         }:
@@ -210,6 +215,18 @@ class TinyAnchorRegionDETR(nn.Module):
             )
         elif self.query_init == "grid_residual_detached":
             queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * grid_queries_from_state(
+                spatial_state.detach(),
+                self.num_queries,
+            )
+        elif self.query_init == "edge_grid":
+            queries = edge_grid_queries_from_state(spatial_state, self.num_queries)
+        elif self.query_init == "edge_grid_residual":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * edge_grid_queries_from_state(
+                spatial_state,
+                self.num_queries,
+            )
+        elif self.query_init == "edge_grid_residual_detached":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * edge_grid_queries_from_state(
                 spatial_state.detach(),
                 self.num_queries,
             )
@@ -351,6 +368,37 @@ def grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
         repeats = (num_queries + flat_y.numel() - 1) // flat_y.numel()
         flat_y = flat_y.repeat(repeats)[:num_queries]
         flat_x = flat_x.repeat(repeats)[:num_queries]
+    tokens = state.permute(0, 2, 3, 1)
+    return tokens[:, flat_y, flat_x, :].reshape(batch, num_queries, channels)
+
+
+def edge_grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
+    """Create query seeds from edge/corner-biased feature lattice positions."""
+
+    batch, channels, height, width = state.shape
+    yy, xx = torch.meshgrid(
+        torch.arange(height, device=state.device),
+        torch.arange(width, device=state.device),
+        indexing="ij",
+    )
+    if height == 1:
+        y_norm = torch.zeros_like(yy, dtype=state.dtype)
+    else:
+        y_norm = yy.to(dtype=state.dtype) / float(height - 1)
+    if width == 1:
+        x_norm = torch.zeros_like(xx, dtype=state.dtype)
+    else:
+        x_norm = xx.to(dtype=state.dtype) / float(width - 1)
+    center_distance = torch.stack((y_norm - 0.5, x_norm - 0.5), dim=0).norm(dim=0)
+    flat_order = center_distance.flatten().argsort(descending=True)
+    if flat_order.numel() == 0:
+        raise ValueError("state must have at least one spatial position")
+    if flat_order.numel() < num_queries:
+        repeats = (num_queries + flat_order.numel() - 1) // flat_order.numel()
+        flat_order = flat_order.repeat(repeats)
+    flat_order = flat_order[:num_queries]
+    flat_y = flat_order // width
+    flat_x = flat_order % width
     tokens = state.permute(0, 2, 3, 1)
     return tokens[:, flat_y, flat_x, :].reshape(batch, num_queries, channels)
 

@@ -18,7 +18,7 @@ from attention2d.detection import (
     box_cxcywh_to_xyxy,
     box_iou,
 )
-from attention2d.detection.anchor_region_detr import grid_queries_from_state
+from attention2d.detection.anchor_region_detr import edge_grid_queries_from_state, grid_queries_from_state
 from scripts.train_det_toy import (
     DenseMaskAuxHead,
     ap50_for_image,
@@ -166,6 +166,9 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             "grid",
             "grid_residual",
             "grid_residual_detached",
+            "edge_grid",
+            "edge_grid_residual",
+            "edge_grid_residual_detached",
             "mask_proposal",
             "mask_proposal_nms",
             "mask_proposal_residual",
@@ -302,6 +305,18 @@ def test_grid_queries_keep_2d_coverage_for_prime_query_count() -> None:
     assert queries.shape == (1, 7, 1)
     assert len(ys) > 1
     assert len(xs) > 1
+
+
+def test_edge_grid_queries_prioritize_corners_and_edges() -> None:
+    state = torch.zeros(1, 1, 4, 4)
+    for y in range(4):
+        for x in range(4):
+            state[0, 0, y, x] = y * 10 + x
+
+    queries = edge_grid_queries_from_state(state, num_queries=4)
+    values = set(queries[0, :, 0].tolist())
+
+    assert values == {0.0, 3.0, 30.0, 33.0}
 
 
 def test_tiny_anchor_region_detr_query_conditioned_mask_aux() -> None:

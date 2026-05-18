@@ -1944,6 +1944,25 @@ Interpretation:
 - Simple center suppression is not enough to recover off-center AP for the quality model.
 - The scoring-only path is therefore exhausted for this failure mode. Future work should change how queries/proposals bind to off-center objects, not continue alpha/temperature or center-penalty scoring tricks.
 
+Edge-grid query control:
+
+Artifact:
+
+- `results/det_real_edge_grid_offcenter_1000img_500step_3seed.csv`
+
+This control tests whether explicit corner/edge-biased query seeds are enough to fix the off-center failure.
+
+Key paired deltas vs `local_anchor_residual_query`:
+
+- `local_edge_grid_residual_query`: final IoU `-0.010` (`0/3`), AP50 `-0.009`, AP75 `-0.004`, offcenter AP `+0.001`.
+- `local_edge_grid_residual_query_quality_head`: AP50 `-0.017` (`0/3`), class AP50 `-0.013`, fixed AP50 `+0.003`, offcenter fixed AP `-0.021`.
+- By contrast, the regular coarse grid control remains the better lightweight position control: `local_grid_residual_query` gives AP50 `+0.013` and offcenter center-distance AP `+0.025`.
+
+Interpretation:
+
+- Naive edge/corner-biased query seeding is worse than regular coarse-grid seeding and does not solve off-center robustness.
+- The remaining failure is not just lack of edge query coverage. The next useful route is object-specific query/proposal binding, not more handcrafted query-position priors.
+
 Use these fields to distinguish two off-center failure modes:
 
 - center-biased false positives: high-score predictions remain near the image center even for off-center targets;
