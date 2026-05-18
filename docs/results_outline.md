@@ -2326,3 +2326,19 @@ Interpretation:
 - It gives a small class-aware/q-best ranking signal, but this comes with worse geometry and AP75.
 - The protocol also carves offcenter examples out of the detector training set, which is undesirable for a slice that already suffers from poor coverage.
 - Do not continue slice-only alpha/temperature tuning. The remaining blocker is still offcenter candidate generation/query binding, not aggregate score calibration.
+
+Stronger-protocol top-k breakdown:
+
+| Run | Model | offcenter slice match | offcenter non-slice match | offcenter no-GT | offcenter combined center distance |
+|---|---|---:|---:|---:|---:|
+| stronger quality | `local_anchor_residual_query` | 0.024 | 0.170 | 0.806 | 0.084 |
+| stronger quality | `local_anchor_residual_query_quality_head` | 0.005 | 0.222 | 0.773 | 0.067 |
+| offcenter-calibrated quality | `local_anchor_residual_query` | 0.019 | 0.193 | 0.788 | 0.082 |
+| offcenter-calibrated quality | `local_anchor_residual_query_quality_head` | 0.010 | 0.203 | 0.788 | 0.094 |
+| querymask quality | `local_anchor_residual_query_querymask_quality_head` | 0.018 | 0.214 | 0.768 | 0.067 |
+
+This breakdown refines the failure mode:
+
+- The official top-k predictions still rarely bind to the offcenter GT.
+- Quality/querymask can lower no-GT rate slightly, but they also shift mass toward non-slice GT or center-near candidates.
+- The next control should test whether stronger background/no-object pressure reduces no-GT top-k candidates. If that fails, the main remaining path is query/object binding rather than scoring calibration.
