@@ -2184,3 +2184,40 @@ Interpretation:
 - Weak no-object/background supervision was a real bottleneck for the residual-anchor detector.
 - Once background is strengthened, plain querymask is no longer the best AP route, although it keeps a small offcenter AP advantage.
 - The next control should combine stronger background with two-stage quality ranking, because the strongest path still looks like detector scoring/ranking plus better background handling rather than more query-position heuristics.
+
+## Stronger Background + Two-Stage Quality Ranking
+
+The next check combines `--no-object-weight 0.3` with the two-stage frozen quality-head protocol. It also exposes an important protocol issue: the old `--restore-best-before-quality-head` restored the detector checkpoint with the best IoU, but under stronger background the best-IoU checkpoint can have weaker AP/ranking than later checkpoints.
+
+Implementation:
+
+- Added `--restore-best-metric {iou,ap50,ap50_class,ap75}`.
+- Default is still `iou`, preserving previous runs.
+- For stronger-background quality runs, `ap50` is the safer restore metric when the purpose of the second stage is ranking.
+
+Artifacts:
+
+- `results/det_real_no_object_w03_quality_traincalib_1000img_500step_3seed.csv`
+- `results/det_real_no_object_w03_quality_norestore_traincalib_1000img_500step_3seed.csv`
+- `results/det_real_no_object_w03_quality_restore_ap50_traincalib_1000img_500step_3seed.csv`
+
+Protocol:
+
+- Real DET mini, 1000 images, top-10 train-label classes, 500 steps, 3 seeds.
+- `--no-object-weight 0.3`.
+- `--quality-head-start-step 401 --quality-head-only-after-start`.
+- `--calibration-source train --calibration-frac 0.25`.
+
+| Variant | Restore | Final IoU | AP50 | Class AP50 | q-fixed AP50 | AP75 | q-fixed AP75 | ECE50 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `local_anchor_residual_query` | none | 0.420 | 0.361 | 0.171 | 0.361 | 0.058 | 0.058 | 0.209 |
+| `local_anchor_residual_query_quality_head` | best IoU | 0.421 | 0.316 | 0.148 | 0.377 | 0.045 | 0.057 | 0.214 |
+| `local_anchor_residual_query_quality_head` | none | 0.416 | 0.377 | 0.177 | 0.398 | 0.050 | 0.054 | 0.226 |
+| `local_anchor_residual_query_quality_head` | best AP50 | 0.406 | 0.388 | 0.181 | 0.389 | 0.051 | 0.052 | 0.235 |
+
+Interpretation:
+
+- Stronger background supervision changes the quality-head protocol: restoring by best IoU is no longer reliable for ranking, because it can select an AP-poor detector checkpoint.
+- No-restore and AP50-restore both preserve the stronger detector AP better than IoU-restore.
+- Quality scoring still adds a small ranking gain under stronger background (`q-fixed AP50` up to `0.398`), but the gain is much smaller than in the older weaker-background runs because the base detector AP is already much higher.
+- Current detector-side default should be: stronger background for the base detector, and if a quality-only stage is used, avoid best-IoU restore. Use no-restore or `--restore-best-metric ap50` depending on whether ranking or localization checkpointing is the target.

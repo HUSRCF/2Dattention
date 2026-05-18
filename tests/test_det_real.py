@@ -17,6 +17,7 @@ from scripts.train_det_real import (
     calibration_ece,
     center_distance_score_multiplier,
     det_collate,
+    detector_restore_metric,
     duplicate_predictions_per_gt,
     filter_samples,
     fixed_quality_score_multiplier,
@@ -836,6 +837,15 @@ def test_real_det_quality_head_loss_scale_supports_late_start_and_warmup() -> No
     assert quality_head_loss_scale(step=100, start_step=100, warmup_steps=50) == 0.02
     assert quality_head_loss_scale(step=124, start_step=100, warmup_steps=50) == 0.5
     assert quality_head_loss_scale(step=200, start_step=100, warmup_steps=50) == 1.0
+
+
+def test_real_det_detector_restore_metric_selects_requested_score() -> None:
+    metrics = {"iou": 0.4, "ap50": 0.3, "ap50_class": 0.2, "ap75": 0.1}
+
+    assert detector_restore_metric(metrics, "iou") == 0.4
+    assert detector_restore_metric(metrics, "ap50") == 0.3
+    assert detector_restore_metric(metrics, "ap50_class") == 0.2
+    assert detector_restore_metric(metrics, "ap75") == 0.1
 
 
 def test_real_det_set_quality_head_only_trainable_freezes_detector() -> None:

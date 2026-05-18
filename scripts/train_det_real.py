@@ -545,6 +545,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Before quality-head-only training starts, restore the best detector checkpoint observed so far.",
     )
+    parser.add_argument(
+        "--restore-best-metric",
+        choices=("iou", "ap50", "ap50_class", "ap75"),
+        default="iou",
+        help="Metric used by --restore-best-before-quality-head when choosing the detector checkpoint.",
+    )
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--eval-every", type=int, default=50)
@@ -723,6 +729,7 @@ def train_one_model(
     loader_iter = cycle(train_loader)
     best_iou = -1.0
     best_step = 0
+    best_detector_restore_score = -1.0
     best_detector_state: dict[str, Tensor] | None = None
     last_loss = 0.0
     examples_seen = 0
@@ -828,15 +835,18 @@ def train_one_model(
             if metrics["iou"] > best_iou:
                 best_iou = metrics["iou"]
                 best_step = step
-                if (
-                    model_name in QUALITY_HEAD_MODELS
-                    and args.restore_best_before_quality_head
-                    and not quality_only_enabled
-                ):
-                    best_detector_state = {
-                        name: tensor.detach().cpu().clone()
-                        for name, tensor in copy.deepcopy(model.state_dict()).items()
-                    }
+            detector_restore_score = detector_restore_metric(metrics, args.restore_best_metric)
+            if (
+                detector_restore_score > best_detector_restore_score
+                and model_name in QUALITY_HEAD_MODELS
+                and args.restore_best_before_quality_head
+                and not quality_only_enabled
+            ):
+                best_detector_restore_score = detector_restore_score
+                best_detector_state = {
+                    name: tensor.detach().cpu().clone()
+                    for name, tensor in copy.deepcopy(model.state_dict()).items()
+                }
             speed = examples_seen / max(time.perf_counter() - start, 1e-9)
             row = {
                 "model": model_name,
@@ -1119,6 +1129,20 @@ def quality_head_loss_scale(step: int, start_step: int, warmup_steps: int) -> fl
         return 1.0
     progress = (step - start_step + 1) / float(warmup_steps)
     return max(0.0, min(1.0, progress))
+
+
+def detector_restore_metric(metrics: dict[str, float], metric_name: str) -> float:
+    """Return the detector checkpoint-selection score for quality-head restore."""
+
+    metric_to_key = {
+        "iou": "iou",
+        "ap50": "ap50",
+        "ap50_class": "ap50_class",
+        "ap75": "ap75",
+    }
+    if metric_name not in metric_to_key:
+        raise ValueError(f"unknown restore metric: {metric_name}")
+    return float(metrics[metric_to_key[metric_name]])
 
 
 def set_quality_head_only_trainable(model: TinyAnchorRegionDETR) -> None:
