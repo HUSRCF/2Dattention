@@ -29,12 +29,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--annotations", type=Path, required=True)
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--class-agnostic",
+        action="store_true",
+        help="Evaluate localization by remapping all GT and prediction categories to one foreground class.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    metrics = evaluate_coco_predictions(args.annotations, args.predictions)
+    metrics = evaluate_coco_predictions(args.annotations, args.predictions, class_agnostic=args.class_agnostic)
     print(",".join(METRIC_NAMES))
     print(",".join(f"{metrics[name]:.6f}" for name in METRIC_NAMES))
     if args.out is not None:
@@ -46,7 +51,11 @@ def main() -> None:
         print(f"saved_csv: {args.out}")
 
 
-def evaluate_coco_predictions(annotation_json: Path, prediction_json: Path) -> dict[str, float]:
+def evaluate_coco_predictions(
+    annotation_json: Path,
+    prediction_json: Path,
+    class_agnostic: bool = False,
+) -> dict[str, float]:
     try:
         from pycocotools.coco import COCO
         from pycocotools.cocoeval import COCOeval
@@ -55,13 +64,23 @@ def evaluate_coco_predictions(annotation_json: Path, prediction_json: Path) -> d
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         normalized_annotations = normalize_coco_annotations(annotation_json, Path(tmp_dir) / "annotations.json")
+        normalized_predictions = normalize_coco_predictions(
+            prediction_json,
+            Path(tmp_dir) / "predictions.json",
+            class_agnostic=class_agnostic,
+        )
+        if class_agnostic:
+            normalized_annotations = make_class_agnostic_annotations(
+                normalized_annotations,
+                Path(tmp_dir) / "annotations_class_agnostic.json",
+            )
         with redirect_stdout(io.StringIO()):
             coco_gt = COCO(str(normalized_annotations))
-        predictions = json.loads(prediction_json.read_text(encoding="utf-8"))
+        predictions = json.loads(normalized_predictions.read_text(encoding="utf-8"))
         if not predictions:
             return {name: 0.0 for name in METRIC_NAMES}
         with redirect_stdout(io.StringIO()):
-            coco_dt = coco_gt.loadRes(str(prediction_json))
+            coco_dt = coco_gt.loadRes(str(normalized_predictions))
             evaluator = COCOeval(coco_gt, coco_dt, iouType="bbox")
             evaluator.evaluate()
             evaluator.accumulate()
@@ -84,6 +103,25 @@ def normalize_coco_annotations(source: Path, destination: Path) -> Path:
         changed = True
     if not changed:
         return source
+    destination.write_text(json.dumps(data), encoding="utf-8")
+    return destination
+
+
+def normalize_coco_predictions(source: Path, destination: Path, class_agnostic: bool) -> Path:
+    if not class_agnostic:
+        return source
+    predictions = json.loads(source.read_text(encoding="utf-8"))
+    for prediction in predictions:
+        prediction["category_id"] = 1
+    destination.write_text(json.dumps(predictions), encoding="utf-8")
+    return destination
+
+
+def make_class_agnostic_annotations(source: Path, destination: Path) -> Path:
+    data = json.loads(source.read_text(encoding="utf-8"))
+    for annotation in data["annotations"]:
+        annotation["category_id"] = 1
+    data["categories"] = [{"id": 1, "name": "object", "supercategory": "object"}]
     destination.write_text(json.dumps(data), encoding="utf-8")
     return destination
 

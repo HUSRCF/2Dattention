@@ -57,6 +57,22 @@ def test_evaluate_coco_predictions_scores_perfect_prediction(tmp_path: Path) -> 
     assert metrics["ap"] > 0.99
 
 
+def test_evaluate_coco_predictions_class_agnostic_ignores_category_mismatch(tmp_path: Path) -> None:
+    annotations = tmp_path / "ann.json"
+    predictions = tmp_path / "pred.json"
+    write_tiny_coco(annotations)
+    predictions.write_text(
+        json.dumps([{"image_id": 1, "category_id": 99, "bbox": [10.0, 12.0, 20.0, 16.0], "score": 0.99}]),
+        encoding="utf-8",
+    )
+
+    class_aware = evaluate_coco_predictions(annotations, predictions)
+    class_agnostic = evaluate_coco_predictions(annotations, predictions, class_agnostic=True)
+
+    assert class_aware["ap50"] == 0.0
+    assert class_agnostic["ap50"] > 0.99
+
+
 def test_evaluate_coco_predictions_handles_empty_predictions(tmp_path: Path) -> None:
     annotations = tmp_path / "ann.json"
     predictions = tmp_path / "pred.json"

@@ -27,6 +27,7 @@ SUMMARY_FIELDS = (
     "mean_score",
     "max_score",
     *[f"coco_{name}" for name in METRIC_NAMES],
+    *[f"loc_{name}" for name in METRIC_NAMES],
     "offcenter_images",
     "offcenter_annotations",
     "offcenter_ap50",
@@ -91,6 +92,7 @@ def evaluate_external_detector_protocol(
     summary_csv = out_prefix.with_name(f"{out_prefix.name}_summary.csv")
 
     coco_metrics = evaluate_coco_predictions(annotations, predictions)
+    loc_metrics = evaluate_coco_predictions(annotations, predictions, class_agnostic=True)
     write_rows(cocoeval_csv, list(METRIC_NAMES), [coco_metrics])
 
     slice_rows = evaluate_coco_slices(
@@ -106,6 +108,7 @@ def evaluate_external_detector_protocol(
         name=name or out_prefix.name,
         predictions=predictions,
         coco_metrics=coco_metrics,
+        loc_metrics=loc_metrics,
         slice_rows=slice_rows,
         runner_csv=runner_csv,
     )
@@ -117,6 +120,7 @@ def build_protocol_summary(
     name: str,
     predictions: Path,
     coco_metrics: dict[str, float],
+    loc_metrics: dict[str, float],
     slice_rows: list[dict[str, Any]],
     runner_csv: Path | None = None,
 ) -> dict[str, Any]:
@@ -133,6 +137,7 @@ def build_protocol_summary(
         "mean_score": prediction_summary["mean_score"],
         "max_score": prediction_summary["max_score"],
         **{f"coco_{metric_name}": coco_metrics[metric_name] for metric_name in METRIC_NAMES},
+        **{f"loc_{metric_name}": loc_metrics[metric_name] for metric_name in METRIC_NAMES},
     }
     rows_by_slice = {str(slice_row["slice"]): slice_row for slice_row in slice_rows}
     for slice_name in ("offcenter", "center", "small", "medium", "large"):

@@ -8,7 +8,17 @@ from pathlib import Path
 from typing import Any
 
 
-DELTA_FIELDS = ("coco_ap50", "coco_ap75", "offcenter_ap50", "center_ap50", "small_ap50", "medium_ap50", "large_ap50")
+DELTA_FIELDS = (
+    "coco_ap50",
+    "coco_ap75",
+    "loc_ap50",
+    "loc_ap75",
+    "offcenter_ap50",
+    "center_ap50",
+    "small_ap50",
+    "medium_ap50",
+    "large_ap50",
+)
 
 
 def parse_args() -> argparse.Namespace:

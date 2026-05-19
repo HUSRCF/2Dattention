@@ -85,4 +85,5 @@ def test_evaluate_external_detector_protocol_writes_stage_gate_artifacts(tmp_pat
     assert summary["offcenter_annotations"] == "1"
     assert summary["center_annotations"] == "1"
     assert float(summary["coco_ap50"]) > 0.99
+    assert float(summary["loc_ap50"]) > 0.99
     assert float(summary["offcenter_ap50"]) > 0.99
