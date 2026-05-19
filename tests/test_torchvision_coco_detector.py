@@ -199,10 +199,22 @@ def test_checkpoint_roundtrip_restores_model_weights(tmp_path: Path) -> None:
             parameter.add_(1.0)
             break
 
-    load_checkpoint(path, model, optimizer)
+    loaded_step = load_checkpoint(path, model, optimizer)
     reloaded = torch.load(path, map_location="cpu")
     first_name, first_weight = next(iter(model.state_dict().items()))
     assert torch.allclose(first_weight.cpu(), reloaded["model"][first_name])
+    assert loaded_step == 0
+
+
+def test_checkpoint_roundtrip_restores_global_step(tmp_path: Path) -> None:
+    model = build_model(num_classes=5, image_size=64, weights="none")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    path = tmp_path / "checkpoint.pt"
+
+    save_checkpoint(path, model, optimizer, args=type("Args", (), {"foo": "bar"})(), step=17)
+    loaded_step = load_checkpoint(path, model, optimizer)
+
+    assert loaded_step == 17
 
 
 def test_checkpoint_args_are_safe_scalars(tmp_path: Path) -> None:

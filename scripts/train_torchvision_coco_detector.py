@@ -87,8 +87,9 @@ def main() -> None:
     model.roi_heads.score_thresh = float(args.score_threshold)
     set_trainable_parts(model, args.trainable_parts)
     optimizer = torch.optim.AdamW((param for param in model.parameters() if param.requires_grad), lr=args.lr)
+    start_step = 0
     if args.resume_checkpoint is not None:
-        load_checkpoint(args.resume_checkpoint, model, optimizer)
+        start_step = load_checkpoint(args.resume_checkpoint, model, optimizer)
     loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_detection)
     iterator = cycle(loader)
     rows = []
@@ -111,14 +112,16 @@ def main() -> None:
             return_predictions=args.predictions_out is not None,
         )
         row = {"step": 0, "loss": 0.0, **metrics}
+        if start_step:
+            row["step"] = start_step
         rows.append(row)
         print(
-            f"0,0.0000,{row['eval_iou']:.3f},"
+            f"{row['step']},0.0000,{row['eval_iou']:.3f},"
             f"{row['eval_ap50']:.3f},{row['eval_ap50_class']:.3f}"
         )
         if args.predictions_out is not None:
             write_predictions(args.predictions_out, predictions)
-    for step in range(1, args.steps + 1):
+    for step in range(start_step + 1, start_step + args.steps + 1):
         model.train()
         images, targets = next(iterator)
         images = [image.to(device) for image in images]
@@ -128,8 +131,9 @@ def main() -> None:
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
-        if step == 1 or step % args.eval_every == 0 or step == args.steps:
-            export_predictions = args.predictions_out is not None and step == args.steps
+        local_step = step - start_step
+        if local_step == 1 or local_step % args.eval_every == 0 or local_step == args.steps:
+            export_predictions = args.predictions_out is not None and local_step == args.steps
             metrics, predictions = evaluate_detector(
                 model,
                 eval_dataset,
@@ -155,7 +159,7 @@ def main() -> None:
         writer.writerows(rows)
     print(f"saved_csv: {args.out}")
     if args.save_checkpoint is not None:
-        save_checkpoint(args.save_checkpoint, model, optimizer, args=args)
+        save_checkpoint(args.save_checkpoint, model, optimizer, args=args, step=start_step + args.steps)
         print(f"saved_checkpoint: {args.save_checkpoint}")
 
 
@@ -364,24 +368,32 @@ def scale_xyxy_to_original(box: Tensor, orig_size: Tensor, resized_size: Tensor)
     return box * scale
 
 
-def save_checkpoint(path: Path, model: torch.nn.Module, optimizer: torch.optim.Optimizer, args: argparse.Namespace) -> None:
+def save_checkpoint(
+    path: Path,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    args: argparse.Namespace,
+    step: int = 0,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
             "args": checkpoint_args(args),
+            "step": int(step),
         },
         path,
     )
 
 
-def load_checkpoint(path: Path, model: torch.nn.Module, optimizer: torch.optim.Optimizer | None = None) -> None:
+def load_checkpoint(path: Path, model: torch.nn.Module, optimizer: torch.optim.Optimizer | None = None) -> int:
     checkpoint = torch.load(path, map_location="cpu")
     state_dict = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
     model.load_state_dict(state_dict)
     if optimizer is not None and isinstance(checkpoint, dict) and "optimizer" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer"])
+    return int(checkpoint.get("step", 0)) if isinstance(checkpoint, dict) else 0
 
 
 def checkpoint_args(args: argparse.Namespace) -> dict[str, int | float | str | bool | None]:

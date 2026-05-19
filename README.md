@@ -184,7 +184,7 @@ If weights have already been downloaded manually, pass them with `--weights-file
 Use `--steps 0` for an eval-only plumbing check.
 For transfer smokes, `--trainable-parts box_predictor` trains only the replaced Fast R-CNN predictor, while `--trainable-parts roi_heads` freezes the backbone and RPN.
 For faster evaluation during smoke tests, reduce `--detections-per-img` or raise `--score-threshold`.
-For staged runs, use `--save-checkpoint`, `--resume-checkpoint`, and `--predictions-out` to persist model state and COCO-format detection outputs.
+For staged runs, use `--save-checkpoint`, `--resume-checkpoint`, and `--predictions-out` to persist model state, continue global step numbering, and write COCO-format detection outputs.
 Prediction JSON boxes are exported in original-image COCO coordinates, while the runner's fast internal smoke metrics still use resized-image coordinates.
 Use `scripts/summarize_torchvision_detector_results.py` to summarize torchvision CSV, prediction JSON, and COCOeval CSV artifacts after a run.
 Use `scripts/evaluate_coco_predictions.py --annotations eval.json --predictions predictions.json` for standard pycocotools COCOeval metrics.
