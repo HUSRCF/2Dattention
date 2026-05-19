@@ -1519,3 +1519,4 @@ Stronger-background offcenter slice-calibration control:
   - `results/torchvision_checkpoint_smoke_eval.csv`
   - `results/torchvision_checkpoint_smoke_eval_predictions.json`
 - Implementation note: the first resume attempt exposed a PyTorch 2.6+ `weights_only=True` checkpoint loading issue because `Path` objects were stored in `args`. Fixed by serializing checkpoint args as JSON-like scalars instead of disabling safe loading. This is now covered by `tests/test_torchvision_coco_detector.py`.
+- External-detector summary utility added: `scripts/summarize_torchvision_detector_results.py` summarizes CSV curves and COCO prediction JSONs. Smoke summary confirms the current external-detector state: pretrained eval-only gives the best smoke IoU (`0.205`) while short finetunes are unstable (`best AP50 0.039` but final AP50 `0.001` for the 20-step all-parameter run). Use this summary script for future external-detector stage gates instead of hand-reading CSVs.

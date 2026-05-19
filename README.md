@@ -185,6 +185,7 @@ Use `--steps 0` for an eval-only plumbing check.
 For transfer smokes, `--trainable-parts box_predictor` trains only the replaced Fast R-CNN predictor, while `--trainable-parts roi_heads` freezes the backbone and RPN.
 For faster evaluation during smoke tests, reduce `--detections-per-img` or raise `--score-threshold`.
 For staged runs, use `--save-checkpoint`, `--resume-checkpoint`, and `--predictions-out` to persist model state and COCO-format detection outputs.
+Use `scripts/summarize_torchvision_detector_results.py` to summarize torchvision CSV and prediction JSON artifacts after a run.
 
 ## Tests
 
