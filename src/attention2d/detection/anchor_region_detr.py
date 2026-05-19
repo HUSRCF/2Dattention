@@ -42,6 +42,8 @@ class TinyAnchorRegionDETR(nn.Module):
             "grid",
             "grid_residual",
             "grid_residual_detached",
+            "grid_box_residual",
+            "grid_box_soft_residual",
             "edge_grid",
             "edge_grid_residual",
             "edge_grid_residual_detached",
@@ -99,12 +101,16 @@ class TinyAnchorRegionDETR(nn.Module):
             "anchor_residual_detached",
             "grid_residual",
             "grid_residual_detached",
+            "grid_box_residual",
+            "grid_box_soft_residual",
             "edge_grid_residual",
             "edge_grid_residual_detached",
             "mask_proposal_residual",
             "mask_proposal_residual_nms",
         }:
             self.anchor_query_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
+        if query_init == "grid_box_soft_residual":
+            self.reference_box_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
@@ -159,6 +165,7 @@ class TinyAnchorRegionDETR(nn.Module):
         query_mask_logits = None
         query_proposal_indices = None
         proposal_queries = None
+        reference_boxes = None
         if self.query_init in {
             "mask_proposal",
             "mask_proposal_nms",
@@ -213,6 +220,14 @@ class TinyAnchorRegionDETR(nn.Module):
                 spatial_state,
                 self.num_queries,
             )
+        elif self.query_init == "grid_box_residual":
+            grid_queries = grid_queries_from_state(spatial_state, self.num_queries)
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * grid_queries
+            reference_boxes = grid_reference_boxes_from_state(spatial_state, self.num_queries)
+        elif self.query_init == "grid_box_soft_residual":
+            grid_queries = grid_queries_from_state(spatial_state, self.num_queries)
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * grid_queries
+            reference_boxes = grid_reference_boxes_from_state(spatial_state, self.num_queries)
         elif self.query_init == "grid_residual_detached":
             queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * grid_queries_from_state(
                 spatial_state.detach(),
@@ -266,6 +281,19 @@ class TinyAnchorRegionDETR(nn.Module):
         else:
             decoded = self.query_decoder(queries, spatial_tokens, attention_bias=attention_bias)
         outputs = self.head(decoded)
+        if reference_boxes is not None:
+            raw_boxes = outputs["pred_boxes"]
+            if self.query_init == "grid_box_soft_residual":
+                gate = self.reference_box_gate.clamp(0.0, 1.0)
+                center = (raw_boxes[:, :, :2] + gate * (reference_boxes[:, :, :2] - raw_boxes[:, :, :2])).clamp(
+                    0.0,
+                    1.0,
+                )
+            else:
+                center = (reference_boxes[:, :, :2] + 0.5 * (raw_boxes[:, :, :2] - 0.5)).clamp(0.0, 1.0)
+            outputs["pred_boxes_raw"] = raw_boxes
+            outputs["pred_boxes_reference"] = reference_boxes
+            outputs["pred_boxes"] = torch.cat((center, raw_boxes[:, :, 2:]), dim=-1)
         if self.query_refine in {"query_mask", "query_mask_refine"}:
             query_mask_logits_per_query = query_conditioned_mask_logits(
                 decoded,
@@ -353,14 +381,22 @@ def grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
     """Create query seeds from a coarse 2D grid over the feature lattice."""
 
     batch, channels, height, width = state.shape
+    flat_y, flat_x = grid_query_indices(height, width, num_queries, state.device)
+    tokens = state.permute(0, 2, 3, 1)
+    return tokens[:, flat_y, flat_x, :].reshape(batch, num_queries, channels)
+
+
+def grid_query_indices(height: int, width: int, num_queries: int, device: torch.device) -> tuple[Tensor, Tensor]:
+    """Return coarse grid y/x feature indices used by grid query seeds."""
+
     cols = max(1, int(num_queries**0.5))
     while cols > 1 and num_queries % cols != 0:
         cols -= 1
     if cols == 1 and num_queries > 1:
         cols = int(math.ceil(num_queries**0.5))
     rows = (num_queries + cols - 1) // cols
-    ys = torch.linspace(0, height - 1, rows, device=state.device).round().long()
-    xs = torch.linspace(0, width - 1, cols, device=state.device).round().long()
+    ys = torch.linspace(0, height - 1, rows, device=device).round().long()
+    xs = torch.linspace(0, width - 1, cols, device=device).round().long()
     yy, xx = torch.meshgrid(ys, xs, indexing="ij")
     flat_y = yy.flatten()[:num_queries]
     flat_x = xx.flatten()[:num_queries]
@@ -368,8 +404,19 @@ def grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:
         repeats = (num_queries + flat_y.numel() - 1) // flat_y.numel()
         flat_y = flat_y.repeat(repeats)[:num_queries]
         flat_x = flat_x.repeat(repeats)[:num_queries]
-    tokens = state.permute(0, 2, 3, 1)
-    return tokens[:, flat_y, flat_x, :].reshape(batch, num_queries, channels)
+    return flat_y, flat_x
+
+
+def grid_reference_boxes_from_state(state: Tensor, num_queries: int) -> Tensor:
+    """Create cxcywh reference boxes centered at the grid query locations."""
+
+    batch, _, height, width = state.shape
+    flat_y, flat_x = grid_query_indices(height, width, num_queries, state.device)
+    cy = (flat_y.to(dtype=state.dtype) + 0.5) / float(height)
+    cx = (flat_x.to(dtype=state.dtype) + 0.5) / float(width)
+    box_size = torch.full_like(cx, min(0.5, 2.0 / max(float(height), float(width))))
+    refs = torch.stack((cx, cy, box_size, box_size), dim=-1)
+    return refs.unsqueeze(0).expand(batch, -1, -1)
 
 
 def edge_grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:

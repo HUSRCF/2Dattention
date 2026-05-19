@@ -77,6 +77,8 @@ REAL_MODEL_CONFIGS = {
     ),
     "local_grid_residual_query": ("local", "grid_residual", "none", "none", 0.01, "none"),
     "local_grid_residual_query_quality_head": ("local", "grid_residual", "none", "none", 0.01, "none"),
+    "local_grid_box_residual_query": ("local", "grid_box_residual", "none", "none", 0.01, "none"),
+    "local_grid_box_soft_residual_query": ("local", "grid_box_soft_residual", "none", "none", 0.01, "none"),
     "local_edge_grid_residual_query": ("local", "edge_grid_residual", "none", "none", 0.01, "none"),
     "local_edge_grid_residual_query_quality_head": (
         "local",

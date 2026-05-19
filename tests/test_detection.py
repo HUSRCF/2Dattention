@@ -18,7 +18,11 @@ from attention2d.detection import (
     box_cxcywh_to_xyxy,
     box_iou,
 )
-from attention2d.detection.anchor_region_detr import edge_grid_queries_from_state, grid_queries_from_state
+from attention2d.detection.anchor_region_detr import (
+    edge_grid_queries_from_state,
+    grid_queries_from_state,
+    grid_reference_boxes_from_state,
+)
 from scripts.train_det_toy import (
     DenseMaskAuxHead,
     ap50_for_image,
@@ -168,6 +172,8 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             "grid",
             "grid_residual",
             "grid_residual_detached",
+            "grid_box_residual",
+            "grid_box_soft_residual",
             "edge_grid",
             "edge_grid_residual",
             "edge_grid_residual_detached",
@@ -307,6 +313,72 @@ def test_grid_queries_keep_2d_coverage_for_prime_query_count() -> None:
     assert queries.shape == (1, 7, 1)
     assert len(ys) > 1
     assert len(xs) > 1
+
+
+def test_grid_reference_boxes_use_normalized_cell_centers() -> None:
+    state = torch.zeros(2, 3, 4, 4)
+    references = grid_reference_boxes_from_state(state, num_queries=4)
+
+    assert references.shape == (2, 4, 4)
+    assert torch.allclose(references[0, :, 0], torch.tensor([0.125, 0.875, 0.125, 0.875]))
+    assert torch.allclose(references[0, :, 1], torch.tensor([0.125, 0.125, 0.875, 0.875]))
+    assert float(references.detach().min()) >= 0.0
+    assert float(references.detach().max()) <= 1.0
+
+
+def test_tiny_anchor_region_detr_grid_box_residual_references_box_centers() -> None:
+    torch.manual_seed(193)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="grid_box_residual",
+        query_mask_gate_init=0.01,
+    )
+    images = torch.randn(2, 3, 32, 32)
+    outputs = model(images)
+
+    assert outputs["pred_logits"].shape == (2, 4, 2)
+    assert outputs["pred_boxes"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_raw"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_reference"].shape == (2, 4, 4)
+    assert float(outputs["pred_boxes"].detach().min()) >= 0.0
+    assert float(outputs["pred_boxes"].detach().max()) <= 1.0
+    assert not torch.allclose(outputs["pred_boxes"][:, :, :2], outputs["pred_boxes_raw"][:, :, :2])
+
+
+def test_tiny_anchor_region_detr_grid_box_soft_residual_has_learned_gate() -> None:
+    torch.manual_seed(194)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="grid_box_soft_residual",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["pred_boxes_raw"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_reference"].shape == (2, 4, 4)
+    assert torch.allclose(model.reference_box_gate.detach(), torch.tensor(0.01))
+    assert not torch.allclose(outputs["pred_boxes"][:, :, :2], outputs["pred_boxes_raw"][:, :, :2])
+    losses = criterion(outputs, targets)
+    losses["loss"].backward()
+    assert model.reference_box_gate.grad is not None
+    assert torch.isfinite(model.reference_box_gate.grad).all()
 
 
 def test_edge_grid_queries_prioritize_corners_and_edges() -> None:
