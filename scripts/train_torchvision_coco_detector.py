@@ -16,7 +16,9 @@ import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Subset
+from torchvision.models.detection import FasterRCNN_MobileNet_V3_Large_320_FPN_Weights
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_320_fpn
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.ops import box_iou
 from torchvision.transforms import functional as F
 
@@ -36,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-train-images", type=int, default=0)
     parser.add_argument("--max-eval-images", type=int, default=0)
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
+    parser.add_argument(
+        "--weights",
+        choices=("none", "coco"),
+        default="none",
+        help="Use COCO-pretrained detector weights if available; may download if not cached.",
+    )
     return parser.parse_args()
 
 
@@ -52,13 +60,7 @@ def main() -> None:
         eval_dataset = Subset(eval_dataset, list(range(min(args.max_eval_images, len(eval_dataset)))))
     num_classes = max_category_id(train_dataset, eval_dataset) + 1
 
-    model = fasterrcnn_mobilenet_v3_large_320_fpn(
-        weights=None,
-        weights_backbone=None,
-        num_classes=num_classes,
-        min_size=args.image_size,
-        max_size=args.image_size,
-    ).to(device)
+    model = build_model(num_classes=num_classes, image_size=args.image_size, weights=args.weights).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_detection)
     iterator = cycle(loader)
@@ -67,6 +69,7 @@ def main() -> None:
     print(f"train_images: {len(train_dataset)}")
     print(f"eval_images: {len(eval_dataset)}")
     print(f"num_classes: {num_classes}")
+    print(f"weights: {args.weights}")
     print("step,loss,eval_iou,eval_ap50,eval_ap50_class")
     for step in range(1, args.steps + 1):
         model.train()
@@ -142,6 +145,25 @@ class CocoDetectionLite(Dataset[tuple[Tensor, dict[str, Tensor]]]):
             "image_id": torch.tensor([int(image_info["id"])], dtype=torch.int64),
         }
         return F.to_tensor(image), target
+
+
+def build_model(num_classes: int, image_size: int, weights: str) -> torch.nn.Module:
+    if weights == "coco":
+        model = fasterrcnn_mobilenet_v3_large_320_fpn(
+            weights=FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT,
+            min_size=image_size,
+            max_size=image_size,
+        )
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+        return model
+    return fasterrcnn_mobilenet_v3_large_320_fpn(
+        weights=None,
+        weights_backbone=None,
+        num_classes=num_classes,
+        min_size=image_size,
+        max_size=image_size,
+    )
 
 
 def select_device(requested: str) -> torch.device:

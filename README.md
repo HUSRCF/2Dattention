@@ -179,6 +179,7 @@ You can run a tiny external-detector smoke test on the exported JSON with torchv
 ```
 
 This runner is a handoff baseline, not the project's main tiny detector. Use it to validate real detector data plumbing before attaching RF-DETR-style training or teacher outputs.
+By default it uses random detector weights. If COCO weights are cached or downloads are allowed, add `--weights coco`; the script loads the COCO-pretrained detector and replaces the box predictor for the exported dataset's category count.
 
 ## Tests
 

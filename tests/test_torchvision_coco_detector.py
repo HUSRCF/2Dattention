@@ -9,6 +9,7 @@ import torch
 from scripts.train_torchvision_coco_detector import (
     CocoDetectionLite,
     ap_at_iou,
+    build_model,
     collate_detection,
     mean_best_iou,
     voc_ap,
@@ -88,6 +89,13 @@ def test_collate_detection_keeps_lists() -> None:
     assert isinstance(images, list)
     assert isinstance(targets, list)
     assert images[0].shape == (3, 4, 4)
+
+
+def test_build_model_replaces_predictor_for_requested_class_count() -> None:
+    model = build_model(num_classes=7, image_size=64, weights="none")
+
+    assert model.roi_heads.box_predictor.cls_score.out_features == 7
+    assert model.roi_heads.box_predictor.bbox_pred.out_features == 28
 
 
 def test_voc_ap_handles_empty_curve() -> None:
