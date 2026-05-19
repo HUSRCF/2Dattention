@@ -10,8 +10,10 @@ from scripts.train_torchvision_coco_detector import (
     CocoDetectionLite,
     ap_at_iou,
     build_model,
+    count_trainable_parameters,
     collate_detection,
     mean_best_iou,
+    set_trainable_parts,
     voc_ap,
 )
 
@@ -119,6 +121,25 @@ def test_build_model_can_load_local_checkpoint_before_replacing_head(tmp_path: P
 
     assert model.roi_heads.box_predictor.cls_score.out_features == 5
     assert model.roi_heads.box_predictor.bbox_pred.out_features == 20
+
+
+def test_set_trainable_parts_can_freeze_to_box_predictor() -> None:
+    model = build_model(num_classes=5, image_size=64, weights="none")
+    set_trainable_parts(model, "box_predictor")
+
+    assert count_trainable_parameters(model) > 0
+    assert all(parameter.requires_grad for parameter in model.roi_heads.box_predictor.parameters())
+    assert not any(parameter.requires_grad for parameter in model.backbone.parameters())
+    assert not any(parameter.requires_grad for parameter in model.rpn.parameters())
+
+
+def test_set_trainable_parts_can_freeze_to_roi_heads() -> None:
+    model = build_model(num_classes=5, image_size=64, weights="none")
+    set_trainable_parts(model, "roi_heads")
+
+    assert all(parameter.requires_grad for parameter in model.roi_heads.parameters())
+    assert not any(parameter.requires_grad for parameter in model.backbone.parameters())
+    assert not any(parameter.requires_grad for parameter in model.rpn.parameters())
 
 
 def test_voc_ap_handles_empty_curve() -> None:

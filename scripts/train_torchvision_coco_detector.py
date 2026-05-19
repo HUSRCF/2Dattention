@@ -50,6 +50,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional local torchvision checkpoint path. Loaded before replacing the predictor.",
     )
+    parser.add_argument(
+        "--trainable-parts",
+        choices=("all", "roi_heads", "box_predictor"),
+        default="all",
+        help="Restrict trainable detector parameters for transfer smokes.",
+    )
     return parser.parse_args()
 
 
@@ -72,7 +78,8 @@ def main() -> None:
         weights=args.weights,
         weights_file=args.weights_file,
     ).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    set_trainable_parts(model, args.trainable_parts)
+    optimizer = torch.optim.AdamW((param for param in model.parameters() if param.requires_grad), lr=args.lr)
     loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_detection)
     iterator = cycle(loader)
     rows = []
@@ -82,6 +89,8 @@ def main() -> None:
     print(f"num_classes: {num_classes}")
     print(f"weights: {args.weights}")
     print(f"weights_file: {args.weights_file or ''}")
+    print(f"trainable_parts: {args.trainable_parts}")
+    print(f"trainable_parameters: {count_trainable_parameters(model)}")
     print("step,loss,eval_iou,eval_ap50,eval_ap50_class")
     if args.steps == 0:
         metrics = evaluate_detector(model, eval_dataset, device=device)
@@ -214,6 +223,28 @@ def select_device(requested: str) -> torch.device:
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def set_trainable_parts(model: torch.nn.Module, trainable_parts: str) -> None:
+    if trainable_parts == "all":
+        for parameter in model.parameters():
+            parameter.requires_grad = True
+        return
+    for parameter in model.parameters():
+        parameter.requires_grad = False
+    if trainable_parts == "roi_heads":
+        for parameter in model.roi_heads.parameters():
+            parameter.requires_grad = True
+        return
+    if trainable_parts == "box_predictor":
+        for parameter in model.roi_heads.box_predictor.parameters():
+            parameter.requires_grad = True
+        return
+    raise ValueError(f"unsupported trainable_parts: {trainable_parts}")
+
+
+def count_trainable_parameters(model: torch.nn.Module) -> int:
+    return sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
 
 
 def collate_detection(batch: list[tuple[Tensor, dict[str, Tensor]]]) -> tuple[list[Tensor], list[dict[str, Tensor]]]:

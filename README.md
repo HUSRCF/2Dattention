@@ -182,6 +182,7 @@ This runner is a handoff baseline, not the project's main tiny detector. Use it 
 By default it uses random detector weights. If COCO weights are cached or downloads are allowed, add `--weights coco`; the script loads the COCO-pretrained detector and replaces the box predictor for the exported dataset's category count.
 If weights have already been downloaded manually, pass them with `--weights-file /path/to/checkpoint.pth`.
 Use `--steps 0` for an eval-only plumbing check.
+For transfer smokes, `--trainable-parts box_predictor` trains only the replaced Fast R-CNN predictor, while `--trainable-parts roi_heads` freezes the backbone and RPN.
 
 ## Tests
 
