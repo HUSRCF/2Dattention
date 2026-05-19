@@ -29,6 +29,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-json", type=Path, required=True)
     parser.add_argument("--image-root", type=Path, default=Path("data/ILSVRC2013_DET_val"))
     parser.add_argument("--out", type=Path, default=Path("results/torchvision_coco_detector_smoke.csv"))
+    parser.add_argument("--save-checkpoint", type=Path, default=None)
+    parser.add_argument("--resume-checkpoint", type=Path, default=None)
+    parser.add_argument("--predictions-out", type=Path, default=None)
     parser.add_argument("--image-size", type=int, default=128)
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=2)
@@ -84,6 +87,8 @@ def main() -> None:
     model.roi_heads.score_thresh = float(args.score_threshold)
     set_trainable_parts(model, args.trainable_parts)
     optimizer = torch.optim.AdamW((param for param in model.parameters() if param.requires_grad), lr=args.lr)
+    if args.resume_checkpoint is not None:
+        load_checkpoint(args.resume_checkpoint, model, optimizer)
     loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_detection)
     iterator = cycle(loader)
     rows = []
@@ -99,13 +104,20 @@ def main() -> None:
     print(f"score_threshold: {model.roi_heads.score_thresh}")
     print("step,loss,eval_iou,eval_ap50,eval_ap50_class")
     if args.steps == 0:
-        metrics = evaluate_detector(model, eval_dataset, device=device)
+        metrics, predictions = evaluate_detector(
+            model,
+            eval_dataset,
+            device=device,
+            return_predictions=args.predictions_out is not None,
+        )
         row = {"step": 0, "loss": 0.0, **metrics}
         rows.append(row)
         print(
             f"0,0.0000,{row['eval_iou']:.3f},"
             f"{row['eval_ap50']:.3f},{row['eval_ap50_class']:.3f}"
         )
+        if args.predictions_out is not None:
+            write_predictions(args.predictions_out, predictions)
     for step in range(1, args.steps + 1):
         model.train()
         images, targets = next(iterator)
@@ -117,13 +129,21 @@ def main() -> None:
         loss.backward()
         optimizer.step()
         if step == 1 or step % args.eval_every == 0 or step == args.steps:
-            metrics = evaluate_detector(model, eval_dataset, device=device)
+            export_predictions = args.predictions_out is not None and step == args.steps
+            metrics, predictions = evaluate_detector(
+                model,
+                eval_dataset,
+                device=device,
+                return_predictions=export_predictions,
+            )
             row = {
                 "step": step,
                 "loss": float(loss.detach().cpu()),
                 **metrics,
             }
             rows.append(row)
+            if export_predictions:
+                write_predictions(args.predictions_out, predictions)
             print(
                 f"{step},{row['loss']:.4f},{row['eval_iou']:.3f},"
                 f"{row['eval_ap50']:.3f},{row['eval_ap50_class']:.3f}"
@@ -134,6 +154,9 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
     print(f"saved_csv: {args.out}")
+    if args.save_checkpoint is not None:
+        save_checkpoint(args.save_checkpoint, model, optimizer, args=args)
+        print(f"saved_checkpoint: {args.save_checkpoint}")
 
 
 class CocoDetectionLite(Dataset[tuple[Tensor, dict[str, Tensor]]]):
@@ -271,7 +294,12 @@ def max_category_id(*datasets: Dataset[Any]) -> int:
 
 
 @torch.no_grad()
-def evaluate_detector(model: torch.nn.Module, dataset: Dataset[Any], device: torch.device) -> dict[str, float]:
+def evaluate_detector(
+    model: torch.nn.Module,
+    dataset: Dataset[Any],
+    device: torch.device,
+    return_predictions: bool = False,
+) -> tuple[dict[str, float], list[dict[str, Any]]]:
     model.eval()
     predictions = []
     gt_by_image: dict[int, tuple[Tensor, Tensor]] = {}
@@ -296,7 +324,60 @@ def evaluate_detector(model: torch.nn.Module, dataset: Dataset[Any], device: tor
         "eval_iou": mean_best_iou(predictions, gt_by_image),
         "eval_ap50": ap_at_iou(predictions, gt_by_image, iou_threshold=0.5, class_aware=False),
         "eval_ap50_class": ap_at_iou(predictions, gt_by_image, iou_threshold=0.5, class_aware=True),
-    }
+    }, predictions if return_predictions else []
+
+
+def write_predictions(path: Path, predictions: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        {
+            "image_id": int(prediction["image_id"]),
+            "category_id": int(prediction["label"]),
+            "bbox": xyxy_to_xywh(prediction["box"]),
+            "score": float(prediction["score"]),
+        }
+        for prediction in predictions
+    ]
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(records, handle)
+    print(f"saved_predictions: {path}")
+
+
+def xyxy_to_xywh(box: Tensor) -> list[float]:
+    x1, y1, x2, y2 = [float(value) for value in box.tolist()]
+    return [x1, y1, max(0.0, x2 - x1), max(0.0, y2 - y1)]
+
+
+def save_checkpoint(path: Path, model: torch.nn.Module, optimizer: torch.optim.Optimizer, args: argparse.Namespace) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "args": checkpoint_args(args),
+        },
+        path,
+    )
+
+
+def load_checkpoint(path: Path, model: torch.nn.Module, optimizer: torch.optim.Optimizer | None = None) -> None:
+    checkpoint = torch.load(path, map_location="cpu")
+    state_dict = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
+    model.load_state_dict(state_dict)
+    if optimizer is not None and isinstance(checkpoint, dict) and "optimizer" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+
+
+def checkpoint_args(args: argparse.Namespace) -> dict[str, int | float | str | bool | None]:
+    values: dict[str, int | float | str | bool | None] = {}
+    for key, value in vars(args).items():
+        if isinstance(value, Path):
+            values[key] = str(value)
+        elif isinstance(value, (int, float, str, bool)) or value is None:
+            values[key] = value
+        else:
+            values[key] = str(value)
+    return values
 
 
 def mean_best_iou(predictions: list[dict[str, Any]], gt_by_image: dict[int, tuple[Tensor, Tensor]]) -> float:

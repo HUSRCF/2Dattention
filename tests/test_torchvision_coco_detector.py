@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 from pathlib import Path
 
 from PIL import Image
@@ -10,10 +11,15 @@ from scripts.train_torchvision_coco_detector import (
     CocoDetectionLite,
     ap_at_iou,
     build_model,
+    checkpoint_args,
     count_trainable_parameters,
     collate_detection,
+    load_checkpoint,
     mean_best_iou,
+    save_checkpoint,
     set_trainable_parts,
+    write_predictions,
+    xyxy_to_xywh,
     voc_ap,
 )
 
@@ -144,3 +150,49 @@ def test_set_trainable_parts_can_freeze_to_roi_heads() -> None:
 
 def test_voc_ap_handles_empty_curve() -> None:
     assert voc_ap(torch.tensor([]), torch.tensor([])) == 0.0
+
+
+def test_write_predictions_uses_coco_detection_format(tmp_path: Path) -> None:
+    path = tmp_path / "predictions.json"
+    write_predictions(
+        path,
+        [
+            {
+                "image_id": 3,
+                "label": 2,
+                "box": torch.tensor([1.0, 2.0, 6.0, 8.0]),
+                "score": 0.75,
+            }
+        ],
+    )
+
+    records = json.loads(path.read_text(encoding="utf-8"))
+    assert records == [{"image_id": 3, "category_id": 2, "bbox": [1.0, 2.0, 5.0, 6.0], "score": 0.75}]
+
+
+def test_xyxy_to_xywh_clamps_negative_size() -> None:
+    assert xyxy_to_xywh(torch.tensor([5.0, 6.0, 2.0, 4.0])) == [5.0, 6.0, 0.0, 0.0]
+
+
+def test_checkpoint_roundtrip_restores_model_weights(tmp_path: Path) -> None:
+    model = build_model(num_classes=5, image_size=64, weights="none")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    path = tmp_path / "checkpoint.pt"
+    save_checkpoint(path, model, optimizer, args=type("Args", (), {"foo": "bar"})())
+    with torch.no_grad():
+        for parameter in model.parameters():
+            parameter.add_(1.0)
+            break
+
+    load_checkpoint(path, model, optimizer)
+    reloaded = torch.load(path, map_location="cpu")
+    first_name, first_weight = next(iter(model.state_dict().items()))
+    assert torch.allclose(first_weight.cpu(), reloaded["model"][first_name])
+
+
+def test_checkpoint_args_are_safe_scalars(tmp_path: Path) -> None:
+    args = Namespace(path=tmp_path / "x", count=3, name="run", flag=True)
+
+    values = checkpoint_args(args)
+
+    assert values == {"path": str(tmp_path / "x"), "count": 3, "name": "run", "flag": True}
