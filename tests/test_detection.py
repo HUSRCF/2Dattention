@@ -46,6 +46,7 @@ def test_detection_head_shapes() -> None:
     output = head(torch.randn(2, 5, 16))
     assert output["pred_logits"].shape == (2, 5, 4)
     assert output["pred_boxes"].shape == (2, 5, 4)
+    assert output["pred_boxes_logits"].shape == (2, 5, 4)
     assert output["pred_quality_logits"].shape == (2, 5)
     assert float(output["pred_boxes"].detach().min()) >= 0.0
     assert float(output["pred_boxes"].detach().max()) <= 1.0
@@ -168,6 +169,7 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             "anchor",
             "anchor_detached",
             "anchor_residual",
+            "anchor_refbox_residual",
             "anchor_residual_detached",
             "grid",
             "grid_residual",
@@ -266,6 +268,42 @@ def test_tiny_anchor_region_detr_anchor_residual_query_init() -> None:
     assert model.anchor_query_gate.grad is not None
     assert torch.isfinite(model.anchor_query_gate.grad).all()
     assert float(model.anchor_query_gate.grad.detach().abs().sum()) > 0.0
+
+
+def test_tiny_anchor_region_detr_anchor_refbox_residual_decodes_relative_boxes() -> None:
+    torch.manual_seed(171)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor_refbox_residual",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["pred_boxes"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_raw"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_reference"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_logits"].shape == (2, 4, 4)
+    assert float(outputs["pred_boxes"].detach().min()) >= 0.0
+    assert float(outputs["pred_boxes"].detach().max()) <= 1.0
+    assert not torch.allclose(outputs["pred_boxes"], outputs["pred_boxes_raw"])
+    losses = criterion(outputs, targets)
+    losses["loss"].backward()
+    assert model.query_reference_logits.grad is not None
+    assert torch.isfinite(model.query_reference_logits.grad).all()
 
 
 def test_tiny_anchor_region_detr_grid_residual_query_init() -> None:

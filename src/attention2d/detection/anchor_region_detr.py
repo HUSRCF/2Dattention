@@ -38,6 +38,7 @@ class TinyAnchorRegionDETR(nn.Module):
             "anchor",
             "anchor_detached",
             "anchor_residual",
+            "anchor_refbox_residual",
             "anchor_residual_detached",
             "grid",
             "grid_residual",
@@ -98,6 +99,7 @@ class TinyAnchorRegionDETR(nn.Module):
             self.query_mask_head = nn.Conv2d(embed_dim, 1, kernel_size=1)
         if query_init in {
             "anchor_residual",
+            "anchor_refbox_residual",
             "anchor_residual_detached",
             "grid_residual",
             "grid_residual_detached",
@@ -111,6 +113,8 @@ class TinyAnchorRegionDETR(nn.Module):
             self.anchor_query_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_init == "grid_box_soft_residual":
             self.reference_box_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
+        if query_init == "anchor_refbox_residual":
+            self.query_reference_logits = nn.Parameter(default_reference_box_logits(num_queries))
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
@@ -208,6 +212,12 @@ class TinyAnchorRegionDETR(nn.Module):
                 spatial_state,
                 self.num_queries,
             )
+        elif self.query_init == "anchor_refbox_residual":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
+                spatial_state,
+                self.num_queries,
+            )
+            reference_boxes = self.query_reference_logits.sigmoid().unsqueeze(0).expand(x.shape[0], -1, -1)
         elif self.query_init == "anchor_residual_detached":
             queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
                 spatial_state.detach(),
@@ -283,17 +293,26 @@ class TinyAnchorRegionDETR(nn.Module):
         outputs = self.head(decoded)
         if reference_boxes is not None:
             raw_boxes = outputs["pred_boxes"]
-            if self.query_init == "grid_box_soft_residual":
+            if self.query_init == "anchor_refbox_residual":
+                raw_box_logits = outputs["pred_boxes_logits"]
+                reference_logits = safe_inverse_sigmoid(reference_boxes)
+                outputs["pred_boxes_raw"] = raw_boxes
+                outputs["pred_boxes_reference"] = reference_boxes
+                outputs["pred_boxes"] = (raw_box_logits + reference_logits).sigmoid()
+            elif self.query_init == "grid_box_soft_residual":
                 gate = self.reference_box_gate.clamp(0.0, 1.0)
                 center = (raw_boxes[:, :, :2] + gate * (reference_boxes[:, :, :2] - raw_boxes[:, :, :2])).clamp(
                     0.0,
                     1.0,
                 )
+                outputs["pred_boxes_raw"] = raw_boxes
+                outputs["pred_boxes_reference"] = reference_boxes
+                outputs["pred_boxes"] = torch.cat((center, raw_boxes[:, :, 2:]), dim=-1)
             else:
                 center = (reference_boxes[:, :, :2] + 0.5 * (raw_boxes[:, :, :2] - 0.5)).clamp(0.0, 1.0)
-            outputs["pred_boxes_raw"] = raw_boxes
-            outputs["pred_boxes_reference"] = reference_boxes
-            outputs["pred_boxes"] = torch.cat((center, raw_boxes[:, :, 2:]), dim=-1)
+                outputs["pred_boxes_raw"] = raw_boxes
+                outputs["pred_boxes_reference"] = reference_boxes
+                outputs["pred_boxes"] = torch.cat((center, raw_boxes[:, :, 2:]), dim=-1)
         if self.query_refine in {"query_mask", "query_mask_refine"}:
             query_mask_logits_per_query = query_conditioned_mask_logits(
                 decoded,
@@ -417,6 +436,24 @@ def grid_reference_boxes_from_state(state: Tensor, num_queries: int) -> Tensor:
     box_size = torch.full_like(cx, min(0.5, 2.0 / max(float(height), float(width))))
     refs = torch.stack((cx, cy, box_size, box_size), dim=-1)
     return refs.unsqueeze(0).expand(batch, -1, -1)
+
+
+def default_reference_box_logits(num_queries: int) -> Tensor:
+    """Initialize learned reference boxes on a coarse normalized image grid."""
+
+    flat_y, flat_x = grid_query_indices(num_queries, num_queries, num_queries, torch.device("cpu"))
+    grid_size = max(1, num_queries)
+    cy = (flat_y.to(dtype=torch.float32) + 0.5) / float(grid_size)
+    cx = (flat_x.to(dtype=torch.float32) + 0.5) / float(grid_size)
+    box_size = torch.full_like(cx, min(0.5, 2.0 / float(grid_size)))
+    return safe_inverse_sigmoid(torch.stack((cx, cy, box_size, box_size), dim=-1))
+
+
+def safe_inverse_sigmoid(x: Tensor, eps: float = 1e-4) -> Tensor:
+    """Numerically stable inverse sigmoid for reference-box decoding."""
+
+    x = x.clamp(min=eps, max=1.0 - eps)
+    return torch.log(x / (1.0 - x))
 
 
 def edge_grid_queries_from_state(state: Tensor, num_queries: int) -> Tensor:

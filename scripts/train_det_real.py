@@ -65,6 +65,7 @@ REAL_MODEL_CONFIGS = {
     "local_learned_quality_head": ("local", "learned", "none", "none", 0.1, "none"),
     "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
+    "local_anchor_refbox_residual_query": ("local", "anchor_refbox_residual", "none", "none", 0.01, "none"),
     "local_anchor_residual_query_box_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_anchor_residual_query_box_class_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_anchor_residual_query_box_class_quality_head": (

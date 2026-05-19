@@ -56,7 +56,8 @@ class DetectionHead(nn.Module):
         self.quality_head = nn.Linear(quality_dim, 1)
 
     def forward(self, queries: Tensor) -> dict[str, Tensor]:
-        pred_boxes = self.box_head(queries).sigmoid()
+        pred_box_logits = self.box_head(queries)
+        pred_boxes = pred_box_logits.sigmoid()
         class_input = queries
         if self.class_mode == "box":
             class_input = torch.cat([queries, pred_boxes.detach()], dim=-1)
@@ -66,6 +67,7 @@ class DetectionHead(nn.Module):
         return {
             "pred_logits": self.class_head(class_input),
             "pred_boxes": pred_boxes,
+            "pred_boxes_logits": pred_box_logits,
             "pred_quality_logits": self.quality_head(quality_input).squeeze(-1),
         }
 
