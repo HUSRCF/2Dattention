@@ -37,6 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-every", type=int, default=10)
     parser.add_argument("--max-train-images", type=int, default=0)
     parser.add_argument("--max-eval-images", type=int, default=0)
+    parser.add_argument("--detections-per-img", type=int, default=100)
+    parser.add_argument("--score-threshold", type=float, default=0.05)
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument(
         "--weights",
@@ -78,6 +80,8 @@ def main() -> None:
         weights=args.weights,
         weights_file=args.weights_file,
     ).to(device)
+    model.roi_heads.detections_per_img = int(args.detections_per_img)
+    model.roi_heads.score_thresh = float(args.score_threshold)
     set_trainable_parts(model, args.trainable_parts)
     optimizer = torch.optim.AdamW((param for param in model.parameters() if param.requires_grad), lr=args.lr)
     loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_detection)
@@ -91,6 +95,8 @@ def main() -> None:
     print(f"weights_file: {args.weights_file or ''}")
     print(f"trainable_parts: {args.trainable_parts}")
     print(f"trainable_parameters: {count_trainable_parameters(model)}")
+    print(f"detections_per_img: {model.roi_heads.detections_per_img}")
+    print(f"score_threshold: {model.roi_heads.score_thresh}")
     print("step,loss,eval_iou,eval_ap50,eval_ap50_class")
     if args.steps == 0:
         metrics = evaluate_detector(model, eval_dataset, device=device)
