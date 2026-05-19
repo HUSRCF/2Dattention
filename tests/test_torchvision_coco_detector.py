@@ -17,6 +17,7 @@ from scripts.train_torchvision_coco_detector import (
     load_checkpoint,
     mean_best_iou,
     save_checkpoint,
+    scale_xyxy_to_original,
     set_trainable_parts,
     write_predictions,
     xyxy_to_xywh,
@@ -50,6 +51,8 @@ def test_coco_detection_lite_scales_boxes(tmp_path: Path) -> None:
 
     assert image.shape == (3, 64, 64)
     assert torch.allclose(target["boxes"][0], torch.tensor([6.4, 6.4, 32.0, 32.0]))
+    assert torch.allclose(target["orig_size"], torch.tensor([50.0, 100.0]))
+    assert torch.allclose(target["resized_size"], torch.tensor([64.0, 64.0]))
     assert target["labels"].tolist() == [2]
 
 
@@ -161,17 +164,29 @@ def test_write_predictions_uses_coco_detection_format(tmp_path: Path) -> None:
                 "image_id": 3,
                 "label": 2,
                 "box": torch.tensor([1.0, 2.0, 6.0, 8.0]),
+                "coco_box": torch.tensor([10.0, 20.0, 60.0, 80.0]),
                 "score": 0.75,
             }
         ],
     )
 
     records = json.loads(path.read_text(encoding="utf-8"))
-    assert records == [{"image_id": 3, "category_id": 2, "bbox": [1.0, 2.0, 5.0, 6.0], "score": 0.75}]
+    assert records == [{"image_id": 3, "category_id": 2, "bbox": [10.0, 20.0, 50.0, 60.0], "score": 0.75}]
 
 
 def test_xyxy_to_xywh_clamps_negative_size() -> None:
     assert xyxy_to_xywh(torch.tensor([5.0, 6.0, 2.0, 4.0])) == [5.0, 6.0, 0.0, 0.0]
+
+
+def test_scale_xyxy_to_original_inverts_dataset_resize() -> None:
+    box = torch.tensor([6.4, 6.4, 32.0, 32.0])
+    scaled = scale_xyxy_to_original(
+        box,
+        orig_size=torch.tensor([50.0, 100.0]),
+        resized_size=torch.tensor([64.0, 64.0]),
+    )
+
+    assert torch.allclose(scaled, torch.tensor([10.0, 5.0, 50.0, 25.0]))
 
 
 def test_checkpoint_roundtrip_restores_model_weights(tmp_path: Path) -> None:

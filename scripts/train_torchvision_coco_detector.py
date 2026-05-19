@@ -201,6 +201,8 @@ class CocoDetectionLite(Dataset[tuple[Tensor, dict[str, Tensor]]]):
             "boxes": torch.tensor(boxes, dtype=torch.float32).reshape(-1, 4),
             "labels": torch.tensor(labels, dtype=torch.int64),
             "image_id": torch.tensor([int(image_info["id"])], dtype=torch.int64),
+            "orig_size": torch.tensor([original_height, original_width], dtype=torch.float32),
+            "resized_size": torch.tensor([self.image_size, self.image_size], dtype=torch.float32),
         }
         return F.to_tensor(image), target
 
@@ -311,11 +313,14 @@ def evaluate_detector(
         boxes = output["boxes"].detach().cpu()
         labels = output["labels"].detach().cpu()
         scores = output["scores"].detach().cpu()
+        orig_size = target[0]["orig_size"].cpu()
+        resized_size = target[0]["resized_size"].cpu()
         for box, label, score in zip(boxes, labels, scores, strict=False):
             predictions.append(
                 {
                     "image_id": image_id,
                     "box": box,
+                    "coco_box": scale_xyxy_to_original(box, orig_size=orig_size, resized_size=resized_size),
                     "label": int(label.item()),
                     "score": float(score.item()),
                 }
@@ -333,7 +338,7 @@ def write_predictions(path: Path, predictions: list[dict[str, Any]]) -> None:
         {
             "image_id": int(prediction["image_id"]),
             "category_id": int(prediction["label"]),
-            "bbox": xyxy_to_xywh(prediction["box"]),
+            "bbox": xyxy_to_xywh(prediction.get("coco_box", prediction["box"])),
             "score": float(prediction["score"]),
         }
         for prediction in predictions
@@ -346,6 +351,17 @@ def write_predictions(path: Path, predictions: list[dict[str, Any]]) -> None:
 def xyxy_to_xywh(box: Tensor) -> list[float]:
     x1, y1, x2, y2 = [float(value) for value in box.tolist()]
     return [x1, y1, max(0.0, x2 - x1), max(0.0, y2 - y1)]
+
+
+def scale_xyxy_to_original(box: Tensor, orig_size: Tensor, resized_size: Tensor) -> Tensor:
+    orig_h, orig_w = [float(value) for value in orig_size.tolist()]
+    resized_h, resized_w = [max(1.0, float(value)) for value in resized_size.tolist()]
+    scale = torch.tensor(
+        [orig_w / resized_w, orig_h / resized_h, orig_w / resized_w, orig_h / resized_h],
+        dtype=box.dtype,
+        device=box.device,
+    )
+    return box * scale
 
 
 def save_checkpoint(path: Path, model: torch.nn.Module, optimizer: torch.optim.Optimizer, args: argparse.Namespace) -> None:
