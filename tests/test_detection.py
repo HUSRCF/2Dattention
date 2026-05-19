@@ -189,6 +189,7 @@ def test_tiny_anchor_region_detr_feature_query_modes() -> None:
             "anchor_detached",
             "anchor_residual",
             "anchor_refbox_residual",
+            "anchor_refbox_dab",
             "anchor_residual_detached",
             "grid",
             "grid_residual",
@@ -323,6 +324,52 @@ def test_tiny_anchor_region_detr_anchor_refbox_residual_decodes_relative_boxes()
     losses["loss"].backward()
     assert model.query_reference_logits.grad is not None
     assert torch.isfinite(model.query_reference_logits.grad).all()
+
+
+def test_tiny_anchor_region_detr_anchor_refbox_dab_updates_reference_boxes() -> None:
+    torch.manual_seed(172)
+    model = TinyAnchorRegionDETR(
+        embed_dim=16,
+        num_classes=1,
+        num_queries=4,
+        feature_mode="local",
+        query_init="anchor_refbox_dab",
+        query_mask_gate_init=0.01,
+    )
+    criterion = DetectionCriterion(num_classes=1)
+    images = torch.randn(2, 3, 32, 32)
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.50, 0.50, 0.50, 0.50]]),
+        },
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.25, 0.25, 0.25, 0.25]]),
+        },
+    ]
+    outputs = model(images)
+    assert outputs["pred_boxes"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_raw"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_reference"].shape == (2, 4, 4)
+    assert outputs["pred_boxes_logits"].shape == (2, 4, 4)
+    assert "pred_boxes_reference_history" in outputs
+    reference_history = outputs["pred_boxes_reference_history"]
+    assert isinstance(reference_history, list)
+    assert len(reference_history) == 3
+    for reference_boxes in reference_history:
+        assert reference_boxes.shape == (2, 4, 4)
+        assert float(reference_boxes.detach().min()) >= 0.0
+        assert float(reference_boxes.detach().max()) <= 1.0
+    assert not torch.allclose(reference_history[0], reference_history[-1])
+    losses = criterion(outputs, targets)
+    losses["loss"].backward()
+    assert model.query_reference_logits.grad is not None
+    assert torch.isfinite(model.query_reference_logits.grad).all()
+    last_update = model.dab_reference_update[-1]
+    assert isinstance(last_update, torch.nn.Linear)
+    assert last_update.weight.grad is not None
+    assert torch.isfinite(last_update.weight.grad).all()
 
 
 def test_tiny_anchor_region_detr_grid_residual_query_init() -> None:

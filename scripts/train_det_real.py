@@ -66,6 +66,7 @@ REAL_MODEL_CONFIGS = {
     "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_anchor_refbox_residual_query": ("local", "anchor_refbox_residual", "none", "none", 0.01, "none"),
+    "local_anchor_refbox_dab_query": ("local", "anchor_refbox_dab", "none", "none", 0.01, "none"),
     "local_anchor_refbox_residual_query_refmatch": (
         "local",
         "anchor_refbox_residual",

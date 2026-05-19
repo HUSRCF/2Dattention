@@ -39,6 +39,7 @@ class TinyAnchorRegionDETR(nn.Module):
             "anchor_detached",
             "anchor_residual",
             "anchor_refbox_residual",
+            "anchor_refbox_dab",
             "anchor_residual_detached",
             "grid",
             "grid_residual",
@@ -100,6 +101,7 @@ class TinyAnchorRegionDETR(nn.Module):
         if query_init in {
             "anchor_residual",
             "anchor_refbox_residual",
+            "anchor_refbox_dab",
             "anchor_residual_detached",
             "grid_residual",
             "grid_residual_detached",
@@ -113,8 +115,16 @@ class TinyAnchorRegionDETR(nn.Module):
             self.anchor_query_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_init == "grid_box_soft_residual":
             self.reference_box_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
-        if query_init == "anchor_refbox_residual":
+        if query_init in {"anchor_refbox_residual", "anchor_refbox_dab"}:
             self.query_reference_logits = nn.Parameter(default_reference_box_logits(num_queries))
+        if query_init == "anchor_refbox_dab":
+            self.dab_decoder_layers = nn.ModuleList(SimpleCrossAttentionDecoder(embed_dim) for _ in range(3))
+            self.dab_reference_update = nn.Sequential(
+                nn.LayerNorm(embed_dim),
+                nn.Linear(embed_dim, embed_dim),
+                nn.GELU(),
+                nn.Linear(embed_dim, 4),
+            )
         if query_refine in {"mask_pool", "mask_bias"}:
             self.query_mask_gate = nn.Parameter(torch.tensor(float(query_mask_gate_init)))
         if query_refine == "mask_pool":
@@ -218,6 +228,11 @@ class TinyAnchorRegionDETR(nn.Module):
                 self.num_queries,
             )
             reference_boxes = self.query_reference_logits.sigmoid().unsqueeze(0).expand(x.shape[0], -1, -1)
+        elif self.query_init == "anchor_refbox_dab":
+            queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
+                spatial_state,
+                self.num_queries,
+            )
         elif self.query_init == "anchor_residual_detached":
             queries = self.learned_queries(x.shape[0]) + self.anchor_query_gate * anchor_queries_from_state(
                 spatial_state.detach(),
@@ -267,7 +282,16 @@ class TinyAnchorRegionDETR(nn.Module):
             query_mask_logits = self.query_mask_head(spatial_state).squeeze(1)
             gate = self.query_mask_gate * self.query_mask_gate_scale
             attention_bias = mask_attention_bias(query_mask_logits, gate)
-        if self.query_refine in {
+        if self.query_init == "anchor_refbox_dab":
+            decoded = queries
+            reference_logits = self.query_reference_logits.unsqueeze(0).expand(x.shape[0], -1, -1)
+            reference_history = []
+            for decoder_layer in self.dab_decoder_layers:
+                decoded = decoder_layer(decoded, spatial_tokens, attention_bias=attention_bias)
+                reference_logits = reference_logits + self.dab_reference_update(decoded)
+                reference_history.append(reference_logits.sigmoid())
+            reference_boxes = reference_logits.sigmoid()
+        elif self.query_refine in {
             "proposal_decode2",
             "proposal_reinject",
             "proposal_persistent",
@@ -293,12 +317,14 @@ class TinyAnchorRegionDETR(nn.Module):
         outputs = self.head(decoded)
         if reference_boxes is not None:
             raw_boxes = outputs["pred_boxes"]
-            if self.query_init == "anchor_refbox_residual":
+            if self.query_init in {"anchor_refbox_residual", "anchor_refbox_dab"}:
                 raw_box_logits = outputs["pred_boxes_logits"]
                 reference_logits = safe_inverse_sigmoid(reference_boxes)
                 outputs["pred_boxes_raw"] = raw_boxes
                 outputs["pred_boxes_reference"] = reference_boxes
                 outputs["pred_boxes"] = (raw_box_logits + reference_logits).sigmoid()
+                if self.query_init == "anchor_refbox_dab":
+                    outputs["pred_boxes_reference_history"] = reference_history
             elif self.query_init == "grid_box_soft_residual":
                 gate = self.reference_box_gate.clamp(0.0, 1.0)
                 center = (raw_boxes[:, :, :2] + gate * (reference_boxes[:, :, :2] - raw_boxes[:, :, :2])).clamp(
