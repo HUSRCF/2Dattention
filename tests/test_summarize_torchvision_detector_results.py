@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.summarize_torchvision_detector_results import summarize_csv, summarize_predictions
+from scripts.summarize_torchvision_detector_results import summarize_cocoeval, summarize_csv, summarize_predictions
 
 
 def test_summarize_torchvision_detector_csv(tmp_path: Path) -> None:
@@ -55,3 +55,23 @@ def test_summarize_torchvision_detector_empty_predictions(tmp_path: Path) -> Non
     summary = summarize_predictions(path)
 
     assert summary == {"predictions": 0, "images": 0, "mean_score": 0.0, "max_score": 0.0}
+
+
+def test_summarize_torchvision_detector_cocoeval_csv(tmp_path: Path) -> None:
+    path = tmp_path / "cocoeval.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "ap,ap50,ap75,ap_small,ap_medium,ap_large,ar1,ar10,ar100",
+                "0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = summarize_cocoeval(path)
+
+    assert summary["ap"] == 0.1
+    assert summary["ap50"] == 0.2
+    assert summary["ar100"] == 0.9

@@ -13,6 +13,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv_paths", nargs="+", type=Path)
     parser.add_argument("--predictions", nargs="*", type=Path, default=[])
+    parser.add_argument("--cocoeval", nargs="*", type=Path, default=[])
     return parser.parse_args()
 
 
@@ -34,6 +35,15 @@ def main() -> None:
             print(
                 f"{path},{summary['predictions']},{summary['images']},"
                 f"{summary['mean_score']:.4f},{summary['max_score']:.4f}"
+            )
+    if args.cocoeval:
+        print("cocoeval_file,ap,ap50,ap75,ap_small,ap_medium,ap_large,ar1,ar10,ar100")
+        for path in args.cocoeval:
+            summary = summarize_cocoeval(path)
+            print(
+                f"{path},{summary['ap']:.4f},{summary['ap50']:.4f},{summary['ap75']:.4f},"
+                f"{summary['ap_small']:.4f},{summary['ap_medium']:.4f},{summary['ap_large']:.4f},"
+                f"{summary['ar1']:.4f},{summary['ar10']:.4f},{summary['ar100']:.4f}"
             )
 
 
@@ -67,6 +77,14 @@ def summarize_predictions(path: Path) -> dict[str, float | int]:
         "mean_score": sum(scores) / len(scores),
         "max_score": max(scores),
     }
+
+
+def summarize_cocoeval(path: Path) -> dict[str, float]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    if len(rows) != 1:
+        raise ValueError(f"expected one COCOeval row in {path}, found {len(rows)}")
+    return {key: float(value) for key, value in rows[0].items()}
 
 
 if __name__ == "__main__":
