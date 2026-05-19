@@ -44,6 +44,12 @@ def parse_args() -> argparse.Namespace:
         default="none",
         help="Use COCO-pretrained detector weights if available; may download if not cached.",
     )
+    parser.add_argument(
+        "--weights-file",
+        type=Path,
+        default=None,
+        help="Optional local torchvision checkpoint path. Loaded before replacing the predictor.",
+    )
     return parser.parse_args()
 
 
@@ -60,7 +66,12 @@ def main() -> None:
         eval_dataset = Subset(eval_dataset, list(range(min(args.max_eval_images, len(eval_dataset)))))
     num_classes = max_category_id(train_dataset, eval_dataset) + 1
 
-    model = build_model(num_classes=num_classes, image_size=args.image_size, weights=args.weights).to(device)
+    model = build_model(
+        num_classes=num_classes,
+        image_size=args.image_size,
+        weights=args.weights,
+        weights_file=args.weights_file,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_detection)
     iterator = cycle(loader)
@@ -70,7 +81,16 @@ def main() -> None:
     print(f"eval_images: {len(eval_dataset)}")
     print(f"num_classes: {num_classes}")
     print(f"weights: {args.weights}")
+    print(f"weights_file: {args.weights_file or ''}")
     print("step,loss,eval_iou,eval_ap50,eval_ap50_class")
+    if args.steps == 0:
+        metrics = evaluate_detector(model, eval_dataset, device=device)
+        row = {"step": 0, "loss": 0.0, **metrics}
+        rows.append(row)
+        print(
+            f"0,0.0000,{row['eval_iou']:.3f},"
+            f"{row['eval_ap50']:.3f},{row['eval_ap50_class']:.3f}"
+        )
     for step in range(1, args.steps + 1):
         model.train()
         images, targets = next(iterator)
@@ -147,7 +167,25 @@ class CocoDetectionLite(Dataset[tuple[Tensor, dict[str, Tensor]]]):
         return F.to_tensor(image), target
 
 
-def build_model(num_classes: int, image_size: int, weights: str) -> torch.nn.Module:
+def build_model(
+    num_classes: int,
+    image_size: int,
+    weights: str,
+    weights_file: Path | None = None,
+) -> torch.nn.Module:
+    if weights_file is not None:
+        model = fasterrcnn_mobilenet_v3_large_320_fpn(
+            weights=None,
+            weights_backbone=None,
+            min_size=image_size,
+            max_size=image_size,
+        )
+        state = torch.load(weights_file, map_location="cpu")
+        state_dict = state["model"] if isinstance(state, dict) and "model" in state else state
+        model.load_state_dict(state_dict)
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+        return model
     if weights == "coco":
         model = fasterrcnn_mobilenet_v3_large_320_fpn(
             weights=FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT,
@@ -228,7 +266,8 @@ def mean_best_iou(predictions: list[dict[str, Any]], gt_by_image: dict[int, tupl
     best_values = []
     by_image: dict[int, list[Tensor]] = defaultdict_list_boxes(predictions)
     for image_id, (gt_boxes, _) in gt_by_image.items():
-        pred_boxes = torch.stack(by_image[image_id]) if by_image[image_id] else torch.empty((0, 4))
+        image_predictions = by_image.get(image_id, [])
+        pred_boxes = torch.stack(image_predictions) if image_predictions else torch.empty((0, 4))
         if pred_boxes.numel() == 0 or gt_boxes.numel() == 0:
             best_values.extend([0.0] * len(gt_boxes))
             continue

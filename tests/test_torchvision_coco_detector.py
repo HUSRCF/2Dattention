@@ -73,6 +73,18 @@ def test_torchvision_detector_metrics_penalize_wrong_class() -> None:
     assert ap_at_iou(predictions, gt_by_image, iou_threshold=0.5, class_aware=True) == 0.0
 
 
+def test_torchvision_detector_mean_iou_handles_images_without_predictions() -> None:
+    gt_by_image = {
+        1: (torch.tensor([[0.0, 0.0, 10.0, 10.0]]), torch.tensor([1])),
+        2: (torch.tensor([[20.0, 20.0, 30.0, 30.0]]), torch.tensor([1])),
+    }
+    predictions = [
+        {"image_id": 1, "box": torch.tensor([0.0, 0.0, 10.0, 10.0]), "label": 1, "score": 0.9},
+    ]
+
+    assert mean_best_iou(predictions, gt_by_image) == 0.5
+
+
 def test_collate_detection_keeps_lists() -> None:
     batch = [
         (
@@ -96,6 +108,17 @@ def test_build_model_replaces_predictor_for_requested_class_count() -> None:
 
     assert model.roi_heads.box_predictor.cls_score.out_features == 7
     assert model.roi_heads.box_predictor.bbox_pred.out_features == 28
+
+
+def test_build_model_can_load_local_checkpoint_before_replacing_head(tmp_path: Path) -> None:
+    source = build_model(num_classes=91, image_size=64, weights="none")
+    checkpoint_path = tmp_path / "model.pt"
+    torch.save(source.state_dict(), checkpoint_path)
+
+    model = build_model(num_classes=5, image_size=64, weights="none", weights_file=checkpoint_path)
+
+    assert model.roi_heads.box_predictor.cls_score.out_features == 5
+    assert model.roi_heads.box_predictor.bbox_pred.out_features == 20
 
 
 def test_voc_ap_handles_empty_curve() -> None:
