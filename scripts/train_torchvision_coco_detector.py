@@ -38,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--eval-every", type=int, default=10)
+    parser.add_argument(
+        "--eval-first-step",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Evaluate after the first training step; disable for slower full-eval protocols.",
+    )
     parser.add_argument("--max-train-images", type=int, default=0)
     parser.add_argument("--max-eval-images", type=int, default=0)
     parser.add_argument("--detections-per-img", type=int, default=100)
@@ -133,7 +139,7 @@ def main() -> None:
         loss.backward()
         optimizer.step()
         local_step = step - start_step
-        if local_step == 1 or local_step % args.eval_every == 0 or local_step == args.steps:
+        if (args.eval_first_step and local_step == 1) or local_step % args.eval_every == 0 or local_step == args.steps:
             export_predictions = args.predictions_out is not None and local_step == args.steps
             metrics, predictions = evaluate_detector(
                 model,
