@@ -165,6 +165,21 @@ If you want the exact train/eval split from a `train_det_real.py` run, pass its 
   --out-dir data/ILSVRC2013_DET_val_supervised/coco_seed41
 ```
 
+You can run a tiny external-detector smoke test on the exported JSON with torchvision:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/train_torchvision_coco_detector.py \
+  --train-json data/ILSVRC2013_DET_val_supervised/coco_seed41/train.json \
+  --eval-json data/ILSVRC2013_DET_val_supervised/coco_seed41/eval.json \
+  --image-root data/ILSVRC2013_DET_val \
+  --device mps \
+  --steps 1 \
+  --batch-size 1 \
+  --image-size 64
+```
+
+This runner is a handoff baseline, not the project's main tiny detector. Use it to validate real detector data plumbing before attaching RF-DETR-style training or teacher outputs.
+
 ## Tests
 
 ```bash
