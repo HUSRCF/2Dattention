@@ -180,12 +180,25 @@ def test_real_det_build_splits_can_filter_eval_by_slice() -> None:
             height=100,
             boxes=(RealBox("class_a", 80, 80, 90, 90),),
         ),
+        RealDetSample(
+            image_id="mixed_center_offcenter",
+            image_path=Path("mixed_center_offcenter.JPEG"),
+            width=100,
+            height=100,
+            boxes=(
+                RealBox("class_a", 25, 25, 75, 75),
+                RealBox("class_a", 80, 80, 90, 90),
+            ),
+        ),
     ]
 
     assert sample_matches_slice(samples[0], max_objects=1, slice_name="center")
     assert not sample_matches_slice(samples[0], max_objects=1, slice_name="offcenter")
     assert sample_matches_slice(samples[1], max_objects=1, slice_name="offcenter")
+    assert sample_matches_slice(samples[1], max_objects=1, slice_name="offcenter_only")
     assert sample_matches_slice(samples[1], max_objects=1, slice_name="small")
+    assert sample_matches_slice(samples[2], max_objects=2, slice_name="offcenter")
+    assert not sample_matches_slice(samples[2], max_objects=2, slice_name="offcenter_only")
 
     _, _, eval_set, split_rows = build_splits(
         samples=samples,
@@ -195,6 +208,20 @@ def test_real_det_build_splits_can_filter_eval_by_slice() -> None:
         train_frac=0.5,
         calibration_frac=0.0,
         eval_slice_filter="offcenter",
+        seed=0,
+    )
+
+    assert len(eval_set) == 1
+    assert [row["image_id"] for row in split_rows if row["split"] == "eval"] == ["offcenter_small"]
+
+    _, _, eval_set, split_rows = build_splits(
+        samples=samples,
+        label_to_id={"class_a": 0},
+        image_size=64,
+        max_objects=2,
+        train_frac=0.5,
+        calibration_frac=0.0,
+        eval_slice_filter="offcenter_only",
         seed=0,
     )
 

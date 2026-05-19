@@ -456,9 +456,10 @@ def parse_args() -> argparse.Namespace:
             "behavior; 'train' keeps the eval split independent of alpha selection."
         ),
     )
+    sample_slice_choices = ("none", "small", "medium", "large", "center", "offcenter", "offcenter_only")
     parser.add_argument(
         "--calibration-slice-filter",
-        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        choices=sample_slice_choices,
         default="none",
         help=(
             "Optionally choose the alpha-calibration subset only from images containing "
@@ -467,7 +468,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--train-slice-filter",
-        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        choices=sample_slice_choices,
         default="none",
         help=(
             "Optionally restrict the training split to images containing this robustness slice. "
@@ -476,7 +477,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--train-slice-oversample",
-        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        choices=sample_slice_choices,
         default="none",
         help=(
             "Optionally keep the full training split but sample images containing this slice "
@@ -491,7 +492,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--eval-slice-filter",
-        choices=("none", "small", "medium", "large", "center", "offcenter"),
+        choices=sample_slice_choices,
         default="none",
         help=(
             "Optionally restrict the final eval subset to images containing at least one "
@@ -502,6 +503,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=64)
     parser.add_argument("--embed-dim", type=int, default=32)
+    parser.add_argument(
+        "--local-blocks",
+        type=int,
+        default=2,
+        help="Number of local-state refinement blocks in the tiny detector backbone.",
+    )
     parser.add_argument("--num-queries", type=int, default=6)
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--mask-aux-weight", type=float, default=0.5)
@@ -589,6 +596,8 @@ def main() -> None:
         raise ValueError("--max-objects must be >= 1")
     if args.max_objects > args.num_queries:
         raise ValueError("--max-objects must be <= --num-queries")
+    if args.local_blocks < 0:
+        raise ValueError("--local-blocks must be >= 0")
     if args.fixed_quality_alpha < 0:
         raise ValueError("--fixed-quality-alpha must be >= 0")
     if args.quality_score_temperature <= 0:
@@ -622,6 +631,7 @@ def main() -> None:
     print("classes:", len(label_to_id))
     print("max_objects:", args.max_objects)
     print("num_queries:", args.num_queries)
+    print("local_blocks:", args.local_blocks)
     print("label_map_source:", args.label_map_source)
     print("calibration_source:", args.calibration_source)
     print("calibration_slice_filter:", args.calibration_slice_filter)
@@ -716,6 +726,7 @@ def train_one_model(
         embed_dim=args.embed_dim,
         num_classes=num_classes,
         num_queries=args.num_queries,
+        local_blocks=args.local_blocks,
         feature_mode=feature_mode,
         query_init=query_init,
         query_refine=query_refine,
@@ -1953,6 +1964,8 @@ def sample_matches_slice(sample: RealDetSample, max_objects: int, slice_name: st
     if normalized.numel() == 0:
         return False
     masks = box_slice_masks(normalized)
+    if slice_name == "offcenter_only":
+        return bool(masks["offcenter"].any() and not masks["center"].any())
     if slice_name not in masks:
         raise ValueError(f"unknown eval slice filter: {slice_name}")
     return bool(masks[slice_name].any())
@@ -2422,11 +2435,12 @@ def build_splits(
 ) -> tuple[Subset, Subset | None, Subset, list[dict[str, int | str]]]:
     if calibration_source not in {"heldout", "train"}:
         raise ValueError("calibration_source must be 'heldout' or 'train'")
-    if calibration_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
+    allowed_slice_filters = {"none", "small", "medium", "large", "center", "offcenter", "offcenter_only"}
+    if calibration_slice_filter not in allowed_slice_filters:
         raise ValueError("unknown calibration slice filter")
-    if train_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
+    if train_slice_filter not in allowed_slice_filters:
         raise ValueError("unknown train slice filter")
-    if eval_slice_filter not in {"none", "small", "medium", "large", "center", "offcenter"}:
+    if eval_slice_filter not in allowed_slice_filters:
         raise ValueError("unknown eval slice filter")
     dataset = RealDetDataset(samples, label_to_id, image_size=image_size, max_objects=max_objects)
     indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(seed)).tolist()
@@ -2520,7 +2534,7 @@ def build_train_slice_sampler(
 
     if slice_name == "none":
         return None
-    if slice_name not in {"small", "medium", "large", "center", "offcenter"}:
+    if slice_name not in {"small", "medium", "large", "center", "offcenter", "offcenter_only"}:
         raise ValueError("unknown train slice oversample")
     if factor <= 0:
         raise ValueError("oversample factor must be > 0")
