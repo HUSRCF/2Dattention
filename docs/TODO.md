@@ -1524,3 +1524,9 @@ Stronger-background offcenter slice-calibration control:
 - `scripts/summarize_torchvision_detector_results.py` now accepts `--cocoeval` CSVs as well as runner CSVs and prediction JSONs, so future external-detector stage gates can report internal smoke metrics, prediction counts, and standard COCO AP from one summarizer.
 - Checkpoint resume tightened after review: `scripts/train_torchvision_coco_detector.py` now stores and reloads the global training step, so resumed staged runs continue step numbering instead of restarting CSV rows at step `1`.
 - COCO category-id handling tightened: the torchvision runner now remaps COCO category ids to contiguous positive training labels internally and maps predictions back to original `category_id` values for JSON export. It also rejects train/eval JSONs with inconsistent category mappings to avoid silent label drift.
+- Standard COCOeval handoff smoke with local torchvision COCO weights:
+  - runner CSV: `results/torchvision_weightsfile_cocoeval_handoff.csv`
+  - predictions: `results/torchvision_weightsfile_cocoeval_handoff_predictions.json`
+  - COCOeval CSV: `results/torchvision_weightsfile_cocoeval_handoff_cocoeval.csv`
+  - Setting: local MobileNetV3-320 Faster R-CNN weights, replaced predictor, eval-only, 10 eval images, 96px, 20 detections/image, MPS.
+  - Result: internal resized-coordinate smoke metrics `eval_iou=0.184`, `eval_ap50=0.014`, class-aware `0.001`; standard COCOeval original-coordinate metrics `ap=0.0045`, `ap50=0.0061`, `ap75=0.0055`. This is still a handoff sanity result, not a detector performance claim, but it confirms the COCO prediction export and pycocotools evaluation pipeline are now wired end to end.
