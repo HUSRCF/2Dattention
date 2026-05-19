@@ -20,11 +20,13 @@ class HungarianMatcher(nn.Module):
         class_cost: float = 1.0,
         bbox_cost: float = 5.0,
         giou_cost: float = 2.0,
+        reference_bbox_cost: float = 0.0,
     ) -> None:
         super().__init__()
         self.class_cost = class_cost
         self.bbox_cost = bbox_cost
         self.giou_cost = giou_cost
+        self.reference_bbox_cost = reference_bbox_cost
 
     @torch.no_grad()
     def forward(
@@ -54,6 +56,10 @@ class HungarianMatcher(nn.Module):
                 + self.bbox_cost * bbox_cost
                 + self.giou_cost * giou_cost
             )
+            if self.reference_bbox_cost > 0.0 and "pred_boxes_reference" in outputs:
+                reference_boxes = outputs["pred_boxes_reference"][batch_idx]
+                reference_bbox_cost = torch.cdist(reference_boxes, target_boxes, p=1)
+                total_cost = total_cost + self.reference_bbox_cost * reference_bbox_cost
             matches.append(min_cost_assignment(total_cost))
         return matches
 

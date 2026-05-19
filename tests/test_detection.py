@@ -105,6 +105,25 @@ def test_hungarian_matcher_handles_variable_targets() -> None:
     assert matches[1][0].shape == (1,)
 
 
+def test_hungarian_matcher_can_use_reference_boxes_for_binding() -> None:
+    matcher = HungarianMatcher(class_cost=0.0, bbox_cost=0.0, giou_cost=0.0, reference_bbox_cost=1.0)
+    outputs = {
+        "pred_logits": torch.zeros(1, 2, 2),
+        "pred_boxes": torch.tensor([[[0.50, 0.50, 0.20, 0.20], [0.50, 0.50, 0.20, 0.20]]]),
+        "pred_boxes_reference": torch.tensor([[[0.10, 0.10, 0.20, 0.20], [0.90, 0.90, 0.20, 0.20]]]),
+    }
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.90, 0.90, 0.20, 0.20]]),
+        }
+    ]
+    matches = matcher(outputs, targets)
+
+    assert matches[0][0].tolist() == [1]
+    assert matches[0][1].tolist() == [0]
+
+
 def test_box_iou_uses_standard_iou() -> None:
     boxes1 = box_cxcywh_to_xyxy(torch.tensor([[0.5, 0.5, 0.5, 0.5]]))
     boxes2 = box_cxcywh_to_xyxy(torch.tensor([[0.5, 0.5, 0.5, 0.5]]))

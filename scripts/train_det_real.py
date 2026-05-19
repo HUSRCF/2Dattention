@@ -35,7 +35,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from attention2d import get_best_device  # noqa: E402
-from attention2d.detection import DetectionCriterion, TinyAnchorRegionDETR  # noqa: E402
+from attention2d.detection import DetectionCriterion, HungarianMatcher, TinyAnchorRegionDETR  # noqa: E402
 from attention2d.detection.matcher import box_cxcywh_to_xyxy, box_iou  # noqa: E402
 from train_det_toy import (  # noqa: E402
     MODEL_CONFIGS as BASE_MODEL_CONFIGS,
@@ -66,6 +66,14 @@ REAL_MODEL_CONFIGS = {
     "local_anchor_quality_head": ("local", "anchor", "none", "none", 0.1, "none"),
     "local_anchor_residual_query_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_anchor_refbox_residual_query": ("local", "anchor_refbox_residual", "none", "none", 0.01, "none"),
+    "local_anchor_refbox_residual_query_refmatch": (
+        "local",
+        "anchor_refbox_residual",
+        "none",
+        "none",
+        0.01,
+        "none",
+    ),
     "local_anchor_residual_query_box_quality_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_anchor_residual_query_box_class_head": ("local", "anchor_residual", "none", "none", 0.01, "none"),
     "local_anchor_residual_query_box_class_quality_head": (
@@ -358,6 +366,10 @@ BOX_QUALITY_HEAD_MODELS = {
 BOX_CLASS_HEAD_MODELS = {
     "local_anchor_residual_query_box_class_head",
     "local_anchor_residual_query_box_class_quality_head",
+}
+
+REFERENCE_MATCH_MODELS = {
+    "local_anchor_refbox_residual_query_refmatch",
 }
 
 QUALITY_SCORE_ALPHAS = (0.25, 0.5, 1.0, 2.0, 4.0)
@@ -737,7 +749,12 @@ def train_one_model(
         quality_mode="box" if model_name in BOX_QUALITY_HEAD_MODELS else "query",
         class_mode="box" if model_name in BOX_CLASS_HEAD_MODELS else "query",
     ).to(device)
-    criterion = DetectionCriterion(num_classes=num_classes, no_object_weight=args.no_object_weight).to(device)
+    matcher = HungarianMatcher(reference_bbox_cost=2.0) if model_name in REFERENCE_MATCH_MODELS else None
+    criterion = DetectionCriterion(
+        num_classes=num_classes,
+        matcher=matcher,
+        no_object_weight=args.no_object_weight,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
     train_sampler = build_train_slice_sampler(
         train_set,
