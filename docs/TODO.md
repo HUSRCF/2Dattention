@@ -1537,3 +1537,4 @@ Stronger-background offcenter slice-calibration control:
   - `results/torchvision_weightsfile_cocoeval_protocol_slices.csv`
   - `results/torchvision_weightsfile_cocoeval_protocol_summary.csv`
   - Summary row for the pretrained torchvision eval-only smoke: `coco_ap50=0.0061`, `offcenter_ap50=0.0061`, `center_ap50=0.0`, `medium_ap50=0.0266`. Treat these as protocol sanity values, not model performance claims.
+- External-detector comparison helper added: `scripts/compare_external_detector_protocols.py` merges one-line protocol summaries and optionally computes deltas against a named reference. Smoke artifact: `results/torchvision_weightsfile_cocoeval_protocol_comparison.csv`.
