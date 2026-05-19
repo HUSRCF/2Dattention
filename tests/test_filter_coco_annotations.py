@@ -16,6 +16,7 @@ def write_slice_fixture(path: Path) -> None:
             {"id": 1, "file_name": "center.JPEG", "width": 100, "height": 100},
             {"id": 2, "file_name": "offcenter.JPEG", "width": 100, "height": 100},
             {"id": 3, "file_name": "large.JPEG", "width": 100, "height": 100},
+            {"id": 4, "file_name": "empty.JPEG", "width": 100, "height": 100},
         ],
         "annotations": [
             {"id": 1, "image_id": 1, "category_id": 1, "bbox": [40, 40, 20, 20], "area": 400, "iscrowd": 0},
@@ -56,3 +57,13 @@ def test_filter_coco_annotations_area_slices(tmp_path: Path) -> None:
     assert [annotation["id"] for annotation in small["annotations"]] == [1, 2]
     assert [annotation["id"] for annotation in medium["annotations"]] == []
     assert [annotation["id"] for annotation in large["annotations"]] == [3]
+
+
+def test_filter_coco_annotations_all_preserves_empty_images(tmp_path: Path) -> None:
+    path = tmp_path / "ann.json"
+    write_slice_fixture(path)
+
+    filtered = filter_coco_annotations(path, slice_name="all")
+
+    assert [image["id"] for image in filtered["images"]] == [1, 2, 3, 4]
+    assert [annotation["id"] for annotation in filtered["annotations"]] == [1, 2, 3]

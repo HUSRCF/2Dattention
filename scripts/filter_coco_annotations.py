@@ -59,9 +59,12 @@ def filter_coco_annotations(
         )
     ]
     kept_image_ids = {int(annotation["image_id"]) for annotation in kept_annotations}
+    kept_images = data["images"] if slice_name == "all" else [
+        image for image in data["images"] if int(image["id"]) in kept_image_ids
+    ]
     return {
         **{key: value for key, value in data.items() if key not in {"images", "annotations"}},
-        "images": [image for image in data["images"] if int(image["id"]) in kept_image_ids],
+        "images": kept_images,
         "annotations": kept_annotations,
     }
 
