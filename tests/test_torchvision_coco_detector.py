@@ -5,6 +5,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from PIL import Image
+import pytest
 import torch
 
 from scripts.train_torchvision_coco_detector import (
@@ -14,7 +15,10 @@ from scripts.train_torchvision_coco_detector import (
     checkpoint_args,
     count_trainable_parameters,
     collate_detection,
+    coco_category_id_by_label,
+    ensure_same_category_mapping,
     load_checkpoint,
+    max_category_id,
     mean_best_iou,
     save_checkpoint,
     scale_xyxy_to_original,
@@ -53,7 +57,66 @@ def test_coco_detection_lite_scales_boxes(tmp_path: Path) -> None:
     assert torch.allclose(target["boxes"][0], torch.tensor([6.4, 6.4, 32.0, 32.0]))
     assert torch.allclose(target["orig_size"], torch.tensor([50.0, 100.0]))
     assert torch.allclose(target["resized_size"], torch.tensor([64.0, 64.0]))
-    assert target["labels"].tolist() == [2]
+    assert target["labels"].tolist() == [1]
+
+
+def test_coco_detection_lite_remaps_sparse_category_ids(tmp_path: Path) -> None:
+    image_root = tmp_path / "images"
+    image_root.mkdir()
+    Image.new("RGB", (32, 32), "white").save(image_root / "sample.JPEG")
+    annotations = {
+        "images": [{"id": 1, "file_name": "sample.JPEG", "width": 32, "height": 32}],
+        "annotations": [
+            {"id": 1, "image_id": 1, "category_id": 42, "bbox": [1, 2, 3, 4], "area": 12, "iscrowd": 0}
+        ],
+        "categories": [{"id": 42, "name": "class_sparse"}],
+    }
+    json_path = tmp_path / "ann.json"
+    json_path.write_text(json.dumps(annotations), encoding="utf-8")
+
+    dataset = CocoDetectionLite(json_path, image_root=image_root, image_size=32)
+    _, target = dataset[0]
+
+    assert target["labels"].tolist() == [1]
+    assert max_category_id(dataset) == 1
+    assert coco_category_id_by_label(dataset) == {1: 42}
+
+
+def test_ensure_same_category_mapping_rejects_mismatched_jsons(tmp_path: Path) -> None:
+    image_root = tmp_path / "images"
+    image_root.mkdir()
+    Image.new("RGB", (32, 32), "white").save(image_root / "sample.JPEG")
+
+    def write_ann(path: Path, category_id: int) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "images": [{"id": 1, "file_name": "sample.JPEG", "width": 32, "height": 32}],
+                    "annotations": [
+                        {
+                            "id": 1,
+                            "image_id": 1,
+                            "category_id": category_id,
+                            "bbox": [1, 2, 3, 4],
+                            "area": 12,
+                            "iscrowd": 0,
+                        }
+                    ],
+                    "categories": [{"id": category_id, "name": f"class_{category_id}"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    ann_a = tmp_path / "a.json"
+    ann_b = tmp_path / "b.json"
+    write_ann(ann_a, 42)
+    write_ann(ann_b, 99)
+    dataset_a = CocoDetectionLite(ann_a, image_root=image_root, image_size=32)
+    dataset_b = CocoDetectionLite(ann_b, image_root=image_root, image_size=32)
+
+    with pytest.raises(ValueError, match="category mappings differ"):
+        ensure_same_category_mapping(dataset_a, dataset_b)
 
 
 def test_torchvision_detector_metrics_match_greedy_ap() -> None:

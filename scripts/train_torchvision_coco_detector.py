@@ -75,6 +75,7 @@ def main() -> None:
         train_dataset = Subset(train_dataset, list(range(min(args.max_train_images, len(train_dataset)))))
     if args.max_eval_images > 0:
         eval_dataset = Subset(eval_dataset, list(range(min(args.max_eval_images, len(eval_dataset)))))
+    ensure_same_category_mapping(train_dataset, eval_dataset)
     num_classes = max_category_id(train_dataset, eval_dataset) + 1
 
     model = build_model(
@@ -172,6 +173,12 @@ class CocoDetectionLite(Dataset[tuple[Tensor, dict[str, Tensor]]]):
         self.image_root = image_root
         self.image_size = image_size
         self.images = sorted(data["images"], key=lambda item: int(item["id"]))
+        category_ids = sorted(
+            {int(category["id"]) for category in data.get("categories", [])}
+            | {int(annotation["category_id"]) for annotation in data["annotations"]}
+        )
+        self.label_by_category_id = {category_id: idx + 1 for idx, category_id in enumerate(category_ids)}
+        self.category_id_by_label = {label: category_id for category_id, label in self.label_by_category_id.items()}
         annotations_by_image: dict[int, list[dict[str, Any]]] = {int(image["id"]): [] for image in self.images}
         for annotation in data["annotations"]:
             annotations_by_image.setdefault(int(annotation["image_id"]), []).append(annotation)
@@ -200,7 +207,7 @@ class CocoDetectionLite(Dataset[tuple[Tensor, dict[str, Tensor]]]):
                     (y + height) * scale_y,
                 ]
             )
-            labels.append(int(annotation["category_id"]))
+            labels.append(self.label_by_category_id[int(annotation["category_id"])])
         target = {
             "boxes": torch.tensor(boxes, dtype=torch.float32).reshape(-1, 4),
             "labels": torch.tensor(labels, dtype=torch.int64),
@@ -293,10 +300,29 @@ def max_category_id(*datasets: Dataset[Any]) -> int:
         base_dataset = dataset.dataset if isinstance(dataset, Subset) else dataset
         if not isinstance(base_dataset, CocoDetectionLite):
             continue
-        for annotations in base_dataset.annotations_by_image.values():
-            for annotation in annotations:
-                maximum = max(maximum, int(annotation["category_id"]))
+        maximum = max(maximum, max(base_dataset.category_id_by_label, default=0))
     return maximum
+
+
+def coco_category_id_by_label(dataset: Dataset[Any]) -> dict[int, int]:
+    base_dataset = dataset.dataset if isinstance(dataset, Subset) else dataset
+    if isinstance(base_dataset, CocoDetectionLite):
+        return dict(base_dataset.category_id_by_label)
+    return {}
+
+
+def ensure_same_category_mapping(*datasets: Dataset[Any]) -> None:
+    mappings = [coco_category_id_by_label(dataset) for dataset in datasets]
+    mappings = [mapping for mapping in mappings if mapping]
+    if not mappings:
+        return
+    first = mappings[0]
+    for mapping in mappings[1:]:
+        if mapping != first:
+            raise ValueError(
+                "train/eval category mappings differ; provide COCO JSONs with the same categories list "
+                "or remap categories before training"
+            )
 
 
 @torch.no_grad()
@@ -319,13 +345,16 @@ def evaluate_detector(
         scores = output["scores"].detach().cpu()
         orig_size = target[0]["orig_size"].cpu()
         resized_size = target[0]["resized_size"].cpu()
+        category_id_by_label = coco_category_id_by_label(dataset)
         for box, label, score in zip(boxes, labels, scores, strict=False):
+            label_id = int(label.item())
             predictions.append(
                 {
                     "image_id": image_id,
                     "box": box,
                     "coco_box": scale_xyxy_to_original(box, orig_size=orig_size, resized_size=resized_size),
-                    "label": int(label.item()),
+                    "label": label_id,
+                    "category_id": category_id_by_label.get(label_id, label_id),
                     "score": float(score.item()),
                 }
             )
@@ -341,7 +370,7 @@ def write_predictions(path: Path, predictions: list[dict[str, Any]]) -> None:
     records = [
         {
             "image_id": int(prediction["image_id"]),
-            "category_id": int(prediction["label"]),
+            "category_id": int(prediction.get("category_id", prediction["label"])),
             "bbox": xyxy_to_xywh(prediction.get("coco_box", prediction["box"])),
             "score": float(prediction["score"]),
         }
