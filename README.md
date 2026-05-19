@@ -190,7 +190,7 @@ COCO category ids are remapped to contiguous positive torchvision labels interna
 Use `scripts/summarize_torchvision_detector_results.py` to summarize torchvision CSV, prediction JSON, and COCOeval CSV artifacts after a run.
 Use `scripts/evaluate_coco_predictions.py --annotations eval.json --predictions predictions.json` for standard pycocotools COCOeval metrics.
 Use `scripts/filter_coco_annotations.py` to derive off-center or object-size slice annotations for the same COCOeval path.
-Use `scripts/evaluate_coco_slices.py` to evaluate `all/offcenter/center/small/medium/large` slices into one CSV.
+Use `scripts/evaluate_coco_slices.py` to evaluate `all/offcenter/center/small/medium/large` slice-target COCOeval into one CSV. Slice predictions are filtered by image id, so same-image non-slice predictions can count as false positives for that slice.
 Use `scripts/evaluate_external_detector_protocol.py` to generate standard COCOeval, slice COCOeval, and one-line stage-gate summary artifacts from one prediction JSON.
 Use `scripts/compare_external_detector_protocols.py` to merge multiple stage-gate summaries and compute deltas against a named reference.
 

@@ -68,6 +68,16 @@ def test_evaluate_coco_predictions_handles_empty_predictions(tmp_path: Path) -> 
     assert all(value == 0.0 for value in metrics.values())
 
 
+def test_evaluate_coco_predictions_validates_annotations_for_empty_predictions(tmp_path: Path) -> None:
+    annotations = tmp_path / "bad_ann.json"
+    predictions = tmp_path / "pred.json"
+    annotations.write_text("{}", encoding="utf-8")
+    predictions.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(KeyError):
+        evaluate_coco_predictions(annotations, predictions)
+
+
 def test_evaluate_coco_predictions_accepts_exporter_annotations_without_info(tmp_path: Path) -> None:
     annotations = tmp_path / "ann.json"
     predictions = tmp_path / "pred.json"

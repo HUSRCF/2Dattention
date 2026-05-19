@@ -53,14 +53,14 @@ def evaluate_coco_predictions(annotation_json: Path, prediction_json: Path) -> d
     except ImportError as exc:  # pragma: no cover - depends on environment extras.
         raise RuntimeError("pycocotools is required for standard COCO evaluation") from exc
 
-    predictions = json.loads(prediction_json.read_text(encoding="utf-8"))
-    if not predictions:
-        return {name: 0.0 for name in METRIC_NAMES}
-
     with tempfile.TemporaryDirectory() as tmp_dir:
         normalized_annotations = normalize_coco_annotations(annotation_json, Path(tmp_dir) / "annotations.json")
         with redirect_stdout(io.StringIO()):
             coco_gt = COCO(str(normalized_annotations))
+        predictions = json.loads(prediction_json.read_text(encoding="utf-8"))
+        if not predictions:
+            return {name: 0.0 for name in METRIC_NAMES}
+        with redirect_stdout(io.StringIO()):
             coco_dt = coco_gt.loadRes(str(prediction_json))
             evaluator = COCOeval(coco_gt, coco_dt, iouType="bbox")
             evaluator.evaluate()
@@ -72,6 +72,9 @@ def evaluate_coco_predictions(annotation_json: Path, prediction_json: Path) -> d
 
 def normalize_coco_annotations(source: Path, destination: Path) -> Path:
     data = json.loads(source.read_text(encoding="utf-8"))
+    for key in ("images", "annotations", "categories"):
+        if key not in data:
+            raise KeyError(f"COCO annotation JSON missing required key: {key}")
     changed = False
     if "info" not in data:
         data["info"] = {"description": "normalized for pycocotools loadRes"}

@@ -27,10 +27,20 @@ SUMMARY_FIELDS = (
     "mean_score",
     "max_score",
     *[f"coco_{name}" for name in METRIC_NAMES],
+    "offcenter_images",
+    "offcenter_annotations",
     "offcenter_ap50",
+    "center_images",
+    "center_annotations",
     "center_ap50",
+    "small_images",
+    "small_annotations",
     "small_ap50",
+    "medium_images",
+    "medium_annotations",
     "medium_ap50",
+    "large_images",
+    "large_annotations",
     "large_ap50",
 )
 
@@ -126,7 +136,10 @@ def build_protocol_summary(
     }
     rows_by_slice = {str(slice_row["slice"]): slice_row for slice_row in slice_rows}
     for slice_name in ("offcenter", "center", "small", "medium", "large"):
-        row[f"{slice_name}_ap50"] = rows_by_slice.get(slice_name, {}).get("ap50", "")
+        slice_row = rows_by_slice.get(slice_name, {})
+        row[f"{slice_name}_images"] = slice_row.get("images", "")
+        row[f"{slice_name}_annotations"] = slice_row.get("annotations", "")
+        row[f"{slice_name}_ap50"] = slice_row.get("ap50", "")
     return row
 
 
