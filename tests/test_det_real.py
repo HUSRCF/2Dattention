@@ -41,6 +41,13 @@ from scripts.train_det_real import (
     summarize_slice_ap,
     summarize_slice_ranking_diagnostics,
 )
+from scripts.export_det_manifest_to_coco import (
+    build_coco_datasets,
+    filter_rows,
+    limit_rows_by_images_per_split,
+    read_manifest,
+    read_split_map,
+)
 from attention2d.detection import DetectionCriterion
 from attention2d.detection import TinyAnchorRegionDETR
 
@@ -83,6 +90,107 @@ def test_real_det_dataset_parses_xml_and_normalizes_boxes(tmp_path: Path) -> Non
     images, targets = det_collate([dataset[0]])
     assert images.shape == (1, 3, 32, 32)
     assert len(targets) == 1
+
+
+def test_export_det_manifest_to_coco_can_split_by_seed(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "image_id,image_path,width,height,label,xmin,ymin,xmax,ymax",
+                "img_a,images/img_a.JPEG,100,80,class_b,10,20,50,60",
+                "img_a,images/img_a.JPEG,100,80,class_a,60,10,90,30",
+                "img_b,images/img_b.JPEG,50,50,class_b,5,5,25,25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    split_path = tmp_path / "split.csv"
+    split_path.write_text(
+        "\n".join(
+            [
+                "run_seed,split,index,image_id,object_count",
+                "41,train,0,img_a,2",
+                "41,eval,1,img_b,1",
+                "42,eval,0,img_a,2",
+                "42,train,1,img_b,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows = filter_rows(read_manifest(manifest_path), top_classes=0, max_images=0)
+    split_map = read_split_map(split_path, run_seed=41)
+    datasets = build_coco_datasets(
+        rows,
+        split_map=split_map,
+        file_name_mode="relative",
+        image_root=Path("images"),
+    )
+
+    assert sorted(datasets) == ["eval", "train"]
+    assert [image["file_name"] for image in datasets["train"]["images"]] == ["img_a.JPEG"]
+    assert [image["file_name"] for image in datasets["eval"]["images"]] == ["img_b.JPEG"]
+    assert len(datasets["train"]["annotations"]) == 2
+    assert datasets["train"]["annotations"][0]["bbox"] == [10.0, 20.0, 40.0, 40.0]
+    assert datasets["train"]["annotations"][0]["area"] == 1600.0
+    assert [category["name"] for category in datasets["train"]["categories"]] == ["class_a", "class_b"]
+
+
+def test_export_det_manifest_to_coco_limits_each_split_independently(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "image_id,image_path,width,height,label,xmin,ymin,xmax,ymax",
+                "train_a,train_a.JPEG,20,20,cls,1,1,5,5",
+                "train_b,train_b.JPEG,20,20,cls,1,1,5,5",
+                "eval_a,eval_a.JPEG,20,20,cls,1,1,5,5",
+                "eval_b,eval_b.JPEG,20,20,cls,1,1,5,5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    rows = read_manifest(manifest_path)
+    split_map = {
+        "train_a": "train",
+        "train_b": "train",
+        "eval_a": "eval",
+        "eval_b": "eval",
+    }
+
+    limited = limit_rows_by_images_per_split(rows, max_images=1, split_map=split_map)
+    datasets = build_coco_datasets(limited, split_map=split_map, file_name_mode="basename", image_root=Path("."))
+
+    assert [image["file_name"] for image in datasets["train"]["images"]] == ["train_a.JPEG"]
+    assert [image["file_name"] for image in datasets["eval"]["images"]] == ["eval_a.JPEG"]
+
+
+def test_export_det_manifest_to_coco_filters_top_classes_and_images(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "\n".join(
+            [
+                "image_id,image_path,width,height,label,xmin,ymin,xmax,ymax",
+                "img_a,img_a.JPEG,20,20,keep,1,1,5,5",
+                "img_b,img_b.JPEG,20,20,drop,1,1,5,5",
+                "img_c,img_c.JPEG,20,20,keep,2,2,6,6",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows = filter_rows(read_manifest(manifest_path), top_classes=1, max_images=1)
+    datasets = build_coco_datasets(rows, split_map=None, file_name_mode="basename", image_root=Path("."))
+
+    assert list(datasets) == ["annotations"]
+    assert len(datasets["annotations"]["images"]) == 1
+    assert datasets["annotations"]["images"][0]["file_name"] == "img_a.JPEG"
+    assert [category["name"] for category in datasets["annotations"]["categories"]] == ["keep"]
 
 
 def test_real_det_build_splits_can_hold_out_calibration() -> None:

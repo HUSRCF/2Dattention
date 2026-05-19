@@ -147,6 +147,24 @@ This creates:
 
 The ImageFolder subset uses only images whose annotation contains a single class label, because DET images can contain multiple object categories.
 
+To hand the same detection data to an external detector pipeline, export COCO-style annotations:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/export_det_manifest_to_coco.py \
+  --manifest data/ILSVRC2013_DET_val_supervised/det_val_manifest.csv \
+  --out-dir data/ILSVRC2013_DET_val_supervised/coco
+```
+
+If you want the exact train/eval split from a `train_det_real.py` run, pass its split CSV:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/export_det_manifest_to_coco.py \
+  --manifest data/ILSVRC2013_DET_val_supervised/det_val_manifest.csv \
+  --split-csv results/det_real_no_object_w05_anchor_refbox_dab_offcenter_only_1000img_500step_3seed_split.csv \
+  --split-run-seed 41 \
+  --out-dir data/ILSVRC2013_DET_val_supervised/coco_seed41
+```
+
 ## Tests
 
 ```bash
