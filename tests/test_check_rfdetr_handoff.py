@@ -68,6 +68,21 @@ def test_coco_split_report_flags_orphan_and_invalid_bboxes(tmp_path: Path) -> No
     assert report["out_of_bounds_bbox_ids"] == [3]
 
 
+def test_coco_split_report_tolerates_tiny_float_bbox_overflow(tmp_path: Path) -> None:
+    (tmp_path / "sample.jpg").write_text("x", encoding="utf-8")
+    report = coco_split_report(
+        {
+            "images": [{"id": 1, "file_name": "sample.jpg", "width": 10, "height": 10}],
+            "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [0, 0, 10.0005, 10]}],
+            "categories": [{"id": 1, "name": "object"}],
+        },
+        tmp_path,
+    )
+
+    assert report["ok"] is True
+    assert report["out_of_bounds_bbox_ids"] == []
+
+
 def test_dataset_report_reads_rfdetr_splits(tmp_path: Path) -> None:
     for split in ("train", "valid", "test"):
         split_dir = tmp_path / split

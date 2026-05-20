@@ -6,11 +6,24 @@ import argparse
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 
-PACKAGES = ("rfdetr", "torch", "torchvision", "transformers", "timm", "supervision")
+BBOX_EPS = 1e-3
+PACKAGES = (
+    "rfdetr",
+    "torch",
+    "torchvision",
+    "transformers",
+    "timm",
+    "supervision",
+    "albumentations",
+    "faster_coco_eval",
+    "pytorch_lightning",
+    "torchmetrics",
+)
 SPLITS = ("train", "valid", "test")
 
 
@@ -36,6 +49,7 @@ def main() -> None:
 
 
 def package_report() -> dict[str, dict[str, Any]]:
+    os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
     report = {}
     for package in PACKAGES:
         spec = importlib.util.find_spec(package)
@@ -98,7 +112,12 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
         image_width = float(image.get("width", 0))
         image_height = float(image.get("height", 0))
         if image_width > 0 and image_height > 0:
-            if x < 0 or y < 0 or x + width > image_width or y + height > image_height:
+            if (
+                x < -BBOX_EPS
+                or y < -BBOX_EPS
+                or x + width > image_width + BBOX_EPS
+                or y + height > image_height + BBOX_EPS
+            ):
                 out_of_bounds_bbox_ids.append(annotation.get("id"))
     return {
         "images": len(images),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr-encoder", type=float, default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="auto")
     parser.add_argument("--resolution", type=int, default=None)
+    parser.add_argument(
+        "--num-classes",
+        type=int,
+        default=None,
+        help="Override RF-DETR class count. Use this when fine-tuning on a non-COCO category set.",
+    )
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--eval-interval", type=int, default=1)
     parser.add_argument("--run-test", action="store_true")
@@ -44,12 +51,20 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     validate_rfdetr_dataset(args.dataset_dir)
+    dataset_num_classes = detect_rfdetr_dataset_num_classes(args.dataset_dir)
+    if args.num_classes is not None and args.num_classes != dataset_num_classes:
+        raise ValueError(
+            f"--num-classes={args.num_classes} does not match train split category count "
+            f"{dataset_num_classes}. Fix the dataset or pass --num-classes {dataset_num_classes}."
+        )
     if args.check_only:
         report = rfdetr_availability_report()
         print(f"dataset_ok: {args.dataset_dir}")
+        print(f"dataset_num_classes: {dataset_num_classes}")
+        print(f"requested_num_classes: {args.num_classes if args.num_classes is not None else 'auto'}")
         print(f"rfdetr_classes: {', '.join(report['classes'])}")
         return
-    model = build_rfdetr_model(args.model_size, pretrain_weights=args.pretrain_weights)
+    model = build_rfdetr_model(args.model_size, pretrain_weights=args.pretrain_weights, num_classes=args.num_classes)
     train_kwargs = {
         "dataset_dir": str(args.dataset_dir),
         "output_dir": str(args.output_dir),
@@ -78,25 +93,37 @@ def main() -> None:
     model.train(**train_kwargs)
 
 
-def build_rfdetr_model(model_size: str, pretrain_weights: Path | None = None) -> Any:
+def build_rfdetr_model(
+    model_size: str,
+    pretrain_weights: Path | None = None,
+    num_classes: int | None = None,
+) -> Any:
     module = import_rfdetr_module()
     class_name = MODEL_CLASSES[model_size]
     if not hasattr(module, class_name):
         available = ", ".join(name for name in MODEL_CLASSES.values() if hasattr(module, name))
         raise RuntimeError(f"installed rfdetr does not expose {class_name}; available known classes: {available}")
     model_cls = getattr(module, class_name)
+    model_kwargs: dict[str, Any] = {}
     if pretrain_weights is not None:
-        return model_cls(pretrain_weights=str(pretrain_weights))
-    return model_cls()
+        model_kwargs["pretrain_weights"] = str(pretrain_weights)
+    if num_classes is not None:
+        model_kwargs["num_classes"] = num_classes
+    return model_cls(**model_kwargs)
 
 
 def import_rfdetr_module() -> Any:
+    if importlib.util.find_spec("rfdetr") is None:
+        raise RuntimeError(
+            "RF-DETR is not installed in this environment. Install it with `pip install rfdetr` "
+            "inside the AIAA environment, then rerun this script."
+        )
     try:
         return importlib.import_module("rfdetr")
     except ImportError as exc:
         raise RuntimeError(
-            "RF-DETR is not installed in this environment. Install it with `pip install rfdetr` "
-            "inside the AIAA environment, then rerun this script."
+            "RF-DETR is installed but failed to import, likely because a transitive dependency is missing or "
+            f"incompatible: {exc}"
         ) from exc
 
 
@@ -112,6 +139,17 @@ def validate_rfdetr_dataset(dataset_dir: Path) -> None:
         annotation_path = dataset_dir / split / "_annotations.coco.json"
         if not annotation_path.exists():
             raise FileNotFoundError(f"missing RF-DETR split annotation: {annotation_path}")
+
+
+def detect_rfdetr_dataset_num_classes(dataset_dir: Path) -> int:
+    import json
+
+    annotation_path = dataset_dir / "train" / "_annotations.coco.json"
+    data = json.loads(annotation_path.read_text(encoding="utf-8"))
+    categories = data.get("categories", [])
+    if not categories:
+        raise ValueError(f"RF-DETR train split has no categories: {annotation_path}")
+    return len({int(category["id"]) for category in categories})
 
 
 if __name__ == "__main__":

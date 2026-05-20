@@ -225,12 +225,15 @@ Then run RF-DETR when the package, weights, and training dependencies are ready:
   --dataset-dir data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41 \
   --output-dir results/rfdetr_offcenter_seed41_nano \
   --model-size nano \
+  --num-classes 200 \
   --epochs 1 \
   --batch-size 1 \
-  --grad-accum-steps 1
+  --grad-accum-steps 1 \
+  --device mps \
+  --resolution 384
 ```
 
-Current local AIAA status: `rfdetr` and `supervision` now import after a controlled minimal install (`rfdetr`, `pyDeprecate==0.7.0`, `peft`, `accelerate`, `supervision`, `protobuf>=5.28,<6`, `transformers==5.8.1`, `huggingface-hub>=1.5`, `regex>=2025.10.22`). `timm` is still absent, and this install changed shared dependencies, so treat the environment as RF-DETR-specific rather than globally clean. The prepared dataset and stage-gate COCO evaluation scripts are ready; RF-DETR training still needs a completed pretrained-weight download and a training smoke before it can be treated as runnable.
+Current local AIAA status: `rfdetr`, `supervision`, `albumentations`, and `faster-coco-eval` now import after a controlled minimal install (`rfdetr`, `pyDeprecate==0.7.0`, `peft`, `accelerate`, `supervision`, `albumentations`, `faster-coco-eval`, `protobuf>=5.28,<6`, `transformers==5.8.1`, `huggingface-hub>=1.5`, `regex>=2025.10.22`). `timm` is still absent, and this install changed shared dependencies, so treat the environment as RF-DETR-specific rather than globally clean. `RFDETRNano()` has downloaded and validated `rf-detr-nano.pth`, and a tiny 1-epoch MPS train smoke completed after adding `albumentations` and `faster-coco-eval`. A second tiny smoke with `--num-classes 200` also completed; RF-DETR still prints a construction-time 90-class checkpoint warning, but the training path is not blocked. The runner now checks `--num-classes` against the train split, so use `--num-classes 200` for the prepared ILSVRC handoff to make the intended task class count explicit.
 
 Check the handoff state at any time with:
 
