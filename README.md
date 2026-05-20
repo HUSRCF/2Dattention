@@ -195,6 +195,33 @@ Use `scripts/evaluate_coco_slices.py` to evaluate `all/offcenter/center/small/me
 Use `scripts/evaluate_external_detector_protocol.py` to generate class-aware COCOeval, class-agnostic localization COCOeval (`loc_*`), slice COCOeval, and one-line stage-gate summary artifacts from one prediction JSON.
 Use `scripts/compare_external_detector_protocols.py` to merge multiple stage-gate summaries and compute deltas against a named reference.
 
+### RF-DETR handoff
+
+RF-DETR expects a dataset directory with `train/`, `valid/`, and `test/` subdirectories, each containing `_annotations.coco.json` and the corresponding images. Prepare that structure from the exported COCO split with symlinks:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/prepare_rfdetr_dataset.py \
+  --train-json data/ILSVRC2013_DET_val_supervised/coco_offcenter_seed41/train.json \
+  --valid-json data/ILSVRC2013_DET_val_supervised/coco_offcenter_seed41/eval.json \
+  --image-root data/ILSVRC2013_DET_val \
+  --out-dir data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41 \
+  --link-mode symlink
+```
+
+Then run RF-DETR when the `rfdetr` package is installed in the environment:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/train_rfdetr_coco.py \
+  --dataset-dir data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41 \
+  --output-dir results/rfdetr_offcenter_seed41_nano \
+  --model-size nano \
+  --epochs 1 \
+  --batch-size 1 \
+  --grad-accum-steps 1
+```
+
+Current local AIAA status: `torch` and `transformers` are installed, but `rfdetr`, `timm`, `supervision`, and `roboflow` are not installed. The prepared dataset and stage-gate COCO evaluation scripts are ready; RF-DETR execution requires installing the RF-DETR package and its dependencies first.
+
 ## Tests
 
 ```bash
