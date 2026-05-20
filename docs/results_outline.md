@@ -2642,5 +2642,6 @@ Interpretation:
 - Lightweight torchvision teachers do not beat ResNet50 under the same top-5 multiply protocol: EfficientNet-B0 reaches AP50 `0.1253` and MobileNetV3-Large reaches `0.1158`. This keeps ResNet50 top-5 multiply as the current practical category-transfer baseline.
 - ConvNeXt-Tiny top-5 multiply also reaches only AP50 `0.1253` despite the highest target-set top-5 among the checked teachers, reinforcing that ResNet50 is currently the best practical torchvision category teacher.
 - Simple teacher ensembling does not improve the practical result: fusing ResNet50+ConvNeXt-Tiny top-5 predictions gives AP50 `0.1595`, and fusing ResNet50+ConvNeXt-Tiny+EfficientNet-B0 gives AP50 `0.1577`, both below single ResNet50 top-5 multiply (`0.1607`).
+- ResNet50 top-5 multiply also improves the hard spatial slice: offcenter AP50 rises from the ResNet50 top-1 prior's `0.1012` to `0.1465`, while center AP50 rises only from `0.0910` to `0.1010`.
 - The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
 - Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.
