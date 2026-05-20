@@ -105,6 +105,24 @@ Category source scorecard artifacts:
 - `scripts/summarize_coco_category_sources.py`
 - `results/rfdetr_category_source_scorecard_full_summary.csv`
 
+Candidate-constrained category oracle:
+
+| Setting | Candidate hit rate | AP50 | AP75 | AR100 |
+|---|---:|---:|---:|---:|
+| Existing top-5 candidate set, use candidate score | 0.2039 | 0.2578 | 0.1845 | 0.2723 |
+| Existing top-5 candidate set, use group max score | 0.2039 | 0.2578 | 0.1845 | 0.2723 |
+| Existing top-5 candidate set, use oracle IoU score | 0.2039 | 0.4736 | 0.2807 | 0.2723 |
+| Any category oracle, original score | - | 0.3712 | 0.2346 | 0.4413 |
+| Any category oracle, IoU score | - | 0.7515 | 0.4554 | 0.4413 |
+
+Candidate-oracle artifacts:
+
+- `scripts/oracle_coco_category_candidates.py`
+- `results/rfdetr_candidate_category_oracle_summary.csv`
+- `results/rfdetr_max3_resnet50_top5x_candidate_oracle_candidate_cocoeval.csv`
+- `results/rfdetr_max3_resnet50_top5x_candidate_oracle_groupmax_cocoeval.csv`
+- `results/rfdetr_max3_resnet50_top5x_candidate_oracle_iou_cocoeval.csv`
+
 Frozen DET-aware category-prior check:
 
 | Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
@@ -234,6 +252,11 @@ Native category transform artifacts:
   top-5 prior. ConvNeXt/EfficientNet and simple teacher ensembles are not enough
   to close the category retention gap; the next category route should be a
   stronger detector-aware teacher or an integrated detector-side class head.
+- Candidate-constrained oracle confirms the same bottleneck. The current top-5
+  candidate set contains the nearest-GT category for only `20.4%` of grouped
+  proposal boxes. Even with oracle IoU scoring, this constrained candidate set
+  reaches AP50 `0.4736`, well below the all-category IoU oracle AP50 `0.7515`.
+  This rules out pure candidate reranking as the main next step.
 
 ## Stop / Continue Rule
 
