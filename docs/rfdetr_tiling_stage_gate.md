@@ -89,6 +89,22 @@ Category coverage artifacts:
 - `results/rfdetr_max3_resnet50_top5x_heldout_base_category_coverage_gap.csv`
 - `results/rfdetr_max3_resnet50_top5x_calibrated_heldout_category_coverage_gap.csv`
 
+Existing category source scorecard, full split:
+
+| Setting | AP50 | Global top-100 class R@50 | Category retention |
+|---|---:|---:|---:|
+| max3 + ResNet50 top-5 prior | 0.1697 | 0.2092 | 0.2963 |
+| onecrop + ResNet50 top-5 prior | 0.1607 | 0.1634 | 0.2841 |
+| onecrop + ConvNeXt-Tiny top-5 prior | 0.1253 | 0.1667 | 0.2881 |
+| onecrop + EfficientNet-B0 top-5 prior | 0.1253 | 0.1471 | 0.2557 |
+| onecrop + teacher ensemble top-5 prior | 0.1577 | 0.1634 | 0.2890 |
+| onecrop + ResNet50/ConvNeXt ensemble top-5 prior | 0.1595 | 0.1699 | 0.2971 |
+
+Category source scorecard artifacts:
+
+- `scripts/summarize_coco_category_sources.py`
+- `results/rfdetr_category_source_scorecard_full_summary.csv`
+
 Frozen DET-aware category-prior check:
 
 | Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
@@ -214,6 +230,10 @@ Native category transform artifacts:
   per-category-topK recall is only `0.006-0.013` higher. This means most loss is
   from missing/incorrect category candidates, not from correct categories being
   buried far down the global ranking.
+- Existing torchvision category sources do not beat the current max3 ResNet50
+  top-5 prior. ConvNeXt/EfficientNet and simple teacher ensembles are not enough
+  to close the category retention gap; the next category route should be a
+  stronger detector-aware teacher or an integrated detector-side class head.
 
 ## Stop / Continue Rule
 
