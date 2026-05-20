@@ -2598,6 +2598,7 @@ Image-level category-prior diagnostic:
 | most frequent GT category per image | 0.1309 | 0.1984 | 0.1449 |
 | tiny trained image classifier | 0.0011 | 0.0023 | 0.0010 |
 | torchvision ResNet18 ImageNet prior | 0.0663 | 0.0886 | 0.0776 |
+| torchvision ResNet18 crop prior | 0.0664 | 0.0904 | 0.0793 |
 
 Class-agnostic NMS slice AP50 on the 25 covered source images:
 
@@ -2621,5 +2622,6 @@ Interpretation:
 - A coarse image-level category prior already recovers AP50 `0.2185`, close to the class-agnostic localization AP50. This suggests the next concrete route is category transfer/calibration from an image or crop classifier, not more crop geometry tweaks.
 - A tiny classifier trained only on the local RF-DETR train split does not recover the category gap: top-1 is `0.1014`, top-5 is `0.3768`, and relabeled detection AP50 is only `0.0023`. Category transfer therefore needs a strong pretrained/teacher classifier, not another small from-scratch local head.
 - A cached torchvision ResNet18 ImageNet prior gives a real non-oracle gain: image-prior top-1 is `0.2029` on this small-valid target and relabeled detection AP50 reaches `0.0886`. This is still far below GT image-prior AP50 `0.2185`, so the category-transfer route needs a stronger teacher or crop/object-level classifier.
+- Running the same ResNet18 on the crop images is not better: crop-prior top-1 is `0.0725` and relabeled detection AP50 is `0.0904`, essentially tied with the full-image ResNet18 prior.
 - The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
 - Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.

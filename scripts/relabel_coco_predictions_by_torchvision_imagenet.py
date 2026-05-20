@@ -27,6 +27,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument(
+        "--use-source-image-id",
+        action="store_true",
+        help="Use image['source_image_id'] as the prediction image id; useful for crop metadata.",
+    )
+    parser.add_argument(
         "--restrict-to-annotation-categories",
         action="store_true",
         help="If top-1 is outside annotation categories, use highest-probability annotation category.",
@@ -44,7 +49,7 @@ def main() -> None:
         str(category["name"]): int(category["id"]) for category in data.get("categories", [])
     }
     allowed_category_ids = set(category_id_by_synset.values())
-    dataset = CocoImageDataset(data=data, image_root=args.image_root)
+    dataset = CocoImageDataset(data=data, image_root=args.image_root, use_source_image_id=args.use_source_image_id)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     model, preprocess = build_model(args.model)
     model = model.to(device).eval()
@@ -110,9 +115,10 @@ def main() -> None:
 
 
 class CocoImageDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
-    def __init__(self, *, data: dict[str, Any], image_root: Path) -> None:
+    def __init__(self, *, data: dict[str, Any], image_root: Path, use_source_image_id: bool = False) -> None:
         self.images = sorted(data.get("images", []), key=lambda image: int(image["id"]))
         self.image_root = image_root
+        self.use_source_image_id = use_source_image_id
         self.gt_category_by_image = largest_category_by_image(data)
         _, self.preprocess = build_model("resnet18")
 
@@ -122,10 +128,11 @@ class CocoImageDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor, Tensor]:
         image = self.images[index]
         image_id = int(image["id"])
+        output_image_id = int(image.get("source_image_id", image_id)) if self.use_source_image_id else image_id
         pil_image = Image.open(self.image_root / image["file_name"]).convert("RGB")
         return (
             self.preprocess(pil_image),
-            torch.tensor(image_id, dtype=torch.long),
+            torch.tensor(output_image_id, dtype=torch.long),
             torch.tensor(self.gt_category_by_image.get(image_id, -1), dtype=torch.long),
         )
 
