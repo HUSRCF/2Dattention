@@ -135,6 +135,21 @@ Fusion artifacts:
 - `results/rfdetr_max3_resnet50_image_propcrop_geomean_keepprimary_heldout_score_iou.csv`
 - `results/rfdetr_category_prior_fusion_heldout_summary.csv`
 
+RF-DETR native category-id transform check:
+
+| Setting | AP50 |
+|---|---:|
+| Native category IDs | 0.0058 |
+| Native category IDs, best small offset (+3) | 0.0194 |
+| Class-agnostic reference on same class-preserving NMS file | 0.0854 |
+| Max3 + ResNet50 image top-5 prior | 0.1697 |
+| Max3 + nearest-GT category, original score | 0.3712 |
+
+Native category transform artifacts:
+
+- `scripts/evaluate_coco_category_id_transforms.py`
+- `results/rfdetr_native_category_transform_max3_fused_full_summary.csv`
+
 ## Interpretation
 
 - More crop coverage still improves class-agnostic localization.
@@ -173,6 +188,9 @@ Fusion artifacts:
   recall, while keep-primary fusion is effectively flat on AP50 and worse on
   off-center AP50. The next category step needs a stronger teacher or integrated
   detector-side class head, not naive post-hoc prior fusion.
+- The native RF-DETR category failure is not explained by a simple category-id
+  offset. A small offset sweep around the native IDs peaks at `0.0194` AP50,
+  still far below the ImageNet-prior and oracle-category settings.
 
 ## Stop / Continue Rule
 
