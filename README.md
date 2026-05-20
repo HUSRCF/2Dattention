@@ -222,6 +222,14 @@ Then run RF-DETR when the `rfdetr` package is installed in the environment:
 
 Current local AIAA status: `torch` and `transformers` are installed, but `rfdetr`, `timm`, `supervision`, and `roboflow` are not installed. The prepared dataset and stage-gate COCO evaluation scripts are ready; RF-DETR execution requires installing the RF-DETR package and its dependencies first.
 
+Check the handoff state at any time with:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/check_rfdetr_handoff.py \
+  --dataset-dir data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41 \
+  --out results/rfdetr_offcenter_seed41_handoff_check.json
+```
+
 ## Tests
 
 ```bash
