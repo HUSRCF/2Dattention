@@ -88,6 +88,29 @@ def test_evaluate_coco_slices_handles_empty_slice(tmp_path: Path) -> None:
     ]
 
 
+def test_evaluate_coco_slices_can_run_class_agnostic(tmp_path: Path) -> None:
+    annotations = tmp_path / "ann.json"
+    predictions = tmp_path / "pred.json"
+    data = {
+        "images": [{"id": 1, "file_name": "sample.JPEG", "width": 100, "height": 100}],
+        "annotations": [
+            {"id": 1, "image_id": 1, "category_id": 2, "bbox": [40, 40, 20, 20], "area": 400, "iscrowd": 0}
+        ],
+        "categories": [{"id": 2, "name": "object"}],
+    }
+    annotations.write_text(json.dumps(data), encoding="utf-8")
+    predictions.write_text(
+        json.dumps([{"image_id": 1, "category_id": 99, "bbox": [40, 40, 20, 20], "score": 0.99}]),
+        encoding="utf-8",
+    )
+
+    class_aware = evaluate_coco_slices(annotations, predictions, slices=("all",))
+    class_agnostic = evaluate_coco_slices(annotations, predictions, slices=("all",), class_agnostic=True)
+
+    assert class_aware[0]["ap50"] == 0.0
+    assert class_agnostic[0]["ap50"] > 0.99
+
+
 def test_evaluate_coco_slices_keeps_image_level_predictions_as_slice_false_positives(tmp_path: Path) -> None:
     annotations = tmp_path / "ann.json"
     predictions = tmp_path / "pred.json"

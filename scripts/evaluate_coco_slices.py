@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--center-radius", type=float, default=0.25)
     parser.add_argument("--small-area-ratio", type=float, default=0.05)
     parser.add_argument("--large-area-ratio", type=float, default=0.25)
+    parser.add_argument(
+        "--class-agnostic",
+        action="store_true",
+        help="Evaluate localization by remapping all GT and prediction categories to one foreground class.",
+    )
     return parser.parse_args()
 
 
@@ -41,6 +46,7 @@ def main() -> None:
         center_radius=args.center_radius,
         small_area_ratio=args.small_area_ratio,
         large_area_ratio=args.large_area_ratio,
+        class_agnostic=args.class_agnostic,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="", encoding="utf-8") as handle:
@@ -62,6 +68,7 @@ def evaluate_coco_slices(
     center_radius: float = 0.25,
     small_area_ratio: float = 0.05,
     large_area_ratio: float = 0.25,
+    class_agnostic: bool = False,
 ) -> list[dict[str, Any]]:
     rows = []
     predictions = json.loads(prediction_json.read_text(encoding="utf-8"))
@@ -82,7 +89,7 @@ def evaluate_coco_slices(
             slice_predictions = [row for row in predictions if int(row["image_id"]) in image_ids]
             slice_predictions_path.write_text(json.dumps(slice_predictions), encoding="utf-8")
             metrics = (
-                evaluate_coco_predictions(slice_path, slice_predictions_path)
+                evaluate_coco_predictions(slice_path, slice_predictions_path, class_agnostic=class_agnostic)
                 if filtered["annotations"]
                 else {name: 0.0 for name in METRIC_NAMES}
             )
