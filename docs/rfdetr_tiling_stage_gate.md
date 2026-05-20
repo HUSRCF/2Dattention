@@ -117,6 +117,24 @@ Proposal-crop artifacts:
 - `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_calibrated_heldout_score_iou.csv`
 - `results/rfdetr_propcrop_prior_heldout_summary.csv`
 
+Image-prior / proposal-crop fusion check:
+
+| Setting | AP50 | Off-center AP50 | Top-100 mean class-aware IoU |
+|---|---:|---:|---:|
+| ResNet50 image top-5x + calibration | 0.1878 | 0.1933 | 0.2418 |
+| Image prior and proposal-crop intersection, geomean | 0.1049 | 0.0557 | 0.0227 |
+| Keep ImageNet primary, boost categories also seen by proposal-crop | 0.1879 | 0.1816 | 0.1066 |
+
+Fusion artifacts:
+
+- `scripts/fuse_coco_category_prior_predictions.py`
+- `results/rfdetr_max3_resnet50_image_propcrop_geomean_intersection_heldout_slices.csv`
+- `results/rfdetr_max3_resnet50_image_propcrop_geomean_intersection_heldout_prediction_recall.csv`
+- `results/rfdetr_max3_resnet50_image_propcrop_geomean_intersection_heldout_score_iou.csv`
+- `results/rfdetr_max3_resnet50_image_propcrop_geomean_keepprimary_heldout_slices.csv`
+- `results/rfdetr_max3_resnet50_image_propcrop_geomean_keepprimary_heldout_score_iou.csv`
+- `results/rfdetr_category_prior_fusion_heldout_summary.csv`
+
 ## Interpretation
 
 - More crop coverage still improves class-agnostic localization.
@@ -150,6 +168,11 @@ Proposal-crop artifacts:
   (`0.1878` held-out AP50 after calibration), and calibration only lifts it to
   `0.0824`. This is a useful mechanism signal but not a deployable category
   source yet.
+- Simple fusion between ImageNet image prior and proposal-crop prior does not
+  improve the current best setting. Intersection fusion throws away too much
+  recall, while keep-primary fusion is effectively flat on AP50 and worse on
+  off-center AP50. The next category step needs a stronger teacher or integrated
+  detector-side class head, not naive post-hoc prior fusion.
 
 ## Stop / Continue Rule
 

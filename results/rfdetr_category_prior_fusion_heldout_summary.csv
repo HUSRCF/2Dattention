@@ -1,0 +1,4 @@
+setting,split,ap,ap50,ap75,offcenter_ap50,score_iou_spearman,top100_score_iou,predictions
+resnet50_image_top5x_calibrated,heldout,0.122970,0.187785,0.147309,0.193288,0.231531,0.241809,11110
+image_propcrop_intersection_geomean,heldout,0.054309,0.104935,0.057053,0.055711,0.089029,0.022653,617
+image_propcrop_keepprimary_geomean,heldout,0.122002,0.187887,0.147041,0.181592,0.169047,0.106592,22630
