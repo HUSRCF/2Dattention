@@ -2602,6 +2602,8 @@ Image-level category-prior diagnostic:
 | torchvision ResNet50 ImageNet prior | 0.0849 | 0.1243 | 0.0983 |
 | torchvision ResNet50 crop prior | 0.0827 | 0.1195 | 0.0935 |
 | torchvision ConvNeXt-Tiny ImageNet prior | 0.0769 | 0.1061 | 0.0898 |
+| torchvision ResNet50 ImageNet top-5 prior, score multiply | 0.1116 | 0.1607 | 0.1388 |
+| torchvision ResNet50 ImageNet top-5 prior, score keep | 0.0538 | 0.0742 | 0.0631 |
 
 Class-agnostic NMS slice AP50 on the 25 covered source images:
 
@@ -2628,5 +2630,6 @@ Interpretation:
 - Running the same ResNet18 on the crop images is not better: crop-prior top-1 is `0.0725` and relabeled detection AP50 is `0.0904`, essentially tied with the full-image ResNet18 prior.
 - Generalizing the category-transfer script to stronger torchvision teachers confirms that teacher strength matters: ResNet50 full-image relabeling improves target-set top-1 to `0.2754` and class-aware AP50 to `0.1243`. ResNet50 crop-level relabeling remains slightly weaker (`0.1195` AP50), so the current gain comes mainly from a stronger pretrained classifier rather than from the crop view itself.
 - ConvNeXt-Tiny full-image relabeling reaches higher target-set top-5 (`0.3043`) but lower AP50 (`0.1061`) than ResNet50. For the current one-category-per-image relabeling protocol, top-1 category choice matters more than broad top-5 coverage.
+- Top-k category expansion is useful only when scores are calibrated by the classifier prior. ResNet50 top-5 expansion with score multiplication improves AP50 to `0.1607`, but duplicating the same top-5 categories while keeping the original detector score drops AP50 to `0.0742`.
 - The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
 - Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.

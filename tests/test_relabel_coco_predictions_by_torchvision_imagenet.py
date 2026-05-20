@@ -12,6 +12,7 @@ from scripts.relabel_coco_predictions_by_torchvision_imagenet import (
     choose_category,
     largest_category_by_image,
     ranked_mapped_categories,
+    relabel_predictions,
 )
 
 
@@ -91,3 +92,17 @@ def test_model_choices_include_stronger_teachers() -> None:
     assert "resnet18" in MODEL_CHOICES
     assert "resnet50" in MODEL_CHOICES
     assert "convnext_tiny" in MODEL_CHOICES
+
+
+def test_relabel_predictions_can_expand_topk_categories_with_score_multiplication() -> None:
+    predictions = [{"image_id": 1, "category_id": 99, "bbox": [1, 2, 3, 4], "score": 0.8}]
+
+    relabeled = relabel_predictions(
+        predictions,
+        {1: [(7, 0.5), (9, 0.25)]},
+        score_mode="multiply",
+    )
+
+    assert [row["category_id"] for row in relabeled] == [7, 9]
+    assert [row["score"] for row in relabeled] == [0.4, 0.2]
+    assert all(row["bbox"] == [1, 2, 3, 4] for row in relabeled)

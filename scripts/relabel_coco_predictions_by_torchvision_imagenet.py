@@ -35,6 +35,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument(
+        "--top-k-categories",
+        type=int,
+        default=1,
+        help="Duplicate each prediction over the top-k mapped ImageNet categories for its image.",
+    )
+    parser.add_argument(
+        "--category-score-mode",
+        choices=["keep", "multiply"],
+        default="keep",
+        help="How to score top-k category-expanded predictions.",
+    )
+    parser.add_argument(
         "--use-source-image-id",
         action="store_true",
         help="Use image['source_image_id'] as the prediction image id; useful for crop metadata.",
@@ -67,7 +79,10 @@ def main() -> None:
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     model = model.to(device).eval()
 
-    image_category_by_id: dict[int, int] = {}
+    if args.top_k_categories < 1:
+        raise ValueError("--top-k-categories must be >= 1")
+
+    image_categories_by_id: dict[int, list[tuple[int, float]]] = {}
     correct_top1 = 0
     correct_top5 = 0
     total = 0
@@ -82,30 +97,26 @@ def main() -> None:
                 gt_category_ids.tolist(),
                 strict=False,
             ):
-                chosen_category = choose_category(
+                category_scores = ranked_mapped_category_scores(
                     row_probs,
                     index_to_synset=index_to_synset,
                     category_id_by_synset=category_id_by_synset,
                     restrict_to_annotation_categories=args.restrict_to_annotation_categories,
                     allowed_category_ids=allowed_category_ids,
+                    limit=max(5, args.top_k_categories),
                 )
-                if chosen_category is not None:
-                    image_category_by_id[int(image_id)] = int(chosen_category)
-                top_categories = ranked_mapped_categories(
-                    row_probs,
-                    index_to_synset=index_to_synset,
-                    category_id_by_synset=category_id_by_synset,
-                    restrict_to_annotation_categories=args.restrict_to_annotation_categories,
-                    allowed_category_ids=allowed_category_ids,
-                    limit=5,
-                )
+                chosen_category = category_scores[0][0] if category_scores else None
+                if category_scores:
+                    image_categories_by_id[int(image_id)] = category_scores[: args.top_k_categories]
+                top_categories = [category_id for category_id, _ in category_scores[:5]]
                 correct_top1 += int(chosen_category == int(gt_category_id))
                 correct_top5 += int(int(gt_category_id) in top_categories)
                 total += 1
 
     relabeled = relabel_predictions(
         json.loads(args.predictions.read_text(encoding="utf-8")),
-        image_category_by_id,
+        image_categories_by_id,
+        score_mode=args.category_score_mode,
     )
     args.out_predictions.parent.mkdir(parents=True, exist_ok=True)
     args.out_predictions.write_text(json.dumps(relabeled, indent=2) + "\n", encoding="utf-8")
@@ -113,10 +124,12 @@ def main() -> None:
         "device": str(device),
         "model": args.model,
         "images": total,
-        "mapped_images": len(image_category_by_id),
+        "mapped_images": len(image_categories_by_id),
         "top1_acc": correct_top1 / max(1, total),
         "top5_acc": correct_top5 / max(1, total),
         "restricted": int(args.restrict_to_annotation_categories),
+        "top_k_categories": args.top_k_categories,
+        "category_score_mode": args.category_score_mode,
         "out_predictions": str(args.out_predictions),
     }
     args.out_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +139,7 @@ def main() -> None:
         writer.writerow(row)
     print(f"saved_imagenet_prior_predictions: {args.out_predictions}")
     print(f"saved_csv: {args.out_csv}")
-    print(f"top1={row['top1_acc']:.4f} top5={row['top5_acc']:.4f} mapped={len(image_category_by_id)}/{total}")
+    print(f"top1={row['top1_acc']:.4f} top5={row['top5_acc']:.4f} mapped={len(image_categories_by_id)}/{total}")
 
 
 class CocoImageDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
@@ -208,7 +221,30 @@ def ranked_mapped_categories(
     allowed_category_ids: set[int],
     limit: int,
 ) -> list[int]:
+    return [
+        category_id
+        for category_id, _ in ranked_mapped_category_scores(
+            probs,
+            index_to_synset=index_to_synset,
+            category_id_by_synset=category_id_by_synset,
+            restrict_to_annotation_categories=restrict_to_annotation_categories,
+            allowed_category_ids=allowed_category_ids,
+            limit=limit,
+        )
+    ]
+
+
+def ranked_mapped_category_scores(
+    probs: Tensor,
+    *,
+    index_to_synset: dict[int, str],
+    category_id_by_synset: dict[str, int],
+    restrict_to_annotation_categories: bool,
+    allowed_category_ids: set[int],
+    limit: int,
+) -> list[tuple[int, float]]:
     categories: list[int] = []
+    category_scores: list[tuple[int, float]] = []
     seen: set[int] = set()
     for index in torch.argsort(probs, descending=True).tolist():
         synset = index_to_synset[int(index)]
@@ -220,10 +256,11 @@ def ranked_mapped_categories(
         if category_id in seen:
             continue
         categories.append(int(category_id))
+        category_scores.append((int(category_id), float(probs[int(index)].item())))
         seen.add(int(category_id))
         if len(categories) >= limit:
             break
-    return categories
+    return category_scores
 
 
 def largest_category_by_image(data: dict[str, Any]) -> dict[int, int]:
@@ -251,15 +288,24 @@ def bbox_area(bbox: list[float]) -> float:
 
 def relabel_predictions(
     predictions: list[dict[str, Any]],
-    image_category_by_id: dict[int, int],
+    image_categories_by_id: dict[int, list[tuple[int, float]]],
+    *,
+    score_mode: str = "keep",
 ) -> list[dict[str, Any]]:
     rows = []
     for prediction in predictions:
-        row = dict(prediction)
-        category_id = image_category_by_id.get(int(row["image_id"]))
-        if category_id is not None:
+        categories = image_categories_by_id.get(int(prediction["image_id"]))
+        if not categories:
+            rows.append(dict(prediction))
+            continue
+        for category_id, category_score in categories:
+            row = dict(prediction)
             row["category_id"] = int(category_id)
-        rows.append(row)
+            if score_mode == "multiply":
+                row["score"] = float(row.get("score", 1.0)) * float(category_score)
+            elif score_mode != "keep":
+                raise ValueError(f"unsupported score mode: {score_mode}")
+            rows.append(row)
     return rows
 
 
