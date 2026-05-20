@@ -1,0 +1,2 @@
+device,seed,backbone,steps,classes,train_crops,eval_crops,applied_predictions,train_loss,train_batch_acc,top_k_categories,category_score_mode,eval_crop_acc,eval_crop_top5_acc,out_predictions
+mps,41,resnet50_frozen,300,200,1610,158,11110,0.23616322875022888,0.96875,5,multiply,0.2911392405063291,0.43670886075949367,/private/tmp/rfdetr_max3_frozen_resnet50_propcrop_top5x_heldout_predictions.json

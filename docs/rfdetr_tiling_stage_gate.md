@@ -96,6 +96,27 @@ Frozen DET-prior artifacts:
 - `results/rfdetr_max3_frozen_resnet50_detprior_top5x_calibrated_heldout_score_iou.csv`
 - `results/rfdetr_frozen_detprior_heldout_summary.csv`
 
+Proposal-crop DET category-prior check:
+
+| Setting | Eval crop top-1 | Eval crop top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
+|---|---:|---:|---:|---:|---:|
+| frozen ResNet50 proposal-crop head, top-5 multiply | 0.2911 | 0.4367 | 0.0816 | 0.3291 | 0.1633 |
+| frozen ResNet50 proposal-crop head, calibrated top-5 multiply | 0.2911 | 0.4367 | 0.0824 | 0.3291 | 0.1672 |
+
+Proposal-crop artifacts:
+
+- `scripts/train_coco_proposal_crop_classifier.py`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_heldout_summary.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_heldout_slices.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_heldout_prediction_recall.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_heldout_score_iou.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_full_summary.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_calibrated_heldout_summary.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_calibrated_heldout_slices.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_calibrated_heldout_prediction_recall.csv`
+- `results/rfdetr_max3_frozen_resnet50_propcrop_top5x_calibrated_heldout_score_iou.csv`
+- `results/rfdetr_propcrop_prior_heldout_summary.csv`
+
 ## Interpretation
 
 - More crop coverage still improves class-agnostic localization.
@@ -123,6 +144,12 @@ Frozen DET-prior artifacts:
   still far below the pretrained ImageNet ResNet50 prior. The local split is
   too small/noisy for a standalone DET category head to replace the pretrained
   ImageNet prior.
+- A proposal-crop classifier is better aligned with detection than the image
+  DET-prior head: held-out AP50 reaches `0.0816` and GT-crop top-1 reaches
+  `0.2911`. However, it still trails the pretrained ImageNet full-image prior
+  (`0.1878` held-out AP50 after calibration), and calibration only lifts it to
+  `0.0824`. This is a useful mechanism signal but not a deployable category
+  source yet.
 
 ## Stop / Continue Rule
 
@@ -134,8 +161,8 @@ Next useful directions:
 2. Stronger category-aware quality calibration on an image-disjoint split.
 3. Score-IoU ranking for fused boxes after category transfer.
 4. If trying DET-aware category again, prefer teacher/distillation or
-   proposal-conditioned classification rather than a local image-level linear
-   head.
+   stronger proposal-conditioned classification rather than a local image-level
+   linear head.
 
 Avoid:
 

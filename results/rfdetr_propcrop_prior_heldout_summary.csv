@@ -1,0 +1,3 @@
+setting,split,eval_crop_top1,eval_crop_top5,ap,ap50,ap75,offcenter_ap50,top100_recall50,top100_recall75,top100_mean_best_iou,score_iou_spearman,top100_score_iou
+frozen_resnet50_propcrop_top5x,heldout,0.291139,0.436709,0.055605,0.081557,0.069477,0.051971,0.329114,0.189873,0.278817,0.215637,0.163308
+frozen_resnet50_propcrop_top5x_calibrated,heldout,0.291139,0.436709,0.055781,0.082426,0.069477,0.051363,0.329114,0.189873,0.278817,0.239327,0.167185
