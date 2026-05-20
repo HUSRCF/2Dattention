@@ -14,6 +14,7 @@ Boundary:
 
 - Current supported signal: clean no-prefill online anchor/region interaction improves dense bbox-mask localization.
 - Current supported detector signal: residual-anchor queries plus two-stage frozen quality ranking improve real-mini AP under held-out alpha calibration. Fixed `q^2` remains a pre-registered baseline, while `eval_ap50_q_fixed` can be calibration-selected when `--calibration-frac` is enabled.
+- Current RF-DETR path signal: max3 crop-fused localization has useful class-agnostic recall, but category transfer is the active bottleneck. Simple native category-id offsets and naive ImageNet/proposal-crop prior fusion do not solve it.
 - Current unsupported claims: early prefill, stale history pools, full prefill-lattice memory, graph-prefill, side-only DenseMaskAux, quality loss on class logits, and old memory-first routing.
 - RF-DETR-level performance requires a real detector, not just classification or bbox-mask probes.
 
@@ -23,12 +24,14 @@ Active collision-avoidance route:
 - Do not frame persistent proposal state as the active architecture. The standard stability matrix did not rescue predicted persistent; keep it only as an oracle/proposal-quality diagnostic branch.
 - Avoid claiming "new quality score"; frame the quality path as a frozen, post-detector, held-out calibrated ranking head.
 - Avoid claiming "new local-global backbone"; if this route returns, frame it as ambiguity-triggered interaction scheduling.
+- Avoid treating RF-DETR native category failure as an off-by-one bug. The formal category-id transform check peaks at AP50 `0.0194`, far below ImageNet-prior and oracle-category settings.
 - See `docs/research_route_collision_avoidance.md` for the detailed roadmap, stage gates, and IP/literature risk framing.
 
 Immediate stage gates:
 
 - P0 calibration gate: frozen ranking should produce meaningful held-out AP75/ECE or score-IoU correlation gains before expanding calibration.
 - P1 proposal-consumption gate: layerwise proposal refresh / `reinject` is the active predicted-proposal path. Persistent state can only return to mainline if a future proposal-quality/oracle-gap run beats `reinject` on both geometry and AP without post-hoc tuning.
+- P2 RF-DETR category gate: category work should focus on stronger category teachers or integrated detector-side class heads. Existing diagnostics show top-100 localization recall around `0.75-0.77`, but class-aware recall only `0.31-0.32`; the per-category vs global-topK ranking gap is only `0.006-0.013`, so missing/incorrect candidate categories dominate.
 - Current update: held-out alpha calibration now supports the frozen quality route; query-mask moment refinement and longer proposal refresh did not.
 - Protocol correction: existing historical real-mini artifacts used legacy `--label-map-source all`; future strict held-out detector runs should use `--label-map-source train` to avoid held-out label-frequency leakage when selecting top classes.
 - Reporting tool: use `scripts/summarize_det_real_results.py` to summarize final-step CSV metrics and paired deltas. Its default columns include both pre-registered `eval_ap50_q2` and calibration/fixed-score `eval_ap50_q_fixed` plus `eval_ap50_q_fixed_alpha`.
