@@ -6,13 +6,21 @@ import argparse
 import csv
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models
 from PIL import Image
+
+MODEL_CHOICES = (
+    "resnet18",
+    "resnet50",
+    "mobilenet_v3_large",
+    "efficientnet_b0",
+    "convnext_tiny",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--class-index", type=Path, required=True)
     parser.add_argument("--out-predictions", type=Path, required=True)
     parser.add_argument("--out-csv", type=Path, required=True)
-    parser.add_argument("--model", choices=["resnet18"], default="resnet18")
+    parser.add_argument("--model", choices=MODEL_CHOICES, default="resnet18")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument(
@@ -49,9 +57,14 @@ def main() -> None:
         str(category["name"]): int(category["id"]) for category in data.get("categories", [])
     }
     allowed_category_ids = set(category_id_by_synset.values())
-    dataset = CocoImageDataset(data=data, image_root=args.image_root, use_source_image_id=args.use_source_image_id)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     model, preprocess = build_model(args.model)
+    dataset = CocoImageDataset(
+        data=data,
+        image_root=args.image_root,
+        preprocess=preprocess,
+        use_source_image_id=args.use_source_image_id,
+    )
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     model = model.to(device).eval()
 
     image_category_by_id: dict[int, int] = {}
@@ -78,12 +91,14 @@ def main() -> None:
                 )
                 if chosen_category is not None:
                     image_category_by_id[int(image_id)] = int(chosen_category)
-                top_indices = row_probs.topk(k=min(5, row_probs.numel())).indices.tolist()
-                top_categories = [
-                    category_id_by_synset[index_to_synset[index]]
-                    for index in top_indices
-                    if index_to_synset[index] in category_id_by_synset
-                ]
+                top_categories = ranked_mapped_categories(
+                    row_probs,
+                    index_to_synset=index_to_synset,
+                    category_id_by_synset=category_id_by_synset,
+                    restrict_to_annotation_categories=args.restrict_to_annotation_categories,
+                    allowed_category_ids=allowed_category_ids,
+                    limit=5,
+                )
                 correct_top1 += int(chosen_category == int(gt_category_id))
                 correct_top5 += int(int(gt_category_id) in top_categories)
                 total += 1
@@ -115,12 +130,21 @@ def main() -> None:
 
 
 class CocoImageDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
-    def __init__(self, *, data: dict[str, Any], image_root: Path, use_source_image_id: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        data: dict[str, Any],
+        image_root: Path,
+        preprocess: Callable[[Image.Image], Tensor] | None = None,
+        use_source_image_id: bool = False,
+    ) -> None:
         self.images = sorted(data.get("images", []), key=lambda image: int(image["id"]))
         self.image_root = image_root
         self.use_source_image_id = use_source_image_id
         self.gt_category_by_image = largest_category_by_image(data)
-        _, self.preprocess = build_model("resnet18")
+        if preprocess is None:
+            _, preprocess = build_model("resnet18")
+        self.preprocess = preprocess
 
     def __len__(self) -> int:
         return len(self.images)
@@ -138,10 +162,22 @@ class CocoImageDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
 
 
 def build_model(name: str):
-    if name != "resnet18":
-        raise ValueError(f"unsupported model: {name}")
-    weights = models.ResNet18_Weights.DEFAULT
-    return models.resnet18(weights=weights), weights.transforms()
+    if name == "resnet18":
+        weights = models.ResNet18_Weights.DEFAULT
+        return models.resnet18(weights=weights), weights.transforms()
+    if name == "resnet50":
+        weights = models.ResNet50_Weights.DEFAULT
+        return models.resnet50(weights=weights), weights.transforms()
+    if name == "mobilenet_v3_large":
+        weights = models.MobileNet_V3_Large_Weights.DEFAULT
+        return models.mobilenet_v3_large(weights=weights), weights.transforms()
+    if name == "efficientnet_b0":
+        weights = models.EfficientNet_B0_Weights.DEFAULT
+        return models.efficientnet_b0(weights=weights), weights.transforms()
+    if name == "convnext_tiny":
+        weights = models.ConvNeXt_Tiny_Weights.DEFAULT
+        return models.convnext_tiny(weights=weights), weights.transforms()
+    raise ValueError(f"unsupported model: {name}")
 
 
 def choose_category(
@@ -161,6 +197,33 @@ def choose_category(
             continue
         return int(category_id)
     return None
+
+
+def ranked_mapped_categories(
+    probs: Tensor,
+    *,
+    index_to_synset: dict[int, str],
+    category_id_by_synset: dict[str, int],
+    restrict_to_annotation_categories: bool,
+    allowed_category_ids: set[int],
+    limit: int,
+) -> list[int]:
+    categories: list[int] = []
+    seen: set[int] = set()
+    for index in torch.argsort(probs, descending=True).tolist():
+        synset = index_to_synset[int(index)]
+        category_id = category_id_by_synset.get(synset)
+        if category_id is None:
+            continue
+        if restrict_to_annotation_categories and category_id not in allowed_category_ids:
+            continue
+        if category_id in seen:
+            continue
+        categories.append(int(category_id))
+        seen.add(int(category_id))
+        if len(categories) >= limit:
+            break
+    return categories
 
 
 def largest_category_by_image(data: dict[str, Any]) -> dict[int, int]:
