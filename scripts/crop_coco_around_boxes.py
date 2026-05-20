@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-crop-size", type=float, default=128.0)
     parser.add_argument("--min-visible-fraction", type=float, default=0.25)
     parser.add_argument("--max-crops", type=int, default=None)
+    parser.add_argument("--max-crops-per-image", type=int, default=None)
     parser.add_argument("--center-radius", type=float, default=0.25)
     parser.add_argument("--small-area-ratio", type=float, default=0.05)
     parser.add_argument("--large-area-ratio", type=float, default=0.25)
@@ -47,6 +48,7 @@ def main() -> None:
         min_crop_size=args.min_crop_size,
         min_visible_fraction=args.min_visible_fraction,
         max_crops=args.max_crops,
+        max_crops_per_image=args.max_crops_per_image,
         file_prefix=args.file_prefix,
         center_radius=args.center_radius,
         small_area_ratio=args.small_area_ratio,
@@ -72,6 +74,7 @@ def crop_coco_around_boxes(
     min_crop_size: float = 128.0,
     min_visible_fraction: float = 0.25,
     max_crops: int | None = None,
+    max_crops_per_image: int | None = None,
     file_prefix: str = "crop",
     center_radius: float = 0.25,
     small_area_ratio: float = 0.05,
@@ -87,8 +90,12 @@ def crop_coco_around_boxes(
     crop_annotations: list[dict[str, Any]] = []
     next_image_id = 1
     next_annotation_id = 1
+    crops_by_source_image: dict[int, int] = {}
     for source_annotation in data["annotations"]:
         source_image = images_by_id[int(source_annotation["image_id"])]
+        source_image_id = int(source_image["id"])
+        if max_crops_per_image is not None and crops_by_source_image.get(source_image_id, 0) >= max_crops_per_image:
+            continue
         if not keep_annotation(
             source_annotation,
             source_image,
@@ -114,8 +121,18 @@ def crop_coco_around_boxes(
         save_crop(source_path, crop_path, crop_box)
         crop_width = int(round(crop_box[2] - crop_box[0]))
         crop_height = int(round(crop_box[3] - crop_box[1]))
-        crop_images.append({"id": next_image_id, "file_name": crop_name, "width": crop_width, "height": crop_height})
-        for annotation in annotations_by_image[int(source_image["id"])]:
+        crop_images.append(
+            {
+                "id": next_image_id,
+                "file_name": crop_name,
+                "width": crop_width,
+                "height": crop_height,
+                "source_image_id": source_image_id,
+                "source_file_name": source_image["file_name"],
+                "crop_box": list(crop_box),
+            }
+        )
+        for annotation in annotations_by_image[source_image_id]:
             clipped = clip_bbox_to_crop(annotation["bbox"], crop_box)
             if clipped is None:
                 continue
@@ -134,6 +151,7 @@ def crop_coco_around_boxes(
             )
             next_annotation_id += 1
         next_image_id += 1
+        crops_by_source_image[source_image_id] = crops_by_source_image.get(source_image_id, 0) + 1
         if max_crops is not None and len(crop_images) >= max_crops:
             break
     return {
