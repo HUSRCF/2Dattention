@@ -9,6 +9,7 @@ from PIL import Image
 from scripts.relabel_coco_predictions_by_torchvision_imagenet import (
     CocoImageDataset,
     MODEL_CHOICES,
+    categories_by_image,
     choose_category,
     largest_category_by_image,
     ranked_mapped_categories,
@@ -54,6 +55,18 @@ def test_largest_category_by_image() -> None:
     }
 
     assert largest_category_by_image(data) == {1: 4}
+
+
+def test_categories_by_image_collects_all_categories() -> None:
+    data = {
+        "annotations": [
+            {"image_id": 1, "category_id": 2},
+            {"image_id": 1, "category_id": 4},
+            {"image_id": 2, "category_id": 4},
+        ]
+    }
+
+    assert categories_by_image(data) == {1: {2, 4}, 2: {4}}
 
 
 def test_coco_image_dataset_can_return_source_image_id(tmp_path: Path) -> None:

@@ -76,6 +76,7 @@ def main() -> None:
         preprocess=preprocess,
         use_source_image_id=args.use_source_image_id,
     )
+    gt_categories_by_image = categories_by_image(data)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
     model = model.to(device).eval()
 
@@ -85,6 +86,8 @@ def main() -> None:
     image_categories_by_id: dict[int, list[tuple[int, float]]] = {}
     correct_top1 = 0
     correct_top5 = 0
+    correct_top1_any_gt = 0
+    correct_top5_any_gt = 0
     total = 0
     with torch.no_grad():
         for images, image_ids, gt_category_ids in loader:
@@ -111,6 +114,9 @@ def main() -> None:
                 top_categories = [category_id for category_id, _ in category_scores[:5]]
                 correct_top1 += int(chosen_category == int(gt_category_id))
                 correct_top5 += int(int(gt_category_id) in top_categories)
+                gt_categories = gt_categories_by_image.get(int(image_id), set())
+                correct_top1_any_gt += int(chosen_category in gt_categories)
+                correct_top5_any_gt += int(bool(gt_categories.intersection(top_categories)))
                 total += 1
 
     relabeled = relabel_predictions(
@@ -127,6 +133,8 @@ def main() -> None:
         "mapped_images": len(image_categories_by_id),
         "top1_acc": correct_top1 / max(1, total),
         "top5_acc": correct_top5 / max(1, total),
+        "top1_any_gt": correct_top1_any_gt / max(1, total),
+        "top5_any_gt": correct_top5_any_gt / max(1, total),
         "restricted": int(args.restrict_to_annotation_categories),
         "top_k_categories": args.top_k_categories,
         "category_score_mode": args.category_score_mode,
@@ -139,7 +147,11 @@ def main() -> None:
         writer.writerow(row)
     print(f"saved_imagenet_prior_predictions: {args.out_predictions}")
     print(f"saved_csv: {args.out_csv}")
-    print(f"top1={row['top1_acc']:.4f} top5={row['top5_acc']:.4f} mapped={len(image_categories_by_id)}/{total}")
+    print(
+        f"top1={row['top1_acc']:.4f} top5={row['top5_acc']:.4f} "
+        f"any_top1={row['top1_any_gt']:.4f} any_top5={row['top5_any_gt']:.4f} "
+        f"mapped={len(image_categories_by_id)}/{total}"
+    )
 
 
 class CocoImageDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
@@ -278,6 +290,13 @@ def largest_category_by_image(data: dict[str, Any]) -> dict[int, int]:
         )
         category_by_image[image_id] = int(best["category_id"])
     return category_by_image
+
+
+def categories_by_image(data: dict[str, Any]) -> dict[int, set[int]]:
+    rows: dict[int, set[int]] = {}
+    for annotation in data.get("annotations", []):
+        rows.setdefault(int(annotation["image_id"]), set()).add(int(annotation["category_id"]))
+    return rows
 
 
 def bbox_area(bbox: list[float]) -> float:
