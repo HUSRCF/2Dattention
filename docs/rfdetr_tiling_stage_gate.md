@@ -72,6 +72,23 @@ Recall artifacts:
 - `results/rfdetr_max3_resnet50_top5x_heldout_calibrated_prediction_recall.csv`
 - `results/rfdetr_prediction_recall_heldout_summary.csv`
 
+Category coverage gap diagnostic, all-slice R@50:
+
+| Setting | Top-K | Global loc recall | Global class-aware recall | Per-category class-aware recall | Global category retention | Ranking gap |
+|---|---:|---:|---:|---:|---:|---:|
+| max3 + ResNet50 top-5 prior | 10 | 0.4304 | 0.1392 | 0.1582 | 0.3235 | 0.0190 |
+| max3 + ResNet50 top-5 prior | 50 | 0.6962 | 0.2658 | 0.2785 | 0.3818 | 0.0127 |
+| max3 + ResNet50 top-5 prior | 100 | 0.7468 | 0.3101 | 0.3228 | 0.4153 | 0.0127 |
+| + calibration-split post-hoc quality score | 10 | 0.4873 | 0.1392 | 0.1646 | 0.2857 | 0.0253 |
+| + calibration-split post-hoc quality score | 50 | 0.7278 | 0.2785 | 0.2785 | 0.3826 | 0.0000 |
+| + calibration-split post-hoc quality score | 100 | 0.7722 | 0.3165 | 0.3228 | 0.4098 | 0.0063 |
+
+Category coverage artifacts:
+
+- `scripts/analyze_coco_category_coverage_gap.py`
+- `results/rfdetr_max3_resnet50_top5x_heldout_base_category_coverage_gap.csv`
+- `results/rfdetr_max3_resnet50_top5x_calibrated_heldout_category_coverage_gap.csv`
+
 Frozen DET-aware category-prior check:
 
 | Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
@@ -191,6 +208,12 @@ Native category transform artifacts:
 - The native RF-DETR category failure is not explained by a simple category-id
   offset. A small offset sweep around the native IDs peaks at `0.0194` AP50,
   still far below the ImageNet-prior and oracle-category settings.
+- Category coverage, not intra-image rank order, is the main remaining
+  category bottleneck. Under global top-K evaluation, top-100 localization recall
+  is about `0.75-0.77`, but class-aware recall is only `0.31-0.32`; the
+  per-category-topK recall is only `0.006-0.013` higher. This means most loss is
+  from missing/incorrect category candidates, not from correct categories being
+  buried far down the global ranking.
 
 ## Stop / Continue Rule
 
