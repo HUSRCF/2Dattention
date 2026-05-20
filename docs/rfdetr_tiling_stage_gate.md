@@ -33,6 +33,14 @@ Machine-readable table:
 
 - `results/rfdetr_tiling_category_transfer_summary.csv`
 
+Score-IoU alignment diagnostics:
+
+| Setting | Pearson | Spearman | Top-100 mean nearest IoU |
+|---|---:|---:|---:|
+| max3 fused localization score | 0.3914 | 0.2102 | 0.2518 |
+| max3 + ResNet50 top-5 category prior | 0.0951 | 0.1116 | 0.3401 |
+| max3 oracle IoU score | 1.0000 | 1.0000 | 0.8743 |
+
 ## Interpretation
 
 - More crop coverage still improves class-agnostic localization.
@@ -43,6 +51,8 @@ Machine-readable table:
 - Naive lightweight teachers and simple teacher ensembles do not beat ResNet50.
 - ResNet50 any-GT top-5 coverage is only `0.3913`, so ImageNet category
   coverage itself is a bottleneck, not just top-k ranking.
+- Score-IoU alignment remains weak after category transfer. ResNet50 top-5
+  improves top-ranked box quality but does not produce a calibrated IoU score.
 
 ## Stop / Continue Rule
 
