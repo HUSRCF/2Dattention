@@ -1,3 +1,4 @@
 setting,split,eval_top1,eval_top5,ap,ap50,ap75,offcenter_ap50,top100_recall50,top100_recall75,top100_mean_best_iou,score_iou_spearman,top100_score_iou
 frozen_resnet50_detprior_top5x,heldout,0.114286,0.428571,0.009488,0.022253,0.008701,0.031770,0.379747,0.215190,0.308674,0.176553,0.117326
 frozen_resnet50_detprior_top5keep,heldout,0.114286,0.428571,0.006729,0.013931,0.006159,0.020419,0.379747,0.215190,0.308674,0.117048,0.003435
+frozen_resnet50_detprior_top5x_calibrated,heldout,0.114286,0.428571,0.023483,0.036122,0.031598,0.053372,0.379747,0.215190,0.308674,0.158574,0.028101

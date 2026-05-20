@@ -1,0 +1,2 @@
+predictions,images,mean_score,mean_nearest_iou,pearson_score_iou,spearman_score_iou,top10_mean_iou,top50_mean_iou,top100_mean_iou
+11110,35,0.0001779748708022747,0.01067148535864908,0.020747014972196904,0.15856785793165581,0.0,0.0,0.028095759145471706

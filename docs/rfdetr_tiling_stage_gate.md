@@ -78,6 +78,7 @@ Frozen DET-aware category-prior check:
 |---|---:|---:|---:|---:|---:|
 | frozen ResNet50 DET linear head, top-5 multiply | 0.1143 | 0.4286 | 0.0223 | 0.3797 | 0.1173 |
 | frozen ResNet50 DET linear head, top-5 keep-score | 0.1143 | 0.4286 | 0.0139 | 0.3797 | 0.0034 |
+| frozen ResNet50 DET linear head, calibrated top-5 multiply | 0.1143 | 0.4286 | 0.0361 | 0.3797 | 0.0281 |
 
 Frozen DET-prior artifacts:
 
@@ -89,6 +90,10 @@ Frozen DET-prior artifacts:
 - `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_slices.csv`
 - `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_prediction_recall.csv`
 - `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_score_iou.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_calibrated_heldout_summary.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_calibrated_heldout_slices.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_calibrated_heldout_prediction_recall.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_calibrated_heldout_score_iou.csv`
 - `results/rfdetr_frozen_detprior_heldout_summary.csv`
 
 ## Interpretation
@@ -114,8 +119,10 @@ Frozen DET-prior artifacts:
 - A frozen ResNet50 feature head trained on the local DET train split improves
   top-5 label coverage but fails as a detection scorer: top-100 class-aware
   recall reaches `38.0%`, yet AP50 drops to `0.0223` with multiplied scores and
-  `0.0139` with kept detector scores. The local split is too small/noisy for a
-  standalone DET category head to replace the pretrained ImageNet prior.
+  `0.0139` with kept detector scores. Calibration improves it to `0.0361` AP50,
+  still far below the pretrained ImageNet ResNet50 prior. The local split is
+  too small/noisy for a standalone DET category head to replace the pretrained
+  ImageNet prior.
 
 ## Stop / Continue Rule
 
