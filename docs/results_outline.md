@@ -2623,6 +2623,15 @@ Class-agnostic NMS slice AP50 on the 25 covered source images:
 | medium | 0.3270 |
 | large | 0.1949 |
 
+Full small-valid crop-fusion coverage:
+
+| Setting | Loc AP50 / class-agnostic | Class-aware AP50 |
+|---|---:|---:|
+| one crop per source image | 0.2002 | 0.0030 |
+| max two crops per source image | 0.2255 | 0.0030 |
+| max two crops + ResNet50 top-5 category prior | - | 0.1688 |
+| max two crops + largest GT category prior | - | 0.2325 |
+
 Interpretation:
 
 - The earlier concentrated crop smoke had higher crop-coordinate AP50 (`0.0629`), but diversified source coverage lowers crop-coordinate AP50 to `0.0284`.
@@ -2630,6 +2639,7 @@ Interpretation:
 - The class-agnostic remap AP50 on covered images (`0.1527`) shows the crop path does produce some usable localization candidates.
 - Class-agnostic NMS exposes a much stronger localization signal (`0.3607` AP50 on covered source images), while class-aware AP50 stays unchanged.
 - Full small-valid coverage confirms the effect at source-image scale: one crop per small-valid source image produces class-agnostic AP50 `0.0730` before fusion and `0.2002` after class-agnostic NMS, while class-aware AP50 remains only `0.0030`.
+- Increasing crop coverage to at most two crops per source image improves the class-agnostic localization AP50 to `0.2255`; offcenter loc AP50 rises to `0.1710`. Applying the current best ResNet50 top-5 category prior on these fused boxes raises class-aware AP50 to `0.1688`, while the largest-GT category prior upper check reaches `0.2325`.
 - Nearest-GT relabeling with original scores raises class-aware AP50 to `0.3066`, so category prediction is the largest current failure. IoU-score oracle then raises AP50 to `0.6297`, showing that score-IoU ranking is also weak after category is fixed.
 - A coarse image-level category prior already recovers AP50 `0.2185`, close to the class-agnostic localization AP50. This suggests the next concrete route is category transfer/calibration from an image or crop classifier, not more crop geometry tweaks.
 - A tiny classifier trained only on the local RF-DETR train split does not recover the category gap: top-1 is `0.1014`, top-5 is `0.3768`, and relabeled detection AP50 is only `0.0023`. Category transfer therefore needs a strong pretrained/teacher classifier, not another small from-scratch local head.
