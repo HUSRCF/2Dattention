@@ -34,7 +34,7 @@ def main() -> None:
     rows = [summarize_entry(entry) for entry in args.entry]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(FIELDNAMES))
+        writer = csv.DictWriter(handle, fieldnames=list(FIELDNAMES), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     print(f"saved_summary: {args.out}")
