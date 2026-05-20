@@ -2631,6 +2631,8 @@ Full small-valid crop-fusion coverage:
 | max two crops per source image | 0.2255 | 0.0030 |
 | max two crops + ResNet50 top-5 category prior | - | 0.1688 |
 | max two crops + largest GT category prior | - | 0.2325 |
+| max three crops per source image | 0.2359 | - |
+| max three crops + ResNet50 top-5 category prior | - | 0.1697 |
 
 Interpretation:
 
@@ -2640,6 +2642,7 @@ Interpretation:
 - Class-agnostic NMS exposes a much stronger localization signal (`0.3607` AP50 on covered source images), while class-aware AP50 stays unchanged.
 - Full small-valid coverage confirms the effect at source-image scale: one crop per small-valid source image produces class-agnostic AP50 `0.0730` before fusion and `0.2002` after class-agnostic NMS, while class-aware AP50 remains only `0.0030`.
 - Increasing crop coverage to at most two crops per source image improves the class-agnostic localization AP50 to `0.2255`; offcenter loc AP50 rises to `0.1710`. Applying the current best ResNet50 top-5 category prior on these fused boxes raises class-aware AP50 to `0.1688`, while the largest-GT category prior upper check reaches `0.2325`.
+- Increasing coverage to at most three crops per source image further improves class-agnostic AP50 to `0.2359` and offcenter loc AP50 to `0.1870`, but ResNet50 top-5 class-aware AP50 only reaches `0.1697`. Crop coverage still helps localization, but the class-aware result is now mostly category/ranking limited.
 - Nearest-GT relabeling with original scores raises class-aware AP50 to `0.3066`, so category prediction is the largest current failure. IoU-score oracle then raises AP50 to `0.6297`, showing that score-IoU ranking is also weak after category is fixed.
 - A coarse image-level category prior already recovers AP50 `0.2185`, close to the class-agnostic localization AP50. This suggests the next concrete route is category transfer/calibration from an image or crop classifier, not more crop geometry tweaks.
 - A tiny classifier trained only on the local RF-DETR train split does not recover the category gap: top-1 is `0.1014`, top-5 is `0.3768`, and relabeled detection AP50 is only `0.0023`. Category transfer therefore needs a strong pretrained/teacher classifier, not another small from-scratch local head.
