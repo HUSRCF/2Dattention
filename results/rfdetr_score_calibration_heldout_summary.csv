@@ -1,0 +1,3 @@
+setting,split,ap,ap50,ap75,offcenter_ap50,score_iou_pearson,score_iou_spearman,top100_mean_iou
+max3_resnet50_top5x_base,heldout,0.120873,0.178075,0.146954,0.168199,0.375809,0.236055,0.229266
+max3_resnet50_top5x_calibrated,heldout,0.122859,0.187692,0.147294,0.193358,0.258052,0.227751,0.241809
