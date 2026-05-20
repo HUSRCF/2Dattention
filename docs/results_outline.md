@@ -2534,3 +2534,63 @@ Interpretation:
 - The base detector's offcenter candidate binding remains stronger than the quality-ranked output.
 - The quality stage still shifts top-k predictions toward non-slice/center-near candidates.
 - Quality timing is not the core fix. Stop quality protocol tweaks here and move to object-specific query/proposal binding.
+
+## RF-DETR Small-Crop Remap Diagnostic
+
+The RF-DETR route now has a crop-to-source remap path for testing whether small-object crop/tiling gains survive in original image coordinates.
+
+Implementation:
+
+- `scripts/crop_coco_around_boxes.py` writes `source_image_id`, `source_file_name`, and `crop_box` metadata for each crop.
+- `--max-crops-per-image` limits crop concentration on a few source images.
+- `scripts/remap_crop_predictions_to_source_coco.py` maps crop-coordinate detections back into source-image coordinates.
+
+Diversified crop protocol:
+
+- Dataset: `/private/tmp/rfdetr_small_crops_diverse_subset50`.
+- Train: 50 crops from 50 source images, 260 annotations.
+- Valid/test: 25 crops from 25 source images, 135 annotations.
+- RF-DETR Nano, MPS, 384px, 1 epoch.
+- Checkpoint: `/private/tmp/rfdetr_small_crops_diverse_subset50_384_out/checkpoint_best_total.pth`.
+
+Crop-coordinate result:
+
+| Eval space | AP | AP50 | AP75 | small AP50 | medium AP50 | large AP50 | offcenter AP50 | center AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| crop coords | 0.0159 | 0.0284 | 0.0158 | 0.0125 | 0.0536 | 0.1108 | 0.0191 | 0.0412 |
+
+Source-coordinate remap:
+
+| Eval target | Class-aware AP50 | Class-agnostic AP50 |
+|---|---:|---:|
+| 25 covered source images | 0.0127 | 0.1527 |
+| full small-valid slice | 0.0043 | 0.0313 |
+
+Fusion diagnostic:
+
+| Fusion | Eval target | Class-aware AP50 | Class-agnostic AP50 |
+|---|---|---:|---:|
+| none | 25 covered source images | 0.0127 | 0.1527 |
+| per-class NMS 0.5 | 25 covered source images | 0.0127 | 0.1525 |
+| class-agnostic NMS 0.5 | 25 covered source images | 0.0127 | 0.3607 |
+| class-agnostic NMS 0.5 | full small-valid slice | n/a | 0.0787 |
+
+Class-agnostic NMS slice AP50 on the 25 covered source images:
+
+| Slice | AP50 |
+|---|---:|
+| all | 0.3607 |
+| offcenter | 0.2823 |
+| center | 0.1798 |
+| small | 0.2000 |
+| medium | 0.3270 |
+| large | 0.1949 |
+
+Interpretation:
+
+- The earlier concentrated crop smoke had higher crop-coordinate AP50 (`0.0629`), but diversified source coverage lowers crop-coordinate AP50 to `0.0284`.
+- Source-coordinate class-aware AP remains weak, so crop training alone is not yet a usable detector path.
+- The class-agnostic remap AP50 on covered images (`0.1527`) shows the crop path does produce some usable localization candidates.
+- Class-agnostic NMS exposes a much stronger localization signal (`0.3607` AP50 on covered source images), while class-aware AP50 stays unchanged.
+- The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
+- Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.
