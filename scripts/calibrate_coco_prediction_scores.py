@@ -124,12 +124,20 @@ def calibrate_prediction_scores(
     apply_image_ids = image_ids(apply_annotations)
     image_sizes = {**image_size_map(train_annotations), **image_size_map(apply_annotations)}
     train_gt_by_image = gt_boxes_by_image(train_annotations)
+    rank_features = prediction_rank_features(predictions)
 
-    train_predictions = [row for row in predictions if int(row["image_id"]) in train_image_ids]
+    train_indices = [index for index, row in enumerate(predictions) if int(row["image_id"]) in train_image_ids]
+    train_predictions = [predictions[index] for index in train_indices]
     if not train_predictions:
         raise ValueError("No predictions overlap --train-annotations images")
 
-    x_train = np.asarray([prediction_features(row, image_sizes) for row in train_predictions], dtype=np.float64)
+    x_train = np.asarray(
+        [
+            prediction_features(row, image_sizes, rank_features=rank_features[index])
+            for index, row in zip(train_indices, train_predictions, strict=True)
+        ],
+        dtype=np.float64,
+    )
     y_train = np.asarray(
         [
             nearest_iou_target(row, train_gt_by_image, class_aware=class_aware)
@@ -151,7 +159,7 @@ def calibrate_prediction_scores(
     output_rows = []
     apply_original_scores = []
     apply_calibrated_scores = []
-    for prediction in predictions:
+    for index, prediction in enumerate(predictions):
         in_apply = int(prediction["image_id"]) in apply_image_ids
         if not include_all_images and not in_apply:
             continue
@@ -159,7 +167,7 @@ def calibrate_prediction_scores(
         quality = float(
             predict_quality(
                 model,
-                np.asarray([prediction_features(row, image_sizes)], dtype=np.float64),
+                np.asarray([prediction_features(row, image_sizes, rank_features=rank_features[index])], dtype=np.float64),
                 [int(row["category_id"])],
             )[0]
         )
@@ -205,7 +213,12 @@ def image_size_map(annotations: dict[str, Any]) -> dict[int, tuple[float, float]
     return sizes
 
 
-def prediction_features(prediction: dict[str, Any], image_sizes: dict[int, tuple[float, float]]) -> list[float]:
+def prediction_features(
+    prediction: dict[str, Any],
+    image_sizes: dict[int, tuple[float, float]],
+    *,
+    rank_features: tuple[float, float] | None = None,
+) -> list[float]:
     image_id = int(prediction["image_id"])
     image_width, image_height = image_sizes.get(image_id, (1.0, 1.0))
     x, y, width, height = [float(value) for value in prediction["bbox"]]
@@ -218,6 +231,7 @@ def prediction_features(prediction: dict[str, Any], image_sizes: dict[int, tuple
     center_dy = abs(cy - 0.5)
     score = clip(float(prediction.get("score", 0.0)), 1e-6, 1.0 - 1e-6)
     aspect = math.log(max(width_norm, 1e-6) / max(height_norm, 1e-6))
+    image_rank, category_rank = rank_features if rank_features is not None else (0.0, 0.0)
     return [
         1.0,
         score,
@@ -232,7 +246,35 @@ def prediction_features(prediction: dict[str, Any], image_sizes: dict[int, tuple
         center_dy,
         math.sqrt(center_dx * center_dx + center_dy * center_dy),
         aspect,
+        image_rank,
+        category_rank,
     ]
+
+
+def prediction_rank_features(predictions: list[dict[str, Any]]) -> list[tuple[float, float]]:
+    image_groups: dict[int, list[int]] = {}
+    image_category_groups: dict[tuple[int, int], list[int]] = {}
+    for index, prediction in enumerate(predictions):
+        image_id = int(prediction["image_id"])
+        category_id = int(prediction["category_id"])
+        image_groups.setdefault(image_id, []).append(index)
+        image_category_groups.setdefault((image_id, category_id), []).append(index)
+    image_ranks = fractional_score_ranks(predictions, image_groups)
+    category_ranks = fractional_score_ranks(predictions, image_category_groups)
+    return list(zip(image_ranks, category_ranks, strict=True))
+
+
+def fractional_score_ranks(
+    predictions: list[dict[str, Any]],
+    groups: dict[Any, list[int]],
+) -> list[float]:
+    ranks_out = [0.0] * len(predictions)
+    for indices in groups.values():
+        sorted_indices = sorted(indices, key=lambda index: float(predictions[index].get("score", 0.0)), reverse=True)
+        denom = max(1, len(sorted_indices) - 1)
+        for rank, index in enumerate(sorted_indices):
+            ranks_out[index] = rank / denom
+    return ranks_out
 
 
 def nearest_iou_target(

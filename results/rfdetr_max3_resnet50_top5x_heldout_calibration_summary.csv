@@ -1,2 +1,2 @@
 train_predictions,apply_predictions,class_aware,score_mode,quality_alpha,category_weight,category_smoothing,ridge,train_target_mean,train_pred_quality_mean,train_pearson_quality_iou,train_spearman_quality_iou,apply_original_score_mean,apply_calibrated_score_mean
-11520,11110,True,multiply,1.0,0.5,5.0,0.001,0.0033584094892234566,0.003954784151334321,0.3678174972147335,0.22692904651299628,0.0038294505608351386,9.258959361702923e-05
+11520,11110,True,multiply,1.0,0.5,5.0,0.001,0.0033584094892234566,0.0039493331570574575,0.36690159253774324,0.2270153996329152,0.0038294505608351386,9.252930557039487e-05

@@ -3,11 +3,23 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.calibrate_coco_prediction_scores import calibrate_prediction_scores
+from scripts.calibrate_coco_prediction_scores import calibrate_prediction_scores, prediction_rank_features
 
 
 def write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_prediction_rank_features_are_fractional_within_image_and_category() -> None:
+    predictions = [
+        {"image_id": 1, "category_id": 2, "score": 0.9},
+        {"image_id": 1, "category_id": 2, "score": 0.3},
+        {"image_id": 1, "category_id": 3, "score": 0.6},
+    ]
+
+    ranks = prediction_rank_features(predictions)
+
+    assert ranks == [(0.0, 0.0), (1.0, 1.0), (0.5, 0.0)]
 
 
 def test_calibrate_prediction_scores_filters_apply_images_and_preserves_original_score(tmp_path: Path) -> None:

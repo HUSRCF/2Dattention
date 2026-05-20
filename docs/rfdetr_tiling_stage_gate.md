@@ -46,7 +46,7 @@ Held-out score calibration check:
 | Setting | Split | AP | AP50 | AP75 | Off-center AP50 | Top-100 mean class-aware IoU |
 |---|---|---:|---:|---:|---:|---:|
 | max3 + ResNet50 top-5 prior | heldout | 0.1209 | 0.1781 | 0.1470 | 0.1682 | 0.2293 |
-| + calibration-split post-hoc quality score | heldout | 0.1229 | 0.1877 | 0.1473 | 0.1934 | 0.2418 |
+| + calibration-split post-hoc quality score | heldout | 0.1230 | 0.1878 | 0.1473 | 0.1933 | 0.2418 |
 
 Calibration artifacts:
 
