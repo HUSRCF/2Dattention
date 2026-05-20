@@ -1,0 +1,4 @@
+setting,split,class_aware,top10_recall50,top50_recall50,top100_recall50,top100_recall75,offcenter_top100_recall50,top100_mean_best_iou
+max3_fused_localization,heldout,False,0.506329,0.734177,0.784810,0.449367,0.790909,0.634744
+max3_resnet50_top5x_base,heldout,True,0.158228,0.278481,0.322785,0.189873,0.309091,0.253290
+max3_resnet50_top5x_calibrated,heldout,True,0.164557,0.278481,0.322785,0.189873,0.309091,0.253290

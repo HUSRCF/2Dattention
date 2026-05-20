@@ -57,6 +57,21 @@ Calibration artifacts:
 - `results/rfdetr_max3_resnet50_top5x_heldout_calibrated_score_iou.csv`
 - `results/rfdetr_score_calibration_heldout_summary.csv`
 
+Held-out prediction recall diagnostic:
+
+| Setting | Class-aware | Top-10 R@50 | Top-50 R@50 | Top-100 R@50 | Top-100 R@75 |
+|---|---:|---:|---:|---:|---:|
+| max3 fused localization | no | 0.5063 | 0.7342 | 0.7848 | 0.4494 |
+| max3 + ResNet50 top-5 prior | yes | 0.1582 | 0.2785 | 0.3228 | 0.1899 |
+| + calibration-split post-hoc quality score | yes | 0.1646 | 0.2785 | 0.3228 | 0.1899 |
+
+Recall artifacts:
+
+- `results/rfdetr_max3_heldout_loc_prediction_recall.csv`
+- `results/rfdetr_max3_resnet50_top5x_heldout_base_prediction_recall.csv`
+- `results/rfdetr_max3_resnet50_top5x_heldout_calibrated_prediction_recall.csv`
+- `results/rfdetr_prediction_recall_heldout_summary.csv`
+
 ## Interpretation
 
 - More crop coverage still improves class-agnostic localization.
@@ -73,6 +88,10 @@ Calibration artifacts:
   gain, especially on off-center images. This supports score calibration as a
   useful next branch, but the gain is not large enough to treat simple
   calibration as the main detector solution.
+- Prediction recall makes the category bottleneck explicit: class-agnostic
+  fused boxes cover `78.5%` of held-out GT at top-100 / IoU 0.5, while the
+  class-aware ResNet50 top-5x candidates cover only `32.3%`. Calibration helps
+  top-10 ordering slightly, but cannot recover category coverage.
 
 ## Stop / Continue Rule
 
