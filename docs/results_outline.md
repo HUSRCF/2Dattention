@@ -2574,6 +2574,7 @@ Fusion diagnostic:
 | per-class NMS 0.5 | 25 covered source images | 0.0127 | 0.1525 |
 | class-agnostic NMS 0.5 | 25 covered source images | 0.0127 | 0.3607 |
 | class-agnostic NMS 0.5 | full small-valid slice | n/a | 0.0787 |
+| class-agnostic NMS 0.5, full coverage | full small-valid slice | 0.0030 | 0.2002 |
 
 Class-agnostic NMS slice AP50 on the 25 covered source images:
 
@@ -2592,5 +2593,6 @@ Interpretation:
 - Source-coordinate class-aware AP remains weak, so crop training alone is not yet a usable detector path.
 - The class-agnostic remap AP50 on covered images (`0.1527`) shows the crop path does produce some usable localization candidates.
 - Class-agnostic NMS exposes a much stronger localization signal (`0.3607` AP50 on covered source images), while class-aware AP50 stays unchanged.
+- Full small-valid coverage confirms the effect at source-image scale: one crop per small-valid source image produces class-agnostic AP50 `0.0730` before fusion and `0.2002` after class-agnostic NMS, while class-aware AP50 remains only `0.0030`.
 - The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
 - Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.
