@@ -208,6 +208,8 @@ RF-DETR expects a dataset directory with `train/`, `valid/`, and `test/` subdire
   --link-mode symlink
 ```
 
+For a quick protocol subset, add `--max-train-images`, `--max-valid-images`, and `--max-test-images` to the same command.
+
 Check the RF-DETR import and dataset layout without starting training:
 
 ```bash

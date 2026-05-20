@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from scripts.prepare_rfdetr_dataset import prepare_rfdetr_split, stable_image_name
+from scripts.prepare_rfdetr_dataset import prepare_rfdetr_split, stable_image_name, subset_coco_by_first_images
 
 
 def test_stable_image_name_prefixes_image_id() -> None:
@@ -41,3 +41,21 @@ def test_prepare_rfdetr_split_materializes_images_and_rewrites_names(tmp_path: P
     assert out.name == "_annotations.coco.json"
     assert data["images"][0]["file_name"] == "000000000003_sample.JPEG"
     assert (out.parent / "000000000003_sample.JPEG").exists()
+
+
+def test_subset_coco_by_first_images_keeps_categories_and_matching_annotations() -> None:
+    data = {
+        "images": [{"id": 1}, {"id": 2}, {"id": 3}],
+        "annotations": [
+            {"id": 1, "image_id": 1},
+            {"id": 2, "image_id": 2},
+            {"id": 3, "image_id": 3},
+        ],
+        "categories": [{"id": 1}, {"id": 2}],
+    }
+
+    subset = subset_coco_by_first_images(data, 2)
+
+    assert subset["images"] == [{"id": 1}, {"id": 2}]
+    assert subset["annotations"] == [{"id": 1, "image_id": 1}, {"id": 2, "image_id": 2}]
+    assert subset["categories"] == [{"id": 1}, {"id": 2}]

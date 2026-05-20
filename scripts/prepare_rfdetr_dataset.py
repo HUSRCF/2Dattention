@@ -25,6 +25,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-root", type=Path, default=Path("data/ILSVRC2013_DET_val"))
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--link-mode", choices=("symlink", "copy", "hardlink"), default="symlink")
+    parser.add_argument("--max-train-images", type=int, default=None)
+    parser.add_argument("--max-valid-images", type=int, default=None)
+    parser.add_argument("--max-test-images", type=int, default=None)
     parser.add_argument("--indent", type=int, default=2)
     return parser.parse_args()
 
@@ -36,6 +39,11 @@ def main() -> None:
         "valid": args.valid_json,
         "test": args.test_json or args.valid_json,
     }
+    max_images_by_split = {
+        "train": args.max_train_images,
+        "valid": args.max_valid_images,
+        "test": args.max_test_images,
+    }
     for split_name, annotation_json in splits.items():
         prepared = prepare_rfdetr_split(
             annotation_json=annotation_json,
@@ -43,6 +51,7 @@ def main() -> None:
             split_dir=args.out_dir / split_name,
             link_mode=args.link_mode,
             indent=args.indent,
+            max_images=max_images_by_split[split_name],
         )
         print(
             f"wrote {prepared} images={prepared_image_count(prepared)} "
@@ -58,9 +67,12 @@ def prepare_rfdetr_split(
     split_dir: Path,
     link_mode: str = "symlink",
     indent: int = 2,
+    max_images: int | None = None,
 ) -> Path:
     data = json.loads(annotation_json.read_text(encoding="utf-8"))
     validate_coco(data)
+    if max_images is not None:
+        data = subset_coco_by_first_images(data, max_images)
     split_dir.mkdir(parents=True, exist_ok=True)
     image_name_by_id: dict[int, str] = {}
     for image in data["images"]:
@@ -79,6 +91,20 @@ def prepare_rfdetr_split(
         encoding="utf-8",
     )
     return annotation_path
+
+
+def subset_coco_by_first_images(data: dict[str, Any], max_images: int) -> dict[str, Any]:
+    if max_images <= 0:
+        raise ValueError(f"max_images must be positive, got {max_images}")
+    selected_images = list(data["images"])[:max_images]
+    selected_image_ids = {int(image["id"]) for image in selected_images}
+    return {
+        **data,
+        "images": selected_images,
+        "annotations": [
+            annotation for annotation in data["annotations"] if int(annotation["image_id"]) in selected_image_ids
+        ],
+    }
 
 
 def validate_coco(data: dict[str, Any]) -> None:

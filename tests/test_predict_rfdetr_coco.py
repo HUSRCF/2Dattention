@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
+from PIL import Image
 
-from scripts.predict_rfdetr_coco import detections_to_coco_records, infer_model_num_classes, xyxy_to_xywh
+from scripts.predict_rfdetr_coco import detections_to_coco_records, infer_model_num_classes, load_rgb_image, xyxy_to_xywh
 
 
 class FakeDetections:
@@ -51,3 +52,13 @@ def test_infer_model_num_classes_reads_nested_model_args() -> None:
         model = ModelContext()
 
     assert infer_model_num_classes(Model(), default=200) == 123
+
+
+def test_load_rgb_image_converts_grayscale(tmp_path) -> None:
+    image_path = tmp_path / "gray.png"
+    Image.new("L", (4, 3), color=128).save(image_path)
+
+    image = load_rgb_image(image_path)
+
+    assert image.mode == "RGB"
+    assert image.size == (4, 3)

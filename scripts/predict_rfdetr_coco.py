@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -59,7 +60,7 @@ def main() -> None:
         image_path = args.image_root / image["file_name"]
         if not image_path.exists():
             raise FileNotFoundError(f"missing image file for annotation image_id={image['id']}: {image_path}")
-        detections = model.predict(str(image_path), threshold=args.threshold, shape=shape)
+        detections = model.predict(load_rgb_image(image_path), threshold=args.threshold, shape=shape)
         predictions.extend(
             detections_to_coco_records(
                 detections,
@@ -80,6 +81,11 @@ def infer_model_num_classes(model: Any, default: int) -> int:
     model_context = getattr(model, "model", None)
     model_args = getattr(model_context, "args", None)
     return int(getattr(model_args, "num_classes", default))
+
+
+def load_rgb_image(image_path: Path) -> Image.Image:
+    with Image.open(image_path) as pil_image:
+        return pil_image.convert("RGB")
 
 
 def detections_to_coco_records(
