@@ -2606,6 +2606,8 @@ Image-level category-prior diagnostic:
 | torchvision ResNet50 ImageNet top-3 prior, score multiply | 0.0982 | 0.1415 | 0.1195 |
 | torchvision ResNet50 ImageNet top-10 prior, score multiply | 0.1117 | 0.1611 | 0.1388 |
 | torchvision ResNet50 ImageNet top-5 prior, score keep | 0.0538 | 0.0742 | 0.0631 |
+| torchvision EfficientNet-B0 ImageNet top-5 prior, score multiply | 0.0889 | 0.1253 | 0.1042 |
+| torchvision MobileNetV3-Large ImageNet top-5 prior, score multiply | 0.0829 | 0.1158 | 0.0996 |
 
 Class-agnostic NMS slice AP50 on the 25 covered source images:
 
@@ -2634,5 +2636,6 @@ Interpretation:
 - ConvNeXt-Tiny full-image relabeling reaches higher target-set top-5 (`0.3043`) but lower AP50 (`0.1061`) than ResNet50. For the current one-category-per-image relabeling protocol, top-1 category choice matters more than broad top-5 coverage.
 - Top-k category expansion is useful only when scores are calibrated by the classifier prior. ResNet50 top-5 expansion with score multiplication improves AP50 to `0.1607`, but duplicating the same top-5 categories while keeping the original detector score drops AP50 to `0.0742`.
 - A small K check shows diminishing returns: ResNet50 top-3 multiply reaches AP50 `0.1415`, top-5 reaches `0.1607`, and top-10 reaches only `0.1611`. Top-5 is therefore the practical setting; top-10 is a diagnostic upper check with many more duplicate predictions.
+- Lightweight torchvision teachers do not beat ResNet50 under the same top-5 multiply protocol: EfficientNet-B0 reaches AP50 `0.1253` and MobileNetV3-Large reaches `0.1158`. This keeps ResNet50 top-5 multiply as the current practical category-transfer baseline.
 - The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
 - Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.
