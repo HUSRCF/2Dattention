@@ -2590,6 +2590,13 @@ Class-agnostic IoU-score upper bound:
 |---|---:|---:|---:|
 | class-agnostic labels + IoU score | 0.3274 | 0.5620 | 0.3366 |
 
+Image-level category-prior diagnostic:
+
+| Relabel prior | Class-aware AP | Class-aware AP50 | Class-aware AP75 |
+|---|---:|---:|---:|
+| largest GT category per image | 0.1432 | 0.2185 | 0.1618 |
+| most frequent GT category per image | 0.1309 | 0.1984 | 0.1449 |
+
 Class-agnostic NMS slice AP50 on the 25 covered source images:
 
 | Slice | AP50 |
@@ -2609,5 +2616,6 @@ Interpretation:
 - Class-agnostic NMS exposes a much stronger localization signal (`0.3607` AP50 on covered source images), while class-aware AP50 stays unchanged.
 - Full small-valid coverage confirms the effect at source-image scale: one crop per small-valid source image produces class-agnostic AP50 `0.0730` before fusion and `0.2002` after class-agnostic NMS, while class-aware AP50 remains only `0.0030`.
 - Nearest-GT relabeling with original scores raises class-aware AP50 to `0.3066`, so category prediction is the largest current failure. IoU-score oracle then raises AP50 to `0.6297`, showing that score-IoU ranking is also weak after category is fixed.
+- A coarse image-level category prior already recovers AP50 `0.2185`, close to the class-agnostic localization AP50. This suggests the next concrete route is category transfer/calibration from an image or crop classifier, not more crop geometry tweaks.
 - The current bottleneck is therefore category/score ranking plus source-image coverage/fusion, not a complete absence of crop-localization signal.
 - Next RF-DETR tiling step should implement multi-crop/full-image fusion with class-agnostic NMS, then separately handle category calibration or category transfer. Do not claim crop/tiling as solved from crop-coordinate AP alone.
