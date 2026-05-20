@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.train_rfdetr_coco import build_rfdetr_model, validate_rfdetr_dataset
+from scripts.train_rfdetr_coco import build_rfdetr_model, rfdetr_availability_report, validate_rfdetr_dataset
 
 
 def test_validate_rfdetr_dataset_requires_standard_splits(tmp_path) -> None:
@@ -24,3 +24,14 @@ def test_build_rfdetr_model_missing_package_message(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="pip install rfdetr"):
         build_rfdetr_model("nano")
+
+
+def test_rfdetr_availability_report_lists_known_classes(monkeypatch) -> None:
+    import types
+
+    fake_module = types.SimpleNamespace(RFDETRNano=object, RFDETRBase=object)
+    monkeypatch.setattr("scripts.train_rfdetr_coco.import_rfdetr_module", lambda: fake_module)
+
+    report = rfdetr_availability_report()
+
+    assert report["classes"] == ["RFDETRNano", "RFDETRBase"]

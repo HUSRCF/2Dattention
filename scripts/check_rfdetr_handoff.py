@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
 import json
 from pathlib import Path
@@ -38,10 +39,22 @@ def package_report() -> dict[str, dict[str, Any]]:
     report = {}
     for package in PACKAGES:
         spec = importlib.util.find_spec(package)
-        report[package] = {
+        package_entry: dict[str, Any] = {
             "installed": spec is not None,
             "origin": spec.origin if spec is not None else "",
         }
+        if spec is not None:
+            try:
+                importlib.import_module(package)
+                package_entry["import_ok"] = True
+                package_entry["import_error"] = ""
+            except Exception as exc:  # noqa: BLE001 - check script should report import smoke failures.
+                package_entry["import_ok"] = False
+                package_entry["import_error"] = f"{type(exc).__name__}: {exc}"
+        else:
+            package_entry["import_ok"] = False
+            package_entry["import_error"] = "not found"
+        report[package] = package_entry
     return report
 
 
@@ -59,21 +72,57 @@ def dataset_report(dataset_dir: Path) -> dict[str, Any]:
 
 def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
     categories = {int(category["id"]) for category in data.get("categories", [])}
+    images = data.get("images", [])
+    annotations = data.get("annotations", [])
+    image_by_id = {int(image["id"]): image for image in images}
     annotation_categories = {int(annotation["category_id"]) for annotation in data.get("annotations", [])}
     missing_category_ids = sorted(annotation_categories.difference(categories))
-    sampled_images = data.get("images", [])[:20]
-    missing_sampled_files = [
-        image["file_name"] for image in sampled_images if not (split_dir / image["file_name"]).exists()
+    missing_files = [image["file_name"] for image in images if not (split_dir / image["file_name"]).exists()]
+    orphan_annotation_ids = [
+        annotation.get("id") for annotation in annotations if int(annotation.get("image_id", -1)) not in image_by_id
     ]
+    invalid_bbox_ids = []
+    out_of_bounds_bbox_ids = []
+    for annotation in annotations:
+        bbox = annotation.get("bbox", [])
+        if len(bbox) != 4:
+            invalid_bbox_ids.append(annotation.get("id"))
+            continue
+        x, y, width, height = [float(value) for value in bbox]
+        if width <= 0 or height <= 0:
+            invalid_bbox_ids.append(annotation.get("id"))
+            continue
+        image = image_by_id.get(int(annotation.get("image_id", -1)))
+        if image is None:
+            continue
+        image_width = float(image.get("width", 0))
+        image_height = float(image.get("height", 0))
+        if image_width > 0 and image_height > 0:
+            if x < 0 or y < 0 or x + width > image_width or y + height > image_height:
+                out_of_bounds_bbox_ids.append(annotation.get("id"))
     return {
-        "images": len(data.get("images", [])),
-        "annotations": len(data.get("annotations", [])),
+        "images": len(images),
+        "annotations": len(annotations),
         "categories": len(categories),
         "min_category_id": min(categories) if categories else None,
         "max_category_id": max(categories) if categories else None,
         "missing_category_ids": missing_category_ids,
-        "missing_sampled_files": missing_sampled_files,
-        "ok": not missing_category_ids and not missing_sampled_files,
+        "checked_files": len(images),
+        "missing_files_count": len(missing_files),
+        "missing_files": missing_files[:20],
+        "orphan_annotation_ids_count": len(orphan_annotation_ids),
+        "orphan_annotation_ids": orphan_annotation_ids[:20],
+        "invalid_bbox_ids_count": len(invalid_bbox_ids),
+        "invalid_bbox_ids": invalid_bbox_ids[:20],
+        "out_of_bounds_bbox_ids_count": len(out_of_bounds_bbox_ids),
+        "out_of_bounds_bbox_ids": out_of_bounds_bbox_ids[:20],
+        "ok": not (
+            missing_category_ids
+            or missing_files
+            or orphan_annotation_ids
+            or invalid_bbox_ids
+            or out_of_bounds_bbox_ids
+        ),
     }
 
 

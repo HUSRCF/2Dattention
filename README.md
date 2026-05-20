@@ -208,7 +208,17 @@ RF-DETR expects a dataset directory with `train/`, `valid/`, and `test/` subdire
   --link-mode symlink
 ```
 
-Then run RF-DETR when the `rfdetr` package is installed in the environment:
+Check the RF-DETR import and dataset layout without starting training:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/train_rfdetr_coco.py \
+  --dataset-dir data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41 \
+  --output-dir results/rfdetr_offcenter_seed41_nano \
+  --model-size nano \
+  --check-only
+```
+
+Then run RF-DETR when the package, weights, and training dependencies are ready:
 
 ```bash
 /opt/anaconda3/bin/conda run -n AIAA python scripts/train_rfdetr_coco.py \
@@ -220,7 +230,7 @@ Then run RF-DETR when the `rfdetr` package is installed in the environment:
   --grad-accum-steps 1
 ```
 
-Current local AIAA status: `torch` and `transformers` are installed, but `rfdetr`, `timm`, `supervision`, and `roboflow` are not installed. The prepared dataset and stage-gate COCO evaluation scripts are ready; RF-DETR execution requires installing the RF-DETR package and its dependencies first.
+Current local AIAA status: `rfdetr` and `supervision` now import after a controlled minimal install (`rfdetr`, `pyDeprecate==0.7.0`, `peft`, `accelerate`, `supervision`, `protobuf>=5.28,<6`, `transformers==5.8.1`, `huggingface-hub>=1.5`, `regex>=2025.10.22`). `timm` is still absent, and this install changed shared dependencies, so treat the environment as RF-DETR-specific rather than globally clean. The prepared dataset and stage-gate COCO evaluation scripts are ready; RF-DETR training still needs a completed pretrained-weight download and a training smoke before it can be treated as runnable.
 
 Check the handoff state at any time with:
 

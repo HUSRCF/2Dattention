@@ -27,6 +27,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad-accum-steps", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--lr-encoder", type=float, default=None)
+    parser.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="auto")
+    parser.add_argument("--resolution", type=int, default=None)
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--eval-interval", type=int, default=1)
     parser.add_argument("--run-test", action="store_true")
@@ -35,12 +37,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pretrain-weights", type=Path, default=None)
     parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--check-only", action="store_true", help="Validate imports and dataset layout without training.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     validate_rfdetr_dataset(args.dataset_dir)
+    if args.check_only:
+        report = rfdetr_availability_report()
+        print(f"dataset_ok: {args.dataset_dir}")
+        print(f"rfdetr_classes: {', '.join(report['classes'])}")
+        return
     model = build_rfdetr_model(args.model_size, pretrain_weights=args.pretrain_weights)
     train_kwargs = {
         "dataset_dir": str(args.dataset_dir),
@@ -56,6 +64,10 @@ def main() -> None:
         "tensorboard": args.tensorboard,
         "wandb": args.wandb,
     }
+    if args.device != "auto":
+        train_kwargs["device"] = args.device
+    if args.resolution is not None:
+        train_kwargs["resolution"] = args.resolution
     if args.lr_encoder is not None:
         train_kwargs["lr_encoder"] = args.lr_encoder
     if args.resume is not None:
@@ -67,13 +79,7 @@ def main() -> None:
 
 
 def build_rfdetr_model(model_size: str, pretrain_weights: Path | None = None) -> Any:
-    try:
-        module = importlib.import_module("rfdetr")
-    except ImportError as exc:
-        raise RuntimeError(
-            "RF-DETR is not installed in this environment. Install it with `pip install rfdetr` "
-            "inside the AIAA environment, then rerun this script."
-        ) from exc
+    module = import_rfdetr_module()
     class_name = MODEL_CLASSES[model_size]
     if not hasattr(module, class_name):
         available = ", ".join(name for name in MODEL_CLASSES.values() if hasattr(module, name))
@@ -82,6 +88,23 @@ def build_rfdetr_model(model_size: str, pretrain_weights: Path | None = None) ->
     if pretrain_weights is not None:
         return model_cls(pretrain_weights=str(pretrain_weights))
     return model_cls()
+
+
+def import_rfdetr_module() -> Any:
+    try:
+        return importlib.import_module("rfdetr")
+    except ImportError as exc:
+        raise RuntimeError(
+            "RF-DETR is not installed in this environment. Install it with `pip install rfdetr` "
+            "inside the AIAA environment, then rerun this script."
+        ) from exc
+
+
+def rfdetr_availability_report() -> dict[str, list[str]]:
+    module = import_rfdetr_module()
+    return {
+        "classes": [class_name for class_name in MODEL_CLASSES.values() if hasattr(module, class_name)],
+    }
 
 
 def validate_rfdetr_dataset(dataset_dir: Path) -> None:

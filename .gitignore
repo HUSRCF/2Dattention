@@ -11,4 +11,6 @@ data/
 *.tar
 *.tgz
 *.zip
+*.pth
+*.pth.*.tmp
 !data/README.md
