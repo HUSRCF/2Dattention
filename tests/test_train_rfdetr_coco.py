@@ -129,7 +129,7 @@ def test_build_rfdetr_model_passes_optional_constructor_kwargs(monkeypatch, tmp_
     fake_module = types.SimpleNamespace(RFDETRNano=FakeNano)
     monkeypatch.setattr("scripts.train_rfdetr_coco.import_rfdetr_module", lambda: fake_module)
 
-    model = build_rfdetr_model("nano", pretrain_weights=tmp_path / "weights.pth", num_classes=200)
+    model = build_rfdetr_model("nano", pretrain_weights=tmp_path / "weights.pth", num_classes=200, device="mps")
 
     assert isinstance(model, FakeNano)
-    assert seen_kwargs == {"pretrain_weights": str(tmp_path / "weights.pth"), "num_classes": 200}
+    assert seen_kwargs == {"pretrain_weights": str(tmp_path / "weights.pth"), "num_classes": 200, "device": "mps"}

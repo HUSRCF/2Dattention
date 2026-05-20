@@ -97,6 +97,7 @@ def build_rfdetr_model(
     model_size: str,
     pretrain_weights: Path | None = None,
     num_classes: int | None = None,
+    device: str | None = None,
 ) -> Any:
     module = import_rfdetr_module()
     class_name = MODEL_CLASSES[model_size]
@@ -109,6 +110,8 @@ def build_rfdetr_model(
         model_kwargs["pretrain_weights"] = str(pretrain_weights)
     if num_classes is not None:
         model_kwargs["num_classes"] = num_classes
+    if device is not None:
+        model_kwargs["device"] = device
     return model_cls(**model_kwargs)
 
 

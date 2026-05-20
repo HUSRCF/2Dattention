@@ -243,6 +243,19 @@ Check the handoff state at any time with:
   --out results/rfdetr_offcenter_seed41_handoff_check.json
 ```
 
+Export RF-DETR predictions from a checkpoint or pretrained weights into the same COCO prediction JSON format used by the existing stage-gate evaluators:
+
+```bash
+/opt/anaconda3/bin/conda run -n AIAA python scripts/predict_rfdetr_coco.py \
+  --annotation-json data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41/valid/_annotations.coco.json \
+  --image-root data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41/valid \
+  --out results/rfdetr_offcenter_seed41_valid_predictions.json \
+  --model-size nano \
+  --num-classes 200 \
+  --device mps \
+  --resolution 384
+```
+
 ## Tests
 
 ```bash
