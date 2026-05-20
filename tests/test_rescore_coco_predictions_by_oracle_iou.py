@@ -53,3 +53,59 @@ def test_class_aware_oracle_rescoring_respects_category(tmp_path: Path) -> None:
     records = rescore_predictions_by_oracle_iou(annotations, predictions, class_aware=True)
 
     assert records[0]["score"] == 0.0
+
+
+def test_oracle_rescoring_can_relabel_to_nearest_gt(tmp_path: Path) -> None:
+    annotations = tmp_path / "ann.json"
+    predictions = tmp_path / "pred.json"
+    annotations.write_text(
+        json.dumps(
+            {
+                "images": [{"id": 1, "file_name": "a.JPEG", "width": 100, "height": 100}],
+                "annotations": [
+                    {"id": 1, "image_id": 1, "category_id": 2, "bbox": [0, 0, 10, 10]},
+                    {"id": 2, "image_id": 1, "category_id": 5, "bbox": [20, 20, 10, 10]},
+                ],
+                "categories": [{"id": 2, "name": "a"}, {"id": 5, "name": "b"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    predictions.write_text(
+        json.dumps([{"image_id": 1, "category_id": 99, "bbox": [20, 20, 10, 10], "score": 0.01}]),
+        encoding="utf-8",
+    )
+
+    records = rescore_predictions_by_oracle_iou(annotations, predictions, relabel_nearest_gt=True)
+
+    assert records[0]["category_id"] == 5
+    assert records[0]["score"] == 1.0
+
+
+def test_oracle_relabel_can_keep_original_score(tmp_path: Path) -> None:
+    annotations = tmp_path / "ann.json"
+    predictions = tmp_path / "pred.json"
+    annotations.write_text(
+        json.dumps(
+            {
+                "images": [{"id": 1, "file_name": "a.JPEG", "width": 100, "height": 100}],
+                "annotations": [{"id": 1, "image_id": 1, "category_id": 2, "bbox": [0, 0, 10, 10]}],
+                "categories": [{"id": 2, "name": "a"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    predictions.write_text(
+        json.dumps([{"image_id": 1, "category_id": 99, "bbox": [0, 0, 10, 10], "score": 0.37}]),
+        encoding="utf-8",
+    )
+
+    records = rescore_predictions_by_oracle_iou(
+        annotations,
+        predictions,
+        relabel_nearest_gt=True,
+        keep_original_score=True,
+    )
+
+    assert records[0]["category_id"] == 2
+    assert records[0]["score"] == 0.37

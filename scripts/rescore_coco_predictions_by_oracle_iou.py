@@ -22,6 +22,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only compare predictions to GT boxes with the same category id.",
     )
+    parser.add_argument(
+        "--relabel-nearest-gt",
+        action="store_true",
+        help="Diagnostic upper bound: replace each prediction category with the nearest GT category.",
+    )
+    parser.add_argument(
+        "--keep-original-score",
+        action="store_true",
+        help="Keep prediction scores unchanged while optionally relabeling categories.",
+    )
     return parser.parse_args()
 
 
@@ -31,6 +41,8 @@ def main() -> None:
         annotation_json=args.annotations,
         prediction_json=args.predictions,
         class_aware=args.class_aware,
+        relabel_nearest_gt=args.relabel_nearest_gt,
+        keep_original_score=args.keep_original_score,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(records), encoding="utf-8")
@@ -42,6 +54,8 @@ def rescore_predictions_by_oracle_iou(
     annotation_json: Path,
     prediction_json: Path,
     class_aware: bool = False,
+    relabel_nearest_gt: bool = False,
+    keep_original_score: bool = False,
 ) -> list[dict[str, Any]]:
     data = json.loads(annotation_json.read_text(encoding="utf-8"))
     predictions = json.loads(prediction_json.read_text(encoding="utf-8"))
@@ -56,10 +70,17 @@ def rescore_predictions_by_oracle_iou(
         gt_boxes = torch.tensor([row["box"] for row in gt_rows], dtype=torch.float32).reshape(-1, 4)
         pred_box = torch.tensor([xywh_to_xyxy(prediction["bbox"])], dtype=torch.float32)
         score = 0.0
+        relabel_category_id = category_id
         if gt_boxes.numel():
-            score = float(box_iou(pred_box, gt_boxes).max().item())
+            ious = box_iou(pred_box, gt_boxes).squeeze(0)
+            best_index = int(torch.argmax(ious).item())
+            score = float(ious[best_index].item())
+            relabel_category_id = int(gt_rows[best_index]["category_id"])
         row = dict(prediction)
-        row["score"] = score
+        if not keep_original_score:
+            row["score"] = score
+        if relabel_nearest_gt and gt_rows:
+            row["category_id"] = relabel_category_id
         rescored.append(row)
     return rescored
 
