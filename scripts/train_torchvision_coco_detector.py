@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--trainable-parts",
-        choices=("all", "roi_heads", "box_predictor"),
+        choices=("all", "rpn", "roi_heads", "box_predictor"),
         default="all",
         help="Restrict trainable detector parameters for transfer smokes.",
     )
@@ -280,6 +280,10 @@ def set_trainable_parts(model: torch.nn.Module, trainable_parts: str) -> None:
         return
     for parameter in model.parameters():
         parameter.requires_grad = False
+    if trainable_parts == "rpn":
+        for parameter in model.rpn.parameters():
+            parameter.requires_grad = True
+        return
     if trainable_parts == "roi_heads":
         for parameter in model.roi_heads.parameters():
             parameter.requires_grad = True

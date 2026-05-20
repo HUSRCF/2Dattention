@@ -214,6 +214,15 @@ def test_set_trainable_parts_can_freeze_to_roi_heads() -> None:
     assert not any(parameter.requires_grad for parameter in model.rpn.parameters())
 
 
+def test_set_trainable_parts_can_freeze_to_rpn() -> None:
+    model = build_model(num_classes=5, image_size=64, weights="none")
+    set_trainable_parts(model, "rpn")
+
+    assert all(parameter.requires_grad for parameter in model.rpn.parameters())
+    assert not any(parameter.requires_grad for parameter in model.backbone.parameters())
+    assert not any(parameter.requires_grad for parameter in model.roi_heads.parameters())
+
+
 def test_voc_ap_handles_empty_curve() -> None:
     assert voc_ap(torch.tensor([]), torch.tensor([])) == 0.0
 
