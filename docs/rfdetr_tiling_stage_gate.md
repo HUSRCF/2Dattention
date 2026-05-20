@@ -72,6 +72,25 @@ Recall artifacts:
 - `results/rfdetr_max3_resnet50_top5x_heldout_calibrated_prediction_recall.csv`
 - `results/rfdetr_prediction_recall_heldout_summary.csv`
 
+Frozen DET-aware category-prior check:
+
+| Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
+|---|---:|---:|---:|---:|---:|
+| frozen ResNet50 DET linear head, top-5 multiply | 0.1143 | 0.4286 | 0.0223 | 0.3797 | 0.1173 |
+| frozen ResNet50 DET linear head, top-5 keep-score | 0.1143 | 0.4286 | 0.0139 | 0.3797 | 0.0034 |
+
+Frozen DET-prior artifacts:
+
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_heldout_summary.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_heldout_slices.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_heldout_prediction_recall.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5x_heldout_score_iou.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_summary.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_slices.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_prediction_recall.csv`
+- `results/rfdetr_max3_frozen_resnet50_detprior_top5keep_heldout_score_iou.csv`
+- `results/rfdetr_frozen_detprior_heldout_summary.csv`
+
 ## Interpretation
 
 - More crop coverage still improves class-agnostic localization.
@@ -92,6 +111,11 @@ Recall artifacts:
   fused boxes cover `78.5%` of held-out GT at top-100 / IoU 0.5, while the
   class-aware ResNet50 top-5x candidates cover only `32.3%`. Calibration helps
   top-10 ordering slightly, but cannot recover category coverage.
+- A frozen ResNet50 feature head trained on the local DET train split improves
+  top-5 label coverage but fails as a detection scorer: top-100 class-aware
+  recall reaches `38.0%`, yet AP50 drops to `0.0223` with multiplied scores and
+  `0.0139` with kept detector scores. The local split is too small/noisy for a
+  standalone DET category head to replace the pretrained ImageNet prior.
 
 ## Stop / Continue Rule
 
@@ -102,6 +126,9 @@ Next useful directions:
 1. Stronger or detector-aware category teacher.
 2. Stronger category-aware quality calibration on an image-disjoint split.
 3. Score-IoU ranking for fused boxes after category transfer.
+4. If trying DET-aware category again, prefer teacher/distillation or
+   proposal-conditioned classification rather than a local image-level linear
+   head.
 
 Avoid:
 

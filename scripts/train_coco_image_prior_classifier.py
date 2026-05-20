@@ -14,7 +14,7 @@ import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from torchvision import models, transforms
 from PIL import Image
 
 
@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-predictions", type=Path, required=True)
     parser.add_argument("--out-csv", type=Path, required=True)
     parser.add_argument("--prior", choices=["largest", "most_frequent"], default="largest")
+    parser.add_argument("--backbone", choices=["tiny", "resnet18_frozen", "resnet50_frozen"], default="tiny")
     parser.add_argument("--image-size", type=int, default=96)
     parser.add_argument("--embed-dim", type=int, default=64)
     parser.add_argument("--steps", type=int, default=300)
@@ -42,6 +43,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--seed", type=int, default=41)
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
+    parser.add_argument("--top-k-categories", type=int, default=1)
+    parser.add_argument("--category-score-mode", choices=["keep", "multiply"], default="keep")
     return parser.parse_args()
 
 
@@ -57,15 +60,21 @@ def main() -> None:
 
     train_samples = build_samples(train_data, prior=args.prior, category_to_index=category_to_index)
     eval_samples = build_samples(eval_data, prior=args.prior, category_to_index=category_to_index)
+    model, preprocess = build_classifier(
+        args.backbone,
+        num_classes=len(category_ids),
+        embed_dim=args.embed_dim,
+        image_size=args.image_size,
+    )
     train_dataset = CocoImagePriorDataset(
         samples=train_samples,
         image_root=args.train_image_root,
-        image_size=args.image_size,
+        transform=preprocess,
     )
     eval_dataset = CocoImagePriorDataset(
         samples=eval_samples,
         image_root=args.eval_image_root,
-        image_size=args.image_size,
+        transform=preprocess,
     )
     train_loader = DataLoader(
         train_dataset,
@@ -75,7 +84,7 @@ def main() -> None:
         generator=torch.Generator().manual_seed(args.seed),
     )
     eval_loader = DataLoader(eval_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    model = TinyImagePriorClassifier(num_classes=len(category_ids), embed_dim=args.embed_dim).to(device)
+    model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
     train_loss = 0.0
@@ -94,14 +103,18 @@ def main() -> None:
         train_loss = float(loss.item())
         train_acc = float((logits.argmax(dim=1) == labels).float().mean().item())
 
-    eval_metrics, eval_predictions = evaluate(model, eval_loader, device)
-    image_category_by_id = {
-        int(image_id): int(index_to_category[int(label_index)])
-        for image_id, label_index in eval_predictions.items()
-    }
+    eval_metrics, eval_predictions = evaluate_topk(
+        model,
+        eval_loader,
+        device,
+        top_k=max(5, args.top_k_categories),
+    )
+    image_category_by_id = topk_categories_to_category_ids(eval_predictions, index_to_category)
     relabeled = relabel_predictions(
         json.loads(args.predictions.read_text(encoding="utf-8")),
         image_category_by_id,
+        top_k=args.top_k_categories,
+        score_mode=args.category_score_mode,
     )
     args.out_predictions.parent.mkdir(parents=True, exist_ok=True)
     args.out_predictions.write_text(json.dumps(relabeled, indent=2) + "\n", encoding="utf-8")
@@ -112,12 +125,15 @@ def main() -> None:
             "device": str(device),
             "seed": args.seed,
             "prior": args.prior,
+            "backbone": args.backbone,
             "steps": args.steps,
             "classes": len(category_ids),
             "train_images": len(train_samples),
             "eval_images": len(eval_samples),
             "train_loss": train_loss,
             "train_batch_acc": train_acc,
+            "top_k_categories": args.top_k_categories,
+            "category_score_mode": args.category_score_mode,
             **eval_metrics,
             "out_predictions": str(args.out_predictions),
         },
@@ -132,15 +148,16 @@ def main() -> None:
 
 
 class CocoImagePriorDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
-    def __init__(self, *, samples: list[ImagePriorSample], image_root: Path, image_size: int) -> None:
+    def __init__(
+        self,
+        *,
+        samples: list[ImagePriorSample],
+        image_root: Path,
+        transform: transforms.Compose,
+    ) -> None:
         self.samples = samples
         self.image_root = image_root
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize((image_size, image_size)),
-                transforms.ToTensor(),
-            ]
-        )
+        self.transform = transform
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -175,6 +192,54 @@ class TinyImagePriorClassifier(nn.Module):
         features = self.features(images)
         pooled = features.mean(dim=(2, 3))
         return self.head(pooled)
+
+
+class FrozenResNetImagePriorClassifier(nn.Module):
+    def __init__(self, *, name: str, num_classes: int) -> None:
+        super().__init__()
+        if name == "resnet18_frozen":
+            weights = models.ResNet18_Weights.DEFAULT
+            base = models.resnet18(weights=weights)
+        elif name == "resnet50_frozen":
+            weights = models.ResNet50_Weights.DEFAULT
+            base = models.resnet50(weights=weights)
+        else:
+            raise ValueError(f"unsupported frozen backbone: {name}")
+        feature_dim = int(base.fc.in_features)
+        base.fc = nn.Identity()
+        for parameter in base.parameters():
+            parameter.requires_grad_(False)
+        self.backbone = base
+        self.head = nn.Linear(feature_dim, num_classes)
+
+    def forward(self, images: Tensor) -> Tensor:
+        with torch.no_grad():
+            features = self.backbone(images)
+        return self.head(features)
+
+
+def build_classifier(
+    backbone: str,
+    *,
+    num_classes: int,
+    embed_dim: int,
+    image_size: int,
+) -> tuple[nn.Module, transforms.Compose]:
+    if backbone == "tiny":
+        transform = transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+            ]
+        )
+        return TinyImagePriorClassifier(num_classes=num_classes, embed_dim=embed_dim), transform
+    if backbone == "resnet18_frozen":
+        weights = models.ResNet18_Weights.DEFAULT
+        return FrozenResNetImagePriorClassifier(name=backbone, num_classes=num_classes), weights.transforms()
+    if backbone == "resnet50_frozen":
+        weights = models.ResNet50_Weights.DEFAULT
+        return FrozenResNetImagePriorClassifier(name=backbone, num_classes=num_classes), weights.transforms()
+    raise ValueError(f"unsupported backbone: {backbone}")
 
 
 def build_samples(
@@ -268,18 +333,85 @@ def evaluate(
     }, predictions
 
 
+def evaluate_topk(
+    model: nn.Module,
+    loader: DataLoader[tuple[Tensor, Tensor, Tensor]],
+    device: torch.device,
+    *,
+    top_k: int,
+) -> tuple[dict[str, float], dict[int, list[tuple[int, float]]]]:
+    model.eval()
+    correct = 0
+    correct_top5 = 0
+    total = 0
+    predictions: dict[int, list[tuple[int, float]]] = {}
+    with torch.no_grad():
+        for images, labels, image_ids in loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            logits = model(images)
+            probs = logits.softmax(dim=1)
+            topk = probs.topk(k=min(top_k, logits.shape[1]), dim=1)
+            predicted = topk.indices[:, 0]
+            correct += int((predicted == labels).sum().item())
+            correct_top5 += int((topk.indices[:, : min(5, topk.indices.shape[1])] == labels[:, None]).any(dim=1).sum().item())
+            total += int(labels.numel())
+            for image_id, indices, values in zip(
+                image_ids.tolist(),
+                topk.indices.cpu().tolist(),
+                topk.values.cpu().tolist(),
+                strict=False,
+            ):
+                predictions[int(image_id)] = [
+                    (int(label_index), float(score)) for label_index, score in zip(indices, values, strict=True)
+                ]
+    return {
+        "eval_acc": correct / max(1, total),
+        "eval_top5_acc": correct_top5 / max(1, total),
+    }, predictions
+
+
+def topk_categories_to_category_ids(
+    predictions: dict[int, list[tuple[int, float]]],
+    index_to_category: dict[int, int],
+) -> dict[int, list[tuple[int, float]]]:
+    return {
+        image_id: [(int(index_to_category[label_index]), float(score)) for label_index, score in rows]
+        for image_id, rows in predictions.items()
+    }
+
+
 def relabel_predictions(
     predictions: list[dict[str, Any]],
-    category_by_image: dict[int, int],
+    category_by_image: dict[int, int] | dict[int, list[tuple[int, float]]],
+    *,
+    top_k: int = 1,
+    score_mode: str = "keep",
 ) -> list[dict[str, Any]]:
     rows = []
     for prediction in predictions:
-        row = dict(prediction)
-        image_id = int(row["image_id"])
-        if image_id in category_by_image:
-            row["category_id"] = int(category_by_image[image_id])
-        rows.append(row)
+        image_id = int(prediction["image_id"])
+        categories = normalized_category_rows(category_by_image.get(image_id))
+        if not categories:
+            rows.append(dict(prediction))
+            continue
+        for category_id, category_score in categories[:top_k]:
+            row = dict(prediction)
+            row["category_id"] = int(category_id)
+            if score_mode == "multiply":
+                row["score"] = float(row.get("score", 1.0)) * float(category_score)
+            elif score_mode != "keep":
+                raise ValueError(f"unsupported score mode: {score_mode}")
+            rows.append(row)
     return rows
+
+
+def normalized_category_rows(value: Any) -> list[tuple[int, float]]:
+    if value is None:
+        return []
+    if isinstance(value, int):
+        return [(value, 1.0)]
+    return [(int(category_id), float(score)) for category_id, score in value]
 
 
 def iter_cycle(loader: DataLoader[tuple[Tensor, Tensor, Tensor]]):

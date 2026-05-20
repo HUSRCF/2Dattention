@@ -1,0 +1,2 @@
+device,seed,prior,backbone,steps,classes,train_images,eval_images,train_loss,train_batch_acc,top_k_categories,category_score_mode,eval_acc,eval_top5_acc,out_predictions
+mps,41,largest,resnet50_frozen,300,200,330,35,0.00871144700795412,1.0,5,multiply,0.11428571428571428,0.42857142857142855,/private/tmp/rfdetr_max3_frozen_resnet50_detprior_top5x_heldout_predictions.json
