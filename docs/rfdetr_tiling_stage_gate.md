@@ -402,6 +402,16 @@ Distillation interpretation:
   away from more self-teacher pseudo-label repeats and toward a formal longer
   detector-side Small/Nano protocol. Pseudo-labeling should return only after a
   train-split teacher also beats Nano5 after filtering.
+- Extending that same resumed Small run to 8 epochs improves independent-test
+  class AP50 further to `0.2677`, AP75 `0.2053`, center AP50 `0.2527`, and
+  small AP50 `0.2594`, while class-agnostic AP50 remains high at `0.6271`.
+  This is the current strongest RF-DETR checkpoint in the project.
+- Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
+  beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
+  the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
+  0.3991`, `s025/top20 0.3832 vs 0.3689`). This makes Small-resume8 the first
+  checked candidate worth using for a new teacher-only pretrain -> GT finetune
+  schedule.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.

@@ -3,3 +3,4 @@ nano5,/private/tmp/rfdetr_offcenter_seed41_train_nano5_teacher_predictions.json,
 staged13,/private/tmp/rfdetr_offcenter_seed41_train_staged13_teacher_predictions.json,0.245595,0.313717,0.266355,0.561663,0.738007,0.615862,0.182861,0.263320,0.370473,0.166110,0.427429,0.729411
 small3,/private/tmp/rfdetr_offcenter_seed41_full_small_384_3ep/regular_train_predictions.json,0.196007,0.246426,0.216522,0.552363,0.720553,0.608026,0.130472,0.208924,0.325165,0.129688,0.397547,0.734585
 small_resume5,/private/tmp/rfdetr_offcenter_seed41_full_small_384_resume5ep/regular_train_predictions.json,0.321587,0.404071,0.350481,0.601559,0.776372,0.662884,0.200780,0.394194,0.464768,0.181390,0.464534,0.773891
+small_resume8,/private/tmp/rfdetr_offcenter_seed41_full_small_384_resume8ep/regular_train_predictions.json,0.369274,0.459855,0.407880,0.610472,0.790588,0.669125,0.235109,0.405824,0.533866,0.199379,0.470414,0.783130
