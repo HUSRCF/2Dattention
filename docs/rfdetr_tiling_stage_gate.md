@@ -206,6 +206,7 @@ Detector-side pseudo-label distillation smoke:
 | GT baseline, Nano 1 epoch | GT | 1,610 | 0.0495 | 0.0401 | 0.5584 | 0.0455 | 0.0630 |
 | teacher-only, Nano 1 epoch | Nano 5ep train predictions, score>=0.25 top20 | 2,191 | 0.0552 | 0.0416 | 0.5499 | 0.0494 | 0.0451 |
 | GT+pseudo, Nano 1 epoch | GT + Nano 5ep train predictions, score>=0.25 top20 | 3,801 | 0.0484 | 0.0330 | 0.3737 | 0.0345 | 0.0514 |
+| teacher-only pretrain -> GT finetune, Nano 1+1 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.0816 | 0.0633 | 0.5749 | 0.0708 | 0.0645 |
 
 Distillation artifacts:
 
@@ -216,6 +217,9 @@ Distillation artifacts:
 - `results/rfdetr_nano5_gt_pseudo_s025k20_384_1ep_test_cocoeval.csv`
 - `results/rfdetr_nano5_gt_pseudo_s025k20_384_1ep_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_gt_pseudo_s025k20_384_1ep_test_slices.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_1ep_regular_test_cocoeval.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_1ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_1ep_regular_test_slices.csv`
 
 Distillation interpretation:
 
@@ -228,10 +232,17 @@ Distillation interpretation:
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.
+- Teacher-only pretraining followed by GT finetuning is the first clear positive
+  distillation schedule: class AP50 improves to `0.0816`, above GT 1 epoch
+  (`0.0495`), teacher-only (`0.0552`), and raw GT+pseudo (`0.0484`).
+- Engineering caveat: RF-DETR selected an anomalous `best_total` from stale/high
+  EMA (`0.7167`) in this pretrain-then-finetune flow. The reported result uses
+  `checkpoint_best_regular.pth`, exported independently through
+  `predict_rfdetr_coco.py`.
 - This is not yet a strong-teacher result. It is a substrate check using Nano 5ep
-  as a self-teacher. The next useful step is either a stronger train-split
-  teacher or stricter pseudo filtering / teacher-only pretrain followed by GT
-  finetune, not raw GT+pseudo concatenation.
+  as a self-teacher. The next useful step is a stronger train-split teacher, a
+  longer teacher-pretrain -> GT-finetune schedule, or stricter pseudo filtering;
+  raw GT+pseudo concatenation should stay downgraded.
 
 Frozen DET-aware category-prior check:
 
