@@ -138,6 +138,27 @@ Matched-propcrop artifacts:
 - `results/rfdetr_max3_matched_propcrop_resnet50_top5x_heldout_summary.csv`
 - `results/rfdetr_max3_matched_propcrop_resnet50_top5keep_heldout_summary.csv`
 
+Integrated RF-DETR detector-side class-head check:
+
+| Setting | Resolution | Class AP50 | Class AP75 | Class-agnostic AP50 | Off-center AP50 | Small AP50 | Large AP50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| full split Nano, 1 epoch | 128 | 0.0439 | 0.0364 | 0.3081 | 0.0278 | 0.0300 | 0.1036 |
+| full split Nano, 1 epoch | 384 | 0.0495 | 0.0401 | 0.5584 | 0.0455 | 0.0630 | 0.1302 |
+| full split Nano, 3 epochs | 384 | 0.1224 | 0.0960 | 0.6074 | 0.1060 | 0.1320 | 0.2220 |
+
+Integrated RF-DETR artifacts:
+
+- `results/rfdetr_integrated_class_head_summary.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_128_1ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_128_1ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_128_1ep_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_1ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_1ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_1ep_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_3ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_3ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_3ep_test_slices.csv`
+
 Frozen DET-aware category-prior check:
 
 | Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
@@ -277,6 +298,15 @@ Native category transform artifacts:
   accuracy, the resulting proposal relabeling is far below the ImageNet image
   prior on AP50 and does not improve top-100 class recall. This suggests the
   small matched-proposal split is too weak/noisy for a standalone crop classifier.
+- Integrated RF-DETR Nano full-split finetuning confirms that class-head
+  training must happen inside the detector, and longer training immediately
+  helps. The 384px run improves from `0.0495` class-aware AP50 at 1 epoch to
+  `0.1224` at 3 epochs, while class-agnostic AP50 remains high (`0.6074` at
+  3 epochs). This is still below the max3 crop + ResNet50 top-5 prior AP50
+  (`0.1697`), but the direction is now clearly better than standalone
+  post-hoc crop-prior tuning. The category route should therefore move toward
+  longer detector-side class-head training, stronger teacher initialization, or
+  detector-side distillation rather than another external crop-prior patch.
 
 ## Stop / Continue Rule
 
@@ -284,12 +314,14 @@ Do not continue max4/max5 crop expansion unless category scoring improves first.
 
 Next useful directions:
 
-1. Stronger or detector-aware category teacher.
-2. Stronger category-aware quality calibration on an image-disjoint split.
-3. Score-IoU ranking for fused boxes after category transfer.
-4. If trying DET-aware category again, prefer teacher/distillation or
-   stronger proposal-conditioned classification rather than a local image-level
-   linear head.
+1. Stronger detector-aware category teacher or teacher distillation into the
+   detector-side class head.
+2. Longer integrated RF-DETR class-head finetune protocol with explicit
+   class-aware and class-agnostic reporting.
+3. Category-aware quality calibration on an image-disjoint split after the
+   detector-side class head is strong enough to provide candidate coverage.
+4. If trying DET-aware category again, prefer detector-integrated training or
+   distillation rather than post-hoc crop-prior relabeling.
 
 Avoid:
 
