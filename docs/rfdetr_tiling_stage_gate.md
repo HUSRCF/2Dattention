@@ -412,6 +412,21 @@ Distillation interpretation:
   0.3991`, `s025/top20 0.3832 vs 0.3689`). This makes Small-resume8 the first
   checked candidate worth using for a new teacher-only pretrain -> GT finetune
   schedule.
+- Small-resume8 `s025/top20` teacher-only 1ep is still only a weak standalone
+  model on independent test: class AP50 `0.0547`, AP75 `0.0504`,
+  class-agnostic AP50 `0.3288`, offcenter AP50 `0.0437`, and small AP50
+  `0.0337`. It beats old Nano5 teacher-only 1ep and GT-only 1ep on this split,
+  but remains far below direct GT 4ep and Small long-train. Use it as a
+  pretraining-stage candidate, not as a final detector.
+- Small-resume8 `s025/top20` teacher-only pretrain followed by 3 GT-finetune
+  epochs is a better weak-student warm-start: independent-test class AP50
+  reaches `0.1855`, AP75 `0.1386`, class-agnostic AP50 `0.6300`, offcenter
+  AP50 `0.1486`, small AP50 `0.1269`, and large AP50 `0.3164`. This improves
+  over the earlier Nano5 staged seed41 run (`0.1502`) and equal-budget Nano
+  GT-only seed41 (`0.1517`), but remains clearly below direct Small-resume8
+  (`0.2677`). The current decision is to keep stronger-teacher pseudo-pretrain
+  as a weak-Nano warm-start diagnostic, not as a replacement for direct
+  detector-side Small long training.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.
