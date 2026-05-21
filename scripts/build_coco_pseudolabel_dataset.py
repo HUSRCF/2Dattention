@@ -122,6 +122,10 @@ def build_pseudo_coco(
     min_area: float,
     include_gt: bool,
 ) -> tuple[dict[str, Any], dict[str, int]]:
+    if topk_per_image <= 0:
+        raise ValueError(f"topk_per_image must be positive, got {topk_per_image}")
+    if min_area < 0:
+        raise ValueError(f"min_area must be non-negative, got {min_area}")
     images = coco.get("images", [])
     categories = coco.get("categories", [])
     image_by_id = {int(image["id"]): image for image in images}

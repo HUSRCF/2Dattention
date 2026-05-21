@@ -148,6 +148,7 @@ Integrated RF-DETR detector-side class-head check:
 | full split Nano, 5 epochs | 384 | 0.1437 | 0.1027 | 0.6214 | 0.1454 | 0.1800 | 0.2715 |
 | full split Small, 1 epoch | 384 | 0.0513 | 0.0372 | 0.5464 | 0.0396 | 0.0413 | 0.1349 |
 | full split Small, 3 epochs | 384 | 0.1178 | 0.0934 | 0.6168 | 0.1187 | 0.1297 | 0.2264 |
+| full split Small, resumed 5 epochs | 384 | 0.1835 | 0.1446 | 0.6285 | 0.1885 | 0.1788 | 0.3130 |
 
 Integrated RF-DETR artifacts:
 
@@ -171,6 +172,9 @@ Integrated RF-DETR artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_3ep_test_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_3ep_test_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_3ep_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_test_slices.csv`
 
 Interpretation:
 
@@ -184,13 +188,18 @@ Interpretation:
   needs a longer detector-side schedule before it can be judged.
 - Small 384px at 3 epochs improves to AP50 `0.1178` and class-agnostic AP50
   `0.6168`, but it remains below Nano 3 epochs (`0.1224`) and Nano 5 epochs
-  (`0.1437`) on class-aware AP50. This suggests that simply switching to the
-  larger Small backbone is not enough under the current short schedule; the
-  bottleneck remains category supervision / detector-side class learning.
-- The current 5-epoch Nano result still trails the max3 crop + ResNet50 top-5
-  category-prior AP50 `0.1697`, but it is the correct integrated detector-side
-  route. The next useful step is stronger teacher / detector-side distillation
-  or a longer Small/Nano protocol, not another post-hoc crop prior.
+  (`0.1437`) on class-aware AP50.
+- Resuming Small from its 3-epoch checkpoint to 5 epochs changes that picture:
+  regular-checkpoint export reaches class AP50 `0.1835`, AP75 `0.1446`,
+  class-agnostic AP50 `0.6285`, off-center AP50 `0.1885`, and large AP50
+  `0.3130`. This is the strongest validation-mirrored integrated detector-side
+  checkpoint so far and finally beats the max3 crop + ResNet50 top-5 prior AP50
+  `0.1697` on the same mirrored protocol.
+- However, this stronger heldout detector does not automatically become a
+  stronger pseudo-label teacher. Its filtered train pseudo-label quality still
+  trails the original Nano5 teacher under the checked filters. The next useful
+  step is a formal long-train / independent-test protocol or better
+  teacher-filtering, not another post-hoc crop prior.
 - Detector-side pseudo-label distillation is now wired at the dataset level:
   `scripts/build_coco_pseudolabel_dataset.py` can turn teacher COCO predictions
   into RF-DETR-compatible pseudo annotations. A smoke build with Nano 5ep test
@@ -298,6 +307,12 @@ Pseudo-label filtering update:
   raw train prediction AP50 is only `0.2464`, and the same `score>=0.25/top20`
   filter gives selected-label AP50 `0.1728`, far below Nano5 (`0.4474` raw and
   `0.3689` filtered).
+- Resumed Small 5ep is a much stronger detector and raw train teacher
+  (`raw train AP50 0.4041`, `loc AP50 0.7764`), but it still does not beat
+  Nano5 as a filtered pseudo-label source. Its selected-label AP50 is `0.3507`
+  at `score>=0.15/top20`, `0.3340` at `score>=0.20/top20`, and `0.3025` at
+  `score>=0.25/top20`, all below the corresponding Nano5 filter quality
+  (`0.4098`, `0.3991`, `0.3689`).
 - Training gate: despite better static pseudo-label AP, wider Nano5 filters
   collapse badly in teacher-only 1ep training after regular-checkpoint export.
   `score>=0.15/top20` gives `class AP50 0.0120`, `loc AP50 0.1509`,
