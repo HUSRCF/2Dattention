@@ -239,6 +239,44 @@ Distillation artifacts:
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_seed43_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_seed43_regular_test_slices.csv`
 
+True independent-test detector-side distillation check:
+
+| Setting | Split protocol | Seed | Train annotations | Class AP50 | Class AP75 | Loc AP50 | Off-center AP50 | Center AP50 | Small AP50 | Large AP50 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GT-only Nano 384px, 1 epoch | indtest_seed43 | 43 | 1,610 | 0.0224 | 0.0201 | 0.2113 | 0.0154 | 0.0266 | 0.0329 | 0.0441 |
+| teacher-only Nano 384px, 1 epoch | indtest_seed43 | 43 | 2,191 | 0.0204 | 0.0182 | 0.1908 | 0.0145 | 0.0248 | 0.0038 | 0.0420 |
+| GT-only Nano 384px, 4 epochs | indtest_seed43 | 43 | 1,610 | 0.1618 | 0.1180 | 0.6151 | 0.1343 | 0.1658 | 0.1051 | 0.2543 |
+| teacher pretrain -> GT finetune, Nano 1+3 epochs | indtest_seed43 | 43 | 1,610 | 0.1618 | 0.1259 | 0.6170 | 0.1310 | 0.1757 | 0.1035 | 0.3023 |
+| GT-only Nano 384px, 4 epochs | indtest_seed43 | 41 | 1,610 | 0.1517 | 0.1046 | 0.6194 | 0.1383 | 0.1442 | 0.1050 | 0.2404 |
+| teacher pretrain -> GT finetune, Nano 1+3 epochs | indtest_seed43 | 41 | 1,610 | 0.1502 | 0.1042 | 0.6263 | 0.1143 | 0.1710 | 0.1216 | 0.2970 |
+
+Independent-test artifacts:
+
+- `results/rfdetr_indtest_seed43_detector_side_summary.csv`
+- `results/rfdetr_offcenter_seed41_indtest_seed43_handoff_check.json`
+- `results/rfdetr_indtest_seed43_gt_384_4ep_seed41_regular_test_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_gt_384_4ep_seed41_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_gt_384_4ep_seed41_regular_test_slices.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_seed41_regular_test_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_seed41_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_seed41_regular_test_slices.csv`
+
+Independent-test interpretation:
+
+- The old single-stage teacher-only result is protocol-sensitive: on a true
+  image-disjoint test split, GT-only 1 epoch beats teacher-only 1 epoch.
+- Staged teacher-only pretrain -> GT finetune remains useful as a warm-start /
+  localization route, but the equal-budget claim is now conservative. Across
+  seeds 43 and 41, staged does not clearly beat GT-only on class AP50.
+- In seed41, staged improves class-agnostic AP50 (`0.6263` vs `0.6194`), center
+  AP50 (`0.1710` vs `0.1442`), small AP50 (`0.1216` vs `0.1050`), and large AP50
+  (`0.2970` vs `0.2404`), while GT-only improves class AP50 (`0.1517` vs
+  `0.1502`) and off-center AP50 (`0.1383` vs `0.1143`).
+- Current decision: keep staged pseudo-pretrain as a diagnostic and possible
+  localization pretraining route, but do not claim self-teacher pseudo-label
+  distillation beats equal-budget GT training until a stronger train-split
+  teacher or longer formal protocol confirms it.
+
 Pseudo-label filtering update:
 
 - `scripts/coco_annotations_to_predictions.py` converts selected pseudo-label
