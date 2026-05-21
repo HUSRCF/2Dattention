@@ -294,6 +294,10 @@ Pseudo-label filtering update:
 - The staged 1+3 student remains a weaker train pseudo-label teacher than
   Nano5 under the same `score>=0.25/top20` filter (`class AP50 0.2255` vs
   `0.3689` on selected labels).
+- Small 384px 3ep is also not a stronger train-split pseudo-label teacher:
+  raw train prediction AP50 is only `0.2464`, and the same `score>=0.25/top20`
+  filter gives selected-label AP50 `0.1728`, far below Nano5 (`0.4474` raw and
+  `0.3689` filtered).
 - Training gate: despite better static pseudo-label AP, wider Nano5 filters
   collapse badly in teacher-only 1ep training after regular-checkpoint export.
   `score>=0.15/top20` gives `class AP50 0.0120`, `loc AP50 0.1509`,
