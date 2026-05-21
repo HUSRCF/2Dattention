@@ -209,6 +209,7 @@ Detector-side pseudo-label distillation smoke:
 | teacher-only pretrain -> GT finetune, Nano 1+1 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.0816 | 0.0633 | 0.5749 | 0.0708 | 0.0645 |
 | teacher-only pretrain -> GT finetune, Nano 1+2 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.1088 | 0.0820 | 0.6273 | 0.1163 | 0.0964 |
 | teacher-only pretrain -> GT finetune, Nano 1+3 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.1428 | 0.1048 | 0.6198 | 0.1514 | 0.1461 |
+| teacher-only pretrain -> GT finetune, Nano 1+4 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.1342 | 0.0990 | 0.6290 | 0.1323 | 0.1151 |
 
 Distillation artifacts:
 
@@ -228,6 +229,9 @@ Distillation artifacts:
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_regular_test_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_regular_test_slices.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_4ep_regular_test_cocoeval.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_4ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_4ep_regular_test_slices.csv`
 
 Distillation interpretation:
 
@@ -252,6 +256,11 @@ Distillation interpretation:
   pseudo-label result so far, though class-agnostic AP50 (`0.6198`) remains close
   to the 2ep value (`0.6273`), so the main gain is class/ranking-side rather than
   raw localization.
+- Lengthening the GT finetune to 4 epochs does not improve class AP50 (`0.1342`)
+  even though class-agnostic AP50 (`0.6290`) and large-object AP50 (`0.3127`)
+  increase. Current self-teacher schedule should stop at 1ep pseudo pretrain +
+  3ep GT finetune for class-aware detection, then move to stronger teacher or
+  multi-seed formalization instead of simply extending epochs.
 - Engineering caveat: RF-DETR selected an anomalous `best_total` from stale/high
   EMA (`0.7167`) in this pretrain-then-finetune flow. The reported staged
   results use `checkpoint_best_regular.pth`, exported independently through
