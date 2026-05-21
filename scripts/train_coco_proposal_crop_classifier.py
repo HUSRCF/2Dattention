@@ -25,6 +25,7 @@ from scripts.train_coco_image_prior_classifier import (
     resolve_device,
     set_seed,
 )
+from scripts.fuse_coco_predictions import xywh_iou
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--train-annotations", type=Path, required=True)
     parser.add_argument("--train-image-root", type=Path, required=True)
+    parser.add_argument("--train-predictions", type=Path, default=None)
     parser.add_argument("--eval-annotations", type=Path, required=True)
     parser.add_argument("--eval-image-root", type=Path, required=True)
     parser.add_argument("--predictions", type=Path, required=True)
@@ -54,6 +56,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument("--top-k-categories", type=int, default=5)
     parser.add_argument("--category-score-mode", choices=["keep", "multiply"], default="multiply")
+    parser.add_argument("--train-crop-source", choices=["gt", "matched_predictions"], default="gt")
+    parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     return parser.parse_args()
 
 
@@ -68,7 +72,17 @@ def main() -> None:
     category_to_index = {category_id: index for index, category_id in enumerate(category_ids)}
     index_to_category = {index: category_id for category_id, index in category_to_index.items()}
 
-    train_samples = build_crop_samples(train_data, category_to_index=category_to_index)
+    if args.train_crop_source == "gt":
+        train_samples = build_crop_samples(train_data, category_to_index=category_to_index)
+    else:
+        if args.train_predictions is None:
+            raise ValueError("--train-predictions is required when --train-crop-source matched_predictions")
+        train_samples = build_matched_prediction_crop_samples(
+            train_data,
+            predictions=json.loads(args.train_predictions.read_text(encoding="utf-8")),
+            category_to_index=category_to_index,
+            iou_threshold=args.match_iou_threshold,
+        )
     eval_samples = build_crop_samples(eval_data, category_to_index=category_to_index)
     model, preprocess = build_classifier(
         args.backbone,
@@ -138,6 +152,8 @@ def main() -> None:
             "train_batch_acc": train_acc,
             "top_k_categories": args.top_k_categories,
             "category_score_mode": args.category_score_mode,
+            "train_crop_source": args.train_crop_source,
+            "match_iou_threshold": args.match_iou_threshold,
             **eval_metrics,
             "out_predictions": str(args.out_predictions),
         },
@@ -184,6 +200,65 @@ def build_crop_samples(data: dict[str, Any], *, category_to_index: dict[int, int
         )
     if not rows:
         raise ValueError("no crop samples were built")
+    return rows
+
+
+def build_matched_prediction_crop_samples(
+    data: dict[str, Any],
+    *,
+    predictions: list[dict[str, Any]],
+    category_to_index: dict[int, int],
+    iou_threshold: float,
+) -> list[CropSample]:
+    file_by_image = {int(image["id"]): str(image["file_name"]) for image in data.get("images", [])}
+    gt_by_image = annotations_by_image(data, category_to_index=category_to_index)
+    rows = []
+    for prediction in predictions:
+        image_id = int(prediction["image_id"])
+        if image_id not in file_by_image:
+            continue
+        gt_rows = gt_by_image.get(image_id, [])
+        if not gt_rows:
+            continue
+        bbox = tuple(float(value) for value in prediction["bbox"])
+        if len(bbox) != 4 or bbox[2] <= 0.0 or bbox[3] <= 0.0:
+            continue
+        best = max(gt_rows, key=lambda row: xywh_iou(list(bbox), list(row["bbox"])))
+        best_iou = xywh_iou(list(bbox), list(best["bbox"]))
+        if best_iou < iou_threshold:
+            continue
+        rows.append(
+            CropSample(
+                image_id=image_id,
+                file_name=file_by_image[image_id],
+                bbox=bbox,
+                label_index=int(best["label_index"]),
+            )
+        )
+    if not rows:
+        raise ValueError("no matched prediction crop samples were built")
+    return rows
+
+
+def annotations_by_image(
+    data: dict[str, Any],
+    *,
+    category_to_index: dict[int, int],
+) -> dict[int, list[dict[str, Any]]]:
+    rows: dict[int, list[dict[str, Any]]] = {}
+    for annotation in data.get("annotations", []):
+        category_id = int(annotation["category_id"])
+        if category_id not in category_to_index:
+            continue
+        bbox = tuple(float(value) for value in annotation["bbox"])
+        if len(bbox) != 4 or bbox[2] <= 0.0 or bbox[3] <= 0.0:
+            continue
+        rows.setdefault(int(annotation["image_id"]), []).append(
+            {
+                "bbox": bbox,
+                "label_index": category_to_index[category_id],
+            }
+        )
     return rows
 
 

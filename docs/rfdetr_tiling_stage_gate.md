@@ -123,6 +123,21 @@ Candidate-oracle artifacts:
 - `results/rfdetr_max3_resnet50_top5x_candidate_oracle_groupmax_cocoeval.csv`
 - `results/rfdetr_max3_resnet50_top5x_candidate_oracle_iou_cocoeval.csv`
 
+Matched-proposal crop classifier check:
+
+| Setting | Eval crop top-5 | AP50 | Global top-100 class R@50 | Category retention |
+|---|---:|---:|---:|---:|
+| Matched proposal crops, score multiply | 0.6667 | 0.0172 | 0.2722 | 0.3496 |
+| Matched proposal crops, keep detector score | 0.6667 | 0.0103 | 0.2911 | 0.4466 |
+| Image ResNet50 top-5 prior, heldout base | - | 0.1781 | 0.3101 | 0.4153 |
+
+Matched-propcrop artifacts:
+
+- `scripts/train_coco_proposal_crop_classifier.py`
+- `results/rfdetr_matched_propcrop_prior_heldout_summary.csv`
+- `results/rfdetr_max3_matched_propcrop_resnet50_top5x_heldout_summary.csv`
+- `results/rfdetr_max3_matched_propcrop_resnet50_top5keep_heldout_summary.csv`
+
 Frozen DET-aware category-prior check:
 
 | Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
@@ -257,6 +272,11 @@ Native category transform artifacts:
   proposal boxes. Even with oracle IoU scoring, this constrained candidate set
   reaches AP50 `0.4736`, well below the all-category IoU oracle AP50 `0.7515`.
   This rules out pure candidate reranking as the main next step.
+- Training a frozen ResNet50 head on matched RF-DETR proposal crops does not
+  solve the category source problem. Despite `0.6667` heldout GT-crop top-5
+  accuracy, the resulting proposal relabeling is far below the ImageNet image
+  prior on AP50 and does not improve top-100 class recall. This suggests the
+  small matched-proposal split is too weak/noisy for a standalone crop classifier.
 
 ## Stop / Continue Rule
 
