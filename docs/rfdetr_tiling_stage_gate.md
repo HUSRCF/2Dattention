@@ -288,6 +288,7 @@ Independent-test detector-side pseudo-label check:
 | Setting | Split | Train annotations | Class AP50 | Class AP75 | Class-agnostic AP50 | Off-center AP50 | Small AP50 |
 |---|---|---:|---:|---:|---:|---:|---:|
 | GT baseline, Nano 1 epoch | true independent test | 1,610 | 0.0224 | 0.0201 | 0.2113 | 0.0154 | 0.0329 |
+| GT baseline, Nano 4 epochs | true independent test | 1,610 | 0.1618 | 0.1180 | 0.6151 | 0.1343 | 0.1051 |
 | teacher-only, Nano 1 epoch | true independent test | 2,191 | 0.0204 | 0.0182 | 0.1908 | 0.0145 | 0.0038 |
 | teacher-only pretrain -> GT finetune, Nano 1+3 epochs | true independent test | 1,610 | 0.1618 | 0.1259 | 0.6170 | 0.1310 | 0.1035 |
 
@@ -298,6 +299,9 @@ Independent-test artifacts:
 - `results/rfdetr_indtest_seed43_gt_384_1ep_regular_test_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_gt_384_1ep_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_gt_384_1ep_regular_test_slices.csv`
+- `results/rfdetr_indtest_seed43_gt_384_4ep_regular_test_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_gt_384_4ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_gt_384_4ep_regular_test_slices.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_slices.csv`
@@ -322,9 +326,15 @@ Distillation interpretation:
   checkpoint and finetuning on GT for 3 epochs reaches class AP50 `0.1618`,
   AP75 `0.1259`, class-agnostic AP50 `0.6170`, offcenter AP50 `0.1310`, and
   small AP50 `0.1035`. This is above the independent GT-only 1ep and
-  teacher-only 1ep checks by a wide margin. The corrected conclusion is:
-  single-stage teacher-only is not robust, but staged pseudo pretrain followed
-  by GT finetune remains the active detector-side distillation route.
+  teacher-only 1ep checks by a wide margin.
+- The equal-total-epoch GT-only 4ep control reaches essentially the same class
+  AP50 (`0.1618`) and class-agnostic AP50 (`0.6151`). Staged pretrain keeps a
+  modest AP/AP75/localization edge (`AP 0.1261 vs 0.1151`, `AP75 0.1259 vs
+  0.1180`, `loc AP50 0.6170 vs 0.6151`), while GT-only 4ep is slightly better
+  on offcenter/small/medium AP50. The corrected conclusion is: single-stage
+  teacher-only is not robust; staged pseudo pretrain is a useful schedule but
+  is not yet a clear equal-budget class-AP50 win. Next confirmation should be
+  multi-seed/equal-budget rather than more single-stage teacher-only.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.
