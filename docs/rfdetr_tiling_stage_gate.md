@@ -145,6 +145,8 @@ Integrated RF-DETR detector-side class-head check:
 | full split Nano, 1 epoch | 128 | 0.0439 | 0.0364 | 0.3081 | 0.0278 | 0.0300 | 0.1036 |
 | full split Nano, 1 epoch | 384 | 0.0495 | 0.0401 | 0.5584 | 0.0455 | 0.0630 | 0.1302 |
 | full split Nano, 3 epochs | 384 | 0.1224 | 0.0960 | 0.6074 | 0.1060 | 0.1320 | 0.2220 |
+| full split Nano, 5 epochs | 384 | 0.1437 | 0.1027 | 0.6214 | 0.1454 | 0.1800 | 0.2715 |
+| full split Small, 1 epoch | 384 | 0.0513 | 0.0372 | 0.5464 | 0.0396 | 0.0413 | 0.1349 |
 
 Integrated RF-DETR artifacts:
 
@@ -158,6 +160,27 @@ Integrated RF-DETR artifacts:
 - `results/rfdetr_offcenter_seed41_full_nano_384_3ep_test_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_nano_384_3ep_test_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_nano_384_3ep_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_5ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_5ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_nano_384_5ep_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_1ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_1ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_1ep_test_slices.csv`
+
+Interpretation:
+
+- Nano 384px continues to improve with longer detector-side training: class-aware
+  AP50 rises from `0.1224` at 3 epochs to `0.1437` at 5 epochs, with
+  off-center AP50 improving from `0.1060` to `0.1454`.
+- Class-agnostic AP50 remains much higher (`0.6214` at 5 epochs), so category
+  learning/class-head quality is still the main bottleneck.
+- Small 384px at 1 epoch is not a fair stronger-teacher result yet. It verifies
+  the stronger model path and 200-class export, but AP50 `0.0513` shows that it
+  needs a longer detector-side schedule before it can be judged.
+- The current 5-epoch Nano result still trails the max3 crop + ResNet50 top-5
+  category-prior AP50 `0.1697`, but it is the correct integrated detector-side
+  route. The next useful step is stronger teacher / detector-side distillation
+  or a longer Small/Nano protocol, not another post-hoc crop prior.
 
 Frozen DET-aware category-prior check:
 
