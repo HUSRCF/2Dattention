@@ -448,6 +448,12 @@ Distillation interpretation:
   0.3991`, `s025/top20 0.3832 vs 0.3689`). This makes Small-resume8 the first
   checked candidate worth using for a new teacher-only pretrain -> GT finetune
   schedule.
+- The seed43 direct Small resume8 checkpoint is not a stronger train teacher.
+  Its raw train class AP50 is `0.4274`, below seed41 Small-resume8 `0.4599`.
+  After filtering, `s015/s020/s025 top20` class AP50 is
+  `0.3804/0.3638/0.3475`, also below seed41 Small-resume8
+  `0.4221/0.4033/0.3832`. Use seed43 resume8 as a second direct-training
+  detector result, not as the next pseudo-label teacher.
 - Small-resume8 `s025/top20` teacher-only 1ep is still only a weak standalone
   model on independent test: class AP50 `0.0547`, AP75 `0.0504`,
   class-agnostic AP50 `0.3288`, offcenter AP50 `0.0437`, and small AP50
