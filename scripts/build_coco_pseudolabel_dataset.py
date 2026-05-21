@@ -59,7 +59,7 @@ def main() -> None:
             source = "gt"
         else:
             predictions = json.loads(prediction_path.read_text(encoding="utf-8"))
-            out_coco = build_pseudo_coco(
+            out_coco, drop_stats = build_pseudo_coco(
                 coco,
                 predictions,
                 min_score=args.min_score,
@@ -77,6 +77,7 @@ def main() -> None:
                 "source": source,
                 "images": len(out_coco.get("images", [])),
                 "annotations": len(out_coco.get("annotations", [])),
+                "drop_stats": drop_stats if prediction_path is not None else {},
             }
         )
     print("saved_pseudolabel_dataset:", args.out_dir)
@@ -85,6 +86,8 @@ def main() -> None:
             f"{row['split']}: images={row['images']} annotations={row['annotations']} "
             f"source={row['source']}"
         )
+        if row["drop_stats"]:
+            print("  drop_stats:", json.dumps(row["drop_stats"], sort_keys=True))
 
 
 def copy_or_link_images(
@@ -118,27 +121,42 @@ def build_pseudo_coco(
     topk_per_image: int,
     min_area: float,
     include_gt: bool,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, int]]:
     images = coco.get("images", [])
     categories = coco.get("categories", [])
     image_by_id = {int(image["id"]): image for image in images}
     valid_category_ids = {int(category["id"]) for category in categories}
     grouped_predictions: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    drop_stats = {
+        "raw_predictions": len(predictions),
+        "dropped_image_id": 0,
+        "dropped_category_id": 0,
+        "dropped_score": 0,
+        "dropped_bbox": 0,
+        "dropped_area": 0,
+        "kept_before_topk": 0,
+        "dropped_topk": 0,
+    }
     for prediction in predictions:
         image_id = int(prediction.get("image_id", -1))
         if image_id not in image_by_id:
+            drop_stats["dropped_image_id"] += 1
             continue
         category_id = int(prediction.get("category_id", -1))
         if category_id not in valid_category_ids:
+            drop_stats["dropped_category_id"] += 1
             continue
         score = float(prediction.get("score", 0.0))
         if score < min_score:
+            drop_stats["dropped_score"] += 1
             continue
         bbox = clip_xywh_bbox(prediction.get("bbox", []), image_by_id[image_id])
         if bbox is None:
+            drop_stats["dropped_bbox"] += 1
             continue
         _, _, width, height = bbox
         if width * height < min_area:
+            drop_stats["dropped_area"] += 1
             continue
         grouped_predictions[image_id].append(
             {
@@ -148,6 +166,7 @@ def build_pseudo_coco(
                 "score": score,
             }
         )
+        drop_stats["kept_before_topk"] += 1
     annotations: list[dict[str, Any]] = []
     next_annotation_id = 1
     if include_gt:
@@ -158,6 +177,7 @@ def build_pseudo_coco(
             annotations.append(copied)
     for image_id in sorted(image_by_id):
         ranked = sorted(grouped_predictions.get(image_id, []), key=lambda item: item["score"], reverse=True)
+        drop_stats["dropped_topk"] += max(0, len(ranked) - topk_per_image)
         for prediction in ranked[:topk_per_image]:
             x, y, width, height = prediction["bbox"]
             annotations.append(
@@ -172,12 +192,13 @@ def build_pseudo_coco(
                 }
             )
             next_annotation_id += 1
-    return {
+    out_coco = {
         **{key: value for key, value in coco.items() if key not in {"annotations"}},
         "images": images,
         "categories": categories,
         "annotations": annotations,
     }
+    return out_coco, drop_stats
 
 
 def clip_xywh_bbox(raw_bbox: Any, image: dict[str, Any]) -> list[float] | None:

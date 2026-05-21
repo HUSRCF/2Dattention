@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import importlib.util
 import json
@@ -80,8 +81,13 @@ def dataset_report(dataset_dir: Path) -> dict[str, Any]:
         if annotation_path.exists():
             data = json.loads(annotation_path.read_text(encoding="utf-8"))
             split_report.update(coco_split_report(data, dataset_dir / split))
+            split_report["annotation_sha256"] = file_sha256(annotation_path)
         splits[split] = split_report
-    return {"dataset_dir": str(dataset_dir), "splits": splits}
+    return {
+        "dataset_dir": str(dataset_dir),
+        "splits": splits,
+        "split_consistency": split_consistency_report(splits),
+    }
 
 
 def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
@@ -143,6 +149,47 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
             or out_of_bounds_bbox_ids
         ),
     }
+
+
+def split_consistency_report(splits: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    category_ranges = {
+        split: (report.get("min_category_id"), report.get("max_category_id"), report.get("categories"))
+        for split, report in splits.items()
+        if report.get("exists")
+    }
+    hashes = {
+        split: report.get("annotation_sha256")
+        for split, report in splits.items()
+        if report.get("exists") and report.get("annotation_sha256")
+    }
+    train_range = category_ranges.get("train")
+    category_range_matches_train = {
+        split: (category_range == train_range)
+        for split, category_range in category_ranges.items()
+        if split != "train"
+    }
+    return {
+        "category_ranges": {
+            split: {
+                "min_category_id": values[0],
+                "max_category_id": values[1],
+                "categories": values[2],
+            }
+            for split, values in category_ranges.items()
+        },
+        "category_range_matches_train": category_range_matches_train,
+        "valid_test_annotations_identical": hashes.get("valid") == hashes.get("test")
+        if "valid" in hashes and "test" in hashes
+        else None,
+    }
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 if __name__ == "__main__":

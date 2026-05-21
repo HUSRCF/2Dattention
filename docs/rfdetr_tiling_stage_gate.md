@@ -216,6 +216,7 @@ Distillation artifacts:
 
 - `results/rfdetr_detector_side_pseudolabel_summary.csv`
 - `results/rfdetr_train_teacher_quality_summary.csv`
+- `results/rfdetr_pseudo_filter_quality_summary.csv`
 - `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_cocoeval.csv`
 - `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_slices.csv`
@@ -237,6 +238,42 @@ Distillation artifacts:
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_seed43_regular_test_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_seed43_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_3ep_seed43_regular_test_slices.csv`
+
+Pseudo-label filtering update:
+
+- `scripts/coco_annotations_to_predictions.py` converts selected pseudo-label
+  annotation JSONs into COCO detection prediction JSONs, preserving
+  `teacher_score` as the detection score.
+- Direct train-GT evaluation shows that stricter Nano5 pseudo filters reduce
+  selected-label AP mostly by losing recall. `score>=0.15/top20` is currently
+  the strongest no-training filter (`class AP50 0.4098`, `loc AP50 0.7565`,
+  `3,872` selected boxes), followed by `score>=0.20/top20` (`class AP50
+  0.3991`, `loc AP50 0.7482`, `2,842` boxes). The current training filter
+  `score>=0.25/top20` is lower (`class AP50 0.3689`, `loc AP50 0.7272`,
+  `2,191` boxes).
+- `score>=0.25/top10` is worse than `score>=0.25/top20`, so top-k truncation is
+  not the right cleanup lever here.
+- The staged 1+3 student remains a weaker train pseudo-label teacher than
+  Nano5 under the same `score>=0.25/top20` filter (`class AP50 0.2255` vs
+  `0.3689` on selected labels).
+- Training gate: despite better static pseudo-label AP, Nano5
+  `score>=0.15/top20` teacher-only 1ep collapses badly after regular-checkpoint
+  export (`class AP50 0.0120`, `loc AP50 0.1509`, `offcenter AP50 0.0077`),
+  far below the previous `score>=0.25/top20` teacher-only result (`class AP50
+  0.0552`, `loc AP50 0.5499`). Do not run staged 1+3 on `s015/top20`.
+- Current detector-side distillation sweet spot remains Nano5
+  `score>=0.25/top20` teacher-only pretrain followed by GT finetune. Future
+  pseudo-label work needs a filtering objective that accounts for training
+  stability, not only static train-GT pseudo AP.
+
+Protocol caveat:
+
+- `scripts/check_rfdetr_handoff.py` now reports annotation SHA256 hashes and
+  split category-range consistency. Current RF-DETR prepared split has
+  consistent `1..200` category ranges, but `valid` and `test` annotations are
+  byte-identical. Treat existing `*_test_*` RF-DETR numbers as
+  validation-mirrored heldout results rather than independent-test numbers until
+  a true separate test split is prepared.
 
 Distillation interpretation:
 
