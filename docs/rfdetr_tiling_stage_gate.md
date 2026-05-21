@@ -374,6 +374,9 @@ Independent-test artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume8ep_indtest_seed43_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume8ep_indtest_seed43_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume8ep_indtest_seed43_slices.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_slices.csv`
@@ -432,6 +435,13 @@ Distillation interpretation:
   two-seed mean AP50 is about `0.2084`, above Small-resume8 staged-pseudo
   mean about `0.1697`, so direct detector-side Small training remains the main
   RF-DETR route.
+- Resuming the same seed43 direct Small run to 8 epochs improves
+  independent-test class AP50 to `0.2066`, AP75 to `0.1491`, offcenter AP50 to
+  `0.1795`, small AP50 to `0.1697`, and large AP50 to `0.3973`; class-agnostic
+  AP50 remains strong at `0.6135`. Direct Small 8ep now has a two-seed mean
+  class AP50 of about `0.2371`, confirming that longer direct Small training is
+  more reliable than staged pseudo-pretrain under the current independent-test
+  protocol.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
