@@ -199,6 +199,40 @@ Interpretation:
   requires train-split predictions from a stronger teacher, then teacher-only
   vs GT+pseudo RF-DETR training.
 
+Detector-side pseudo-label distillation smoke:
+
+| Setting | Teacher | Train annotations | Class AP50 | Class AP75 | Class-agnostic AP50 | Off-center AP50 | Small AP50 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| GT baseline, Nano 1 epoch | GT | 1,610 | 0.0495 | 0.0401 | 0.5584 | 0.0455 | 0.0630 |
+| teacher-only, Nano 1 epoch | Nano 5ep train predictions, score>=0.25 top20 | 2,191 | 0.0552 | 0.0416 | 0.5499 | 0.0494 | 0.0451 |
+| GT+pseudo, Nano 1 epoch | GT + Nano 5ep train predictions, score>=0.25 top20 | 3,801 | 0.0484 | 0.0330 | 0.3737 | 0.0345 | 0.0514 |
+
+Distillation artifacts:
+
+- `results/rfdetr_detector_side_pseudolabel_summary.csv`
+- `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_cocoeval.csv`
+- `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_loc_cocoeval.csv`
+- `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_slices.csv`
+- `results/rfdetr_nano5_gt_pseudo_s025k20_384_1ep_test_cocoeval.csv`
+- `results/rfdetr_nano5_gt_pseudo_s025k20_384_1ep_test_loc_cocoeval.csv`
+- `results/rfdetr_nano5_gt_pseudo_s025k20_384_1ep_test_slices.csv`
+
+Distillation interpretation:
+
+- The train-split teacher-prediction path is now functional. Nano 5ep produced
+  `98,506` train predictions; filtered pseudo labels gave `2,191` train boxes at
+  `score>=0.25/top20`.
+- Teacher-only training is slightly better than the 1-epoch GT baseline on
+  class AP50 (`0.0552` vs `0.0495`), so detector-side pseudo-label training can
+  move the class head.
+- Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
+  to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
+  pseudo boxes interfere with Hungarian matching.
+- This is not yet a strong-teacher result. It is a substrate check using Nano 5ep
+  as a self-teacher. The next useful step is either a stronger train-split
+  teacher or stricter pseudo filtering / teacher-only pretrain followed by GT
+  finetune, not raw GT+pseudo concatenation.
+
 Frozen DET-aware category-prior check:
 
 | Setting | Eval top-1 | Eval top-5 | AP50 | Top-100 class-aware R@50 | Top-100 mean class-aware IoU |
