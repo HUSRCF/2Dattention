@@ -371,6 +371,9 @@ Independent-test artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_slices.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_slices.csv`
@@ -421,6 +424,14 @@ Distillation interpretation:
   class AP50 further to `0.2677`, AP75 `0.2053`, center AP50 `0.2527`, and
   small AP50 `0.2594`, while class-agnostic AP50 remains high at `0.6271`.
   This is the current strongest RF-DETR checkpoint in the project.
+- A second direct Small 5ep run with seed43 reaches independent-test class
+  AP50 `0.1762`, AP75 `0.1318`, class-agnostic AP50 `0.6327`, offcenter
+  AP50 `0.1506`, small AP50 `0.1220`, and large AP50 `0.3263`. It is weaker
+  than the seed41 direct Small run, but still beats same-seed Small-resume8
+  staged pseudo-pretrain (`0.1762` vs `0.1540` AP50). Direct Small 5ep
+  two-seed mean AP50 is about `0.2084`, above Small-resume8 staged-pseudo
+  mean about `0.1697`, so direct detector-side Small training remains the main
+  RF-DETR route.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
