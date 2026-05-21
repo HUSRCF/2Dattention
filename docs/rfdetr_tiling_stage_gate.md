@@ -207,6 +207,7 @@ Detector-side pseudo-label distillation smoke:
 | teacher-only, Nano 1 epoch | Nano 5ep train predictions, score>=0.25 top20 | 2,191 | 0.0552 | 0.0416 | 0.5499 | 0.0494 | 0.0451 |
 | GT+pseudo, Nano 1 epoch | GT + Nano 5ep train predictions, score>=0.25 top20 | 3,801 | 0.0484 | 0.0330 | 0.3737 | 0.0345 | 0.0514 |
 | teacher-only pretrain -> GT finetune, Nano 1+1 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.0816 | 0.0633 | 0.5749 | 0.0708 | 0.0645 |
+| teacher-only pretrain -> GT finetune, Nano 1+2 epochs | Nano 5ep train predictions, score>=0.25 top20 | 1,610 | 0.1088 | 0.0820 | 0.6273 | 0.1163 | 0.0964 |
 
 Distillation artifacts:
 
@@ -220,6 +221,9 @@ Distillation artifacts:
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_1ep_regular_test_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_1ep_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_teacherpre_gtfinetune_384_1ep_regular_test_slices.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_2ep_regular_test_cocoeval.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_2ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_nano5_teacherpre_gtfinetune_384_2ep_regular_test_slices.csv`
 
 Distillation interpretation:
 
@@ -235,14 +239,17 @@ Distillation interpretation:
 - Teacher-only pretraining followed by GT finetuning is the first clear positive
   distillation schedule: class AP50 improves to `0.0816`, above GT 1 epoch
   (`0.0495`), teacher-only (`0.0552`), and raw GT+pseudo (`0.0484`).
+- Lengthening the GT finetune to 2 epochs strengthens the staged schedule:
+  class AP50 reaches `0.1088`, AP75 `0.0820`, class-agnostic AP50 `0.6273`,
+  off-center AP50 `0.1163`, and large-object AP50 `0.2240`.
 - Engineering caveat: RF-DETR selected an anomalous `best_total` from stale/high
-  EMA (`0.7167`) in this pretrain-then-finetune flow. The reported result uses
-  `checkpoint_best_regular.pth`, exported independently through
+  EMA (`0.7167`) in this pretrain-then-finetune flow. The reported staged
+  results use `checkpoint_best_regular.pth`, exported independently through
   `predict_rfdetr_coco.py`.
 - This is not yet a strong-teacher result. It is a substrate check using Nano 5ep
   as a self-teacher. The next useful step is a stronger train-split teacher, a
-  longer teacher-pretrain -> GT-finetune schedule, or stricter pseudo filtering;
-  raw GT+pseudo concatenation should stay downgraded.
+  more formal longer teacher-pretrain -> GT-finetune protocol, or stricter
+  pseudo filtering; raw GT+pseudo concatenation should stay downgraded.
 
 Frozen DET-aware category-prior check:
 
