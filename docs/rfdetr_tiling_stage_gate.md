@@ -377,6 +377,9 @@ Independent-test artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume8ep_indtest_seed43_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume8ep_indtest_seed43_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume8ep_indtest_seed43_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume12ep_indtest_seed43_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume12ep_indtest_seed43_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed43_resume12ep_indtest_seed43_slices.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_slices.csv`
@@ -442,6 +445,12 @@ Distillation interpretation:
   class AP50 of about `0.2371`, confirming that longer direct Small training is
   more reliable than staged pseudo-pretrain under the current independent-test
   protocol.
+- Extending seed43 further to 12 epochs gives another large independent-test
+  jump: class AP50 `0.2923`, AP75 `0.1802`, class-agnostic AP50 `0.6290`,
+  offcenter AP50 `0.2562`, small AP50 `0.2921`, and large AP50 `0.4235`. This
+  is now the strongest single RF-DETR checkpoint in the project. The fair next
+  protocol step is seed41 8ep -> 12ep, so the direct-Small long-train route has
+  an equal-budget two-seed estimate.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
