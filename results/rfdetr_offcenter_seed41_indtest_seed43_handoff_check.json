@@ -1,0 +1,156 @@
+{
+  "packages": {
+    "rfdetr": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/rfdetr/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "torch": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/torch/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "torchvision": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/torchvision/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "transformers": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/transformers/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "timm": {
+      "installed": false,
+      "origin": "",
+      "import_ok": false,
+      "import_error": "not found"
+    },
+    "supervision": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/supervision/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "albumentations": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/albumentations/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "faster_coco_eval": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/faster_coco_eval/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "pytorch_lightning": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/pytorch_lightning/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    },
+    "torchmetrics": {
+      "installed": true,
+      "origin": "/opt/anaconda3/envs/AIAA/lib/python3.12/site-packages/torchmetrics/__init__.py",
+      "import_ok": true,
+      "import_error": ""
+    }
+  },
+  "dataset": {
+    "dataset_dir": "data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41_indtest_seed43",
+    "splits": {
+      "train": {
+        "annotation_path": "data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41_indtest_seed43/train/_annotations.coco.json",
+        "exists": true,
+        "images": 330,
+        "annotations": 1610,
+        "categories": 200,
+        "min_category_id": 1,
+        "max_category_id": 200,
+        "missing_category_ids": [],
+        "checked_files": 330,
+        "missing_files_count": 0,
+        "missing_files": [],
+        "orphan_annotation_ids_count": 0,
+        "orphan_annotation_ids": [],
+        "invalid_bbox_ids_count": 0,
+        "invalid_bbox_ids": [],
+        "out_of_bounds_bbox_ids_count": 0,
+        "out_of_bounds_bbox_ids": [],
+        "ok": true,
+        "annotation_sha256": "c4e87a0c4e0aafb989b665df64422b7b93a695edca9f193b458974d9a4dab944"
+      },
+      "valid": {
+        "annotation_path": "data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41_indtest_seed43/valid/_annotations.coco.json",
+        "exists": true,
+        "images": 100,
+        "annotations": 319,
+        "categories": 200,
+        "min_category_id": 1,
+        "max_category_id": 200,
+        "missing_category_ids": [],
+        "checked_files": 100,
+        "missing_files_count": 0,
+        "missing_files": [],
+        "orphan_annotation_ids_count": 0,
+        "orphan_annotation_ids": [],
+        "invalid_bbox_ids_count": 0,
+        "invalid_bbox_ids": [],
+        "out_of_bounds_bbox_ids_count": 0,
+        "out_of_bounds_bbox_ids": [],
+        "ok": true,
+        "annotation_sha256": "7c7f048fc2c31a7d41ef058766e83dfd98a73c4b4f7ef2ae70de8705d4bdca9d"
+      },
+      "test": {
+        "annotation_path": "data/ILSVRC2013_DET_val_supervised/rfdetr_offcenter_seed41_indtest_seed43/test/_annotations.coco.json",
+        "exists": true,
+        "images": 100,
+        "annotations": 365,
+        "categories": 200,
+        "min_category_id": 1,
+        "max_category_id": 200,
+        "missing_category_ids": [],
+        "checked_files": 100,
+        "missing_files_count": 0,
+        "missing_files": [],
+        "orphan_annotation_ids_count": 0,
+        "orphan_annotation_ids": [],
+        "invalid_bbox_ids_count": 0,
+        "invalid_bbox_ids": [],
+        "out_of_bounds_bbox_ids_count": 0,
+        "out_of_bounds_bbox_ids": [],
+        "ok": true,
+        "annotation_sha256": "3002b0955454a329b71d10f7953fa29159df9141a6c0edfa772700e8d2cddbae"
+      }
+    },
+    "split_consistency": {
+      "category_ranges": {
+        "train": {
+          "min_category_id": 1,
+          "max_category_id": 200,
+          "categories": 200
+        },
+        "valid": {
+          "min_category_id": 1,
+          "max_category_id": 200,
+          "categories": 200
+        },
+        "test": {
+          "min_category_id": 1,
+          "max_category_id": 200,
+          "categories": 200
+        }
+      },
+      "category_range_matches_train": {
+        "valid": true,
+        "test": true
+      },
+      "valid_test_annotations_identical": false
+    }
+  }
+}

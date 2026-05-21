@@ -276,6 +276,30 @@ Protocol caveat:
   byte-identical. Treat existing `*_test_*` RF-DETR numbers as
   validation-mirrored heldout results rather than independent-test numbers until
   a true separate test split is prepared.
+- `scripts/split_coco_by_images.py --keep-all-categories` now supports making
+  image-disjoint validation/test annotation files while preserving the original
+  200-category table. The independent-test prepared dataset
+  `rfdetr_offcenter_seed41_indtest_seed43` has train `330/1610`, valid
+  `100/319`, and test `100/365` images/annotations; handoff check confirms
+  consistent `1..200` categories and `valid_test_annotations_identical=false`.
+
+Independent-test detector-side pseudo-label check:
+
+| Setting | Split | Train annotations | Class AP50 | Class AP75 | Class-agnostic AP50 | Off-center AP50 | Small AP50 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| GT baseline, Nano 1 epoch | true independent test | 1,610 | 0.0224 | 0.0201 | 0.2113 | 0.0154 | 0.0329 |
+| teacher-only, Nano 1 epoch | true independent test | 2,191 | 0.0204 | 0.0182 | 0.1908 | 0.0145 | 0.0038 |
+
+Independent-test artifacts:
+
+- `results/rfdetr_offcenter_seed41_indtest_seed43_handoff_check.json`
+- `results/rfdetr_indtest_seed43_detector_side_summary.csv`
+- `results/rfdetr_indtest_seed43_gt_384_1ep_regular_test_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_gt_384_1ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_gt_384_1ep_regular_test_slices.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_slices.csv`
 
 Distillation interpretation:
 
@@ -283,8 +307,13 @@ Distillation interpretation:
   `98,506` train predictions; filtered pseudo labels gave `2,191` train boxes at
   `score>=0.25/top20`.
 - Teacher-only training is slightly better than the 1-epoch GT baseline on
-  class AP50 (`0.0552` vs `0.0495`), so detector-side pseudo-label training can
-  move the class head.
+  validation-mirrored heldout class AP50 (`0.0552` vs `0.0495`), so
+  detector-side pseudo-label training can move the class head in that protocol.
+  However, the true independent-test check reverses this 1-epoch teacher-only
+  signal: teacher-only is below GT-only on class AP50 (`0.0204` vs `0.0224`) and
+  class-agnostic AP50 (`0.1908` vs `0.2113`). Treat the old teacher-only
+  improvement as protocol-sensitive until staged pretrain -> GT finetune is
+  rerun on the independent split.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.

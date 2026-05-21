@@ -1,0 +1,3 @@
+setting,split_protocol,train_annotations,class_ap,class_ap50,class_ap75,loc_ap,loc_ap50,loc_ap75,all_ap50,offcenter_ap50,center_ap50,small_ap50,medium_ap50,large_ap50,model_num_classes,checkpoint_source,notes
+gt_384_1ep_seed43,indtest_seed43,1610,0.018388,0.022427,0.020116,0.156717,0.211294,0.162817,0.022427,0.015402,0.026558,0.032908,0.029273,0.044098,200,checkpoint_best_regular.pth,gt_only_baseline_regular_checkpoint
+teacher_only_s025k20_384_1ep_seed43,indtest_seed43,2191,0.017054,0.020376,0.018180,0.141060,0.190785,0.144402,0.020376,0.014549,0.024823,0.003760,0.029071,0.042012,200,checkpoint_best_regular.pth,nano5_train_teacher_score025_top20_teacher_only_regular_checkpoint
