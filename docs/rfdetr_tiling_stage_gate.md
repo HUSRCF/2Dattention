@@ -365,6 +365,9 @@ Independent-test artifacts:
 - `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_regular_test_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_regular_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_indtest_seed43_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_indtest_seed43_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_indtest_seed43_slices.csv`
 
 Distillation interpretation:
 
@@ -392,6 +395,13 @@ Distillation interpretation:
   teacher-only is not robust; staged pseudo pretrain is a useful schedule but
   is not yet a clear equal-budget class-AP50 win. Next confirmation should be
   multi-seed/equal-budget rather than more single-stage teacher-only.
+- Resumed Small 384px 5ep is the strongest independent-test detector-side
+  checkpoint so far: class AP50 `0.2405`, AP75 `0.1795`, class-agnostic AP50
+  `0.6352`, offcenter AP50 `0.2238`, small AP50 `0.2457`, medium AP50
+  `0.2572`, and large AP50 `0.3768`. This shifts the active RF-DETR direction
+  away from more self-teacher pseudo-label repeats and toward a formal longer
+  detector-side Small/Nano protocol. Pseudo-labeling should return only after a
+  train-split teacher also beats Nano5 after filtering.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.
