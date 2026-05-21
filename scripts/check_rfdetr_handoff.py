@@ -92,6 +92,7 @@ def dataset_report(dataset_dir: Path) -> dict[str, Any]:
 
 def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
     categories = {int(category["id"]) for category in data.get("categories", [])}
+    category_rows = list(data.get("categories", []))
     images = data.get("images", [])
     annotations = data.get("annotations", [])
     image_by_id = {int(image["id"]): image for image in images}
@@ -131,6 +132,8 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
         "categories": len(categories),
         "min_category_id": min(categories) if categories else None,
         "max_category_id": max(categories) if categories else None,
+        "category_ids": sorted(categories),
+        "category_table_sha256": category_table_sha256(category_rows),
         "missing_category_ids": missing_category_ids,
         "checked_files": len(images),
         "missing_files_count": len(missing_files),
@@ -163,10 +166,22 @@ def split_consistency_report(splits: dict[str, dict[str, Any]]) -> dict[str, Any
         if report.get("exists") and report.get("annotation_sha256")
     }
     train_range = category_ranges.get("train")
+    train_category_ids = splits.get("train", {}).get("category_ids")
+    train_category_table_sha = splits.get("train", {}).get("category_table_sha256")
     category_range_matches_train = {
         split: (category_range == train_range)
         for split, category_range in category_ranges.items()
         if split != "train"
+    }
+    category_ids_match_train = {
+        split: (report.get("category_ids") == train_category_ids)
+        for split, report in splits.items()
+        if split != "train" and report.get("exists")
+    }
+    category_table_matches_train = {
+        split: (report.get("category_table_sha256") == train_category_table_sha)
+        for split, report in splits.items()
+        if split != "train" and report.get("exists")
     }
     return {
         "category_ranges": {
@@ -178,10 +193,18 @@ def split_consistency_report(splits: dict[str, dict[str, Any]]) -> dict[str, Any
             for split, values in category_ranges.items()
         },
         "category_range_matches_train": category_range_matches_train,
+        "category_ids_match_train": category_ids_match_train,
+        "category_table_matches_train": category_table_matches_train,
         "valid_test_annotations_identical": hashes.get("valid") == hashes.get("test")
         if "valid" in hashes and "test" in hashes
         else None,
     }
+
+
+def category_table_sha256(categories: list[dict[str, Any]]) -> str:
+    normalized = sorted(categories, key=lambda category: int(category["id"]))
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def file_sha256(path: Path) -> str:

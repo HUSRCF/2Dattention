@@ -289,6 +289,7 @@ Independent-test detector-side pseudo-label check:
 |---|---|---:|---:|---:|---:|---:|---:|
 | GT baseline, Nano 1 epoch | true independent test | 1,610 | 0.0224 | 0.0201 | 0.2113 | 0.0154 | 0.0329 |
 | teacher-only, Nano 1 epoch | true independent test | 2,191 | 0.0204 | 0.0182 | 0.1908 | 0.0145 | 0.0038 |
+| teacher-only pretrain -> GT finetune, Nano 1+3 epochs | true independent test | 1,610 | 0.1618 | 0.1259 | 0.6170 | 0.1310 | 0.1035 |
 
 Independent-test artifacts:
 
@@ -300,6 +301,9 @@ Independent-test artifacts:
 - `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_loc_cocoeval.csv`
 - `results/rfdetr_indtest_seed43_nano5_teacher_only_s025k20_384_1ep_regular_test_slices.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_regular_test_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_regular_test_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_nano5_teacherpre_gtfinetune_s025k20_384_3ep_regular_test_slices.csv`
 
 Distillation interpretation:
 
@@ -312,8 +316,15 @@ Distillation interpretation:
   However, the true independent-test check reverses this 1-epoch teacher-only
   signal: teacher-only is below GT-only on class AP50 (`0.0204` vs `0.0224`) and
   class-agnostic AP50 (`0.1908` vs `0.2113`). Treat the old teacher-only
-  improvement as protocol-sensitive until staged pretrain -> GT finetune is
-  rerun on the independent split.
+  improvement as protocol-sensitive.
+- The staged pseudo-pretrain -> GT-finetune schedule does survive the true
+  independent split. Using the same Nano5 `score>=0.25/top20` pseudo pretrain
+  checkpoint and finetuning on GT for 3 epochs reaches class AP50 `0.1618`,
+  AP75 `0.1259`, class-agnostic AP50 `0.6170`, offcenter AP50 `0.1310`, and
+  small AP50 `0.1035`. This is above the independent GT-only 1ep and
+  teacher-only 1ep checks by a wide margin. The corrected conclusion is:
+  single-stage teacher-only is not robust, but staged pseudo pretrain followed
+  by GT finetune remains the active detector-side distillation route.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.

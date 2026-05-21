@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.check_rfdetr_handoff import coco_split_report, dataset_report, package_report
+from scripts.check_rfdetr_handoff import (
+    category_table_sha256,
+    coco_split_report,
+    dataset_report,
+    package_report,
+    split_consistency_report,
+)
 
 
 def test_coco_split_report_flags_valid_category_and_files(tmp_path: Path) -> None:
@@ -104,6 +110,51 @@ def test_dataset_report_reads_rfdetr_splits(tmp_path: Path) -> None:
     assert report["splits"]["train"]["exists"] is True
     assert report["splits"]["valid"]["ok"] is True
     assert report["splits"]["test"]["images"] == 1
+
+
+def test_split_consistency_checks_full_category_ids_and_table() -> None:
+    train_categories = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
+    reordered_categories = [{"id": 2, "name": "b"}, {"id": 1, "name": "a"}]
+    renamed_categories = [{"id": 1, "name": "a"}, {"id": 2, "name": "renamed"}]
+    train_sha = category_table_sha256(train_categories)
+
+    report = split_consistency_report(
+        {
+            "train": {
+                "exists": True,
+                "min_category_id": 1,
+                "max_category_id": 2,
+                "categories": 2,
+                "category_ids": [1, 2],
+                "category_table_sha256": train_sha,
+                "annotation_sha256": "train",
+            },
+            "valid": {
+                "exists": True,
+                "min_category_id": 1,
+                "max_category_id": 3,
+                "categories": 2,
+                "category_ids": [1, 3],
+                "category_table_sha256": category_table_sha256(reordered_categories),
+                "annotation_sha256": "valid",
+            },
+            "test": {
+                "exists": True,
+                "min_category_id": 1,
+                "max_category_id": 2,
+                "categories": 2,
+                "category_ids": [1, 2],
+                "category_table_sha256": category_table_sha256(renamed_categories),
+                "annotation_sha256": "valid",
+            },
+        }
+    )
+
+    assert report["category_range_matches_train"]["valid"] is False
+    assert report["category_ids_match_train"]["valid"] is False
+    assert report["category_ids_match_train"]["test"] is True
+    assert report["category_table_matches_train"]["test"] is False
+    assert report["valid_test_annotations_identical"] is True
 
 
 def test_package_report_exposes_import_failure(monkeypatch) -> None:

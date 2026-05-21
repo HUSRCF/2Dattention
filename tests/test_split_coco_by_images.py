@@ -35,3 +35,15 @@ def test_subset_coco_drops_unused_categories() -> None:
     subset = subset_coco(data, {1})
 
     assert [category["id"] for category in subset["categories"]] == [2]
+
+
+def test_subset_coco_can_preserve_all_categories() -> None:
+    data = {
+        "images": [{"id": 1}, {"id": 2}],
+        "annotations": [{"id": 1, "image_id": 1, "category_id": 2}],
+        "categories": [{"id": 1, "name": "unused"}, {"id": 2, "name": "kept"}],
+    }
+
+    subset = subset_coco(data, {1}, keep_all_categories=True)
+
+    assert [category["id"] for category in subset["categories"]] == [1, 2]
