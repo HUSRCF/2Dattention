@@ -1,0 +1,3 @@
+teacher,predictions,ap,ap50,ap75,loc_ap,loc_ap50,loc_ap75,ap_small,ap_medium,ap_large,loc_ap_small,loc_ap_medium,loc_ap_large
+nano5,/private/tmp/rfdetr_offcenter_seed41_train_nano5_teacher_predictions.json,0.352711,0.447367,0.386497,0.592308,0.781396,0.651222,0.198347,0.375025,0.505859,0.184931,0.461090,0.761408
+staged13,/private/tmp/rfdetr_offcenter_seed41_train_staged13_teacher_predictions.json,0.245595,0.313717,0.266355,0.561663,0.738007,0.615862,0.182861,0.263320,0.370473,0.166110,0.427429,0.729411

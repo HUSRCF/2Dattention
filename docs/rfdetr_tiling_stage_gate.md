@@ -215,6 +215,7 @@ Detector-side pseudo-label distillation smoke:
 Distillation artifacts:
 
 - `results/rfdetr_detector_side_pseudolabel_summary.csv`
+- `results/rfdetr_train_teacher_quality_summary.csv`
 - `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_cocoeval.csv`
 - `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_loc_cocoeval.csv`
 - `results/rfdetr_nano5_teacher_only_s025k20_384_1ep_test_slices.csv`
@@ -264,6 +265,13 @@ Distillation interpretation:
   `0.1413`, AP75 `0.1070`, class-agnostic AP50 `0.6367`, and off-center AP50
   `0.1522`. This makes the 1+3 self-teacher staged schedule a 2-run stable
   signal rather than a single lucky checkpoint.
+- The staged 1+3 student is not a better train-split pseudo-label teacher under
+  the current pseudo protocol. On train-split predictions, the original Nano5
+  teacher is stronger (`AP50 0.4474`, loc AP50 `0.7814`) than the staged13
+  checkpoint (`AP50 0.3137`, loc AP50 `0.7380`). A teacher-only 1ep run using
+  staged13 pseudo labels reaches only class AP50 `0.0504`, below the original
+  Nano5 teacher-only result (`0.0552`). Treat this as a teacher-selection/filtering
+  warning, not as a failure of staged pretrain -> GT finetune itself.
 - Lengthening the GT finetune to 4 epochs does not improve class AP50 (`0.1342`)
   even though class-agnostic AP50 (`0.6290`) and large-object AP50 (`0.3127`)
   increase. Current self-teacher schedule should stop at 1ep pseudo pretrain +
