@@ -152,6 +152,7 @@ Integrated RF-DETR detector-side class-head check:
 Integrated RF-DETR artifacts:
 
 - `results/rfdetr_integrated_class_head_summary.csv`
+- `scripts/build_coco_pseudolabel_dataset.py`
 - `results/rfdetr_offcenter_seed41_full_nano_128_1ep_test_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_nano_128_1ep_test_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_nano_128_1ep_test_slices.csv`
@@ -190,6 +191,13 @@ Interpretation:
   category-prior AP50 `0.1697`, but it is the correct integrated detector-side
   route. The next useful step is stronger teacher / detector-side distillation
   or a longer Small/Nano protocol, not another post-hoc crop prior.
+- Detector-side pseudo-label distillation is now wired at the dataset level:
+  `scripts/build_coco_pseudolabel_dataset.py` can turn teacher COCO predictions
+  into RF-DETR-compatible pseudo annotations. A smoke build with Nano 5ep test
+  predictions produced `808` pseudo test annotations and passed RF-DETR
+  `--check-only` with `dataset_num_classes=200`. The next distillation step
+  requires train-split predictions from a stronger teacher, then teacher-only
+  vs GT+pseudo RF-DETR training.
 
 Frozen DET-aware category-prior check:
 
