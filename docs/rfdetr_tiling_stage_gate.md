@@ -147,6 +147,7 @@ Integrated RF-DETR detector-side class-head check:
 | full split Nano, 3 epochs | 384 | 0.1224 | 0.0960 | 0.6074 | 0.1060 | 0.1320 | 0.2220 |
 | full split Nano, 5 epochs | 384 | 0.1437 | 0.1027 | 0.6214 | 0.1454 | 0.1800 | 0.2715 |
 | full split Small, 1 epoch | 384 | 0.0513 | 0.0372 | 0.5464 | 0.0396 | 0.0413 | 0.1349 |
+| full split Small, 3 epochs | 384 | 0.1178 | 0.0934 | 0.6168 | 0.1187 | 0.1297 | 0.2264 |
 
 Integrated RF-DETR artifacts:
 
@@ -166,6 +167,9 @@ Integrated RF-DETR artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_1ep_test_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_1ep_test_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_1ep_test_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_3ep_test_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_3ep_test_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_3ep_test_slices.csv`
 
 Interpretation:
 
@@ -177,6 +181,11 @@ Interpretation:
 - Small 384px at 1 epoch is not a fair stronger-teacher result yet. It verifies
   the stronger model path and 200-class export, but AP50 `0.0513` shows that it
   needs a longer detector-side schedule before it can be judged.
+- Small 384px at 3 epochs improves to AP50 `0.1178` and class-agnostic AP50
+  `0.6168`, but it remains below Nano 3 epochs (`0.1224`) and Nano 5 epochs
+  (`0.1437`) on class-aware AP50. This suggests that simply switching to the
+  larger Small backbone is not enough under the current short schedule; the
+  bottleneck remains category supervision / detector-side class learning.
 - The current 5-epoch Nano result still trails the max3 crop + ResNet50 top-5
   category-prior AP50 `0.1697`, but it is the correct integrated detector-side
   route. The next useful step is stronger teacher / detector-side distillation
