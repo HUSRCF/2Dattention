@@ -256,11 +256,13 @@ Pseudo-label filtering update:
 - The staged 1+3 student remains a weaker train pseudo-label teacher than
   Nano5 under the same `score>=0.25/top20` filter (`class AP50 0.2255` vs
   `0.3689` on selected labels).
-- Training gate: despite better static pseudo-label AP, Nano5
-  `score>=0.15/top20` teacher-only 1ep collapses badly after regular-checkpoint
-  export (`class AP50 0.0120`, `loc AP50 0.1509`, `offcenter AP50 0.0077`),
-  far below the previous `score>=0.25/top20` teacher-only result (`class AP50
-  0.0552`, `loc AP50 0.5499`). Do not run staged 1+3 on `s015/top20`.
+- Training gate: despite better static pseudo-label AP, wider Nano5 filters
+  collapse badly in teacher-only 1ep training after regular-checkpoint export.
+  `score>=0.15/top20` gives `class AP50 0.0120`, `loc AP50 0.1509`,
+  `offcenter AP50 0.0077`; `score>=0.20/top20` gives `class AP50 0.0119`,
+  `loc AP50 0.1852`, `offcenter AP50 0.0074`. Both are far below the previous
+  `score>=0.25/top20` teacher-only result (`class AP50 0.0552`, `loc AP50
+  0.5499`). Do not run staged 1+3 on `s015/top20` or `s020/top20`.
 - Current detector-side distillation sweet spot remains Nano5
   `score>=0.25/top20` teacher-only pretrain followed by GT finetune. Future
   pseudo-label work needs a filtering objective that accounts for training
