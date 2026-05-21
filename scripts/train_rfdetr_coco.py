@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.util
+import random
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-interval", type=int, default=1)
     parser.add_argument("--resume", type=Path, default=None)
     parser.add_argument("--pretrain-weights", type=Path, default=None)
+    parser.add_argument("--seed", type=int, default=None, help="Seed Python, NumPy, Torch, and Lightning if available.")
     parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--check-only", action="store_true", help="Validate imports and dataset layout without training.")
@@ -50,6 +52,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.seed is not None:
+        seed_everything(args.seed)
     validate_rfdetr_dataset(args.dataset_dir)
     dataset_num_classes = detect_rfdetr_dataset_num_classes(args.dataset_dir)
     if args.num_classes is not None and args.num_classes != dataset_num_classes:
@@ -90,6 +94,8 @@ def main() -> None:
     print(f"rfdetr_model: {MODEL_CLASSES[args.model_size]}")
     print(f"dataset_dir: {args.dataset_dir}")
     print(f"output_dir: {args.output_dir}")
+    if args.seed is not None:
+        print(f"seed: {args.seed}")
     model.train(**train_kwargs)
 
 
@@ -135,6 +141,23 @@ def rfdetr_availability_report() -> dict[str, list[str]]:
     return {
         "classes": [class_name for class_name in MODEL_CLASSES.values() if hasattr(module, class_name)],
     }
+
+
+def seed_everything(seed: int) -> None:
+    import numpy as np
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    try:
+        import pytorch_lightning as pl
+
+        pl.seed_everything(seed, workers=True)
+    except Exception:
+        pass
 
 
 def validate_rfdetr_dataset(dataset_dir: Path) -> None:
