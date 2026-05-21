@@ -307,7 +307,7 @@ Pseudo-label filtering update:
   raw train prediction AP50 is only `0.2464`, and the same `score>=0.25/top20`
   filter gives selected-label AP50 `0.1728`, far below Nano5 (`0.4474` raw and
   `0.3689` filtered).
-- Resumed Small 5ep is a much stronger detector and raw train teacher
+- Historical note: resumed Small 5ep is a much stronger detector and raw train teacher
   (`raw train AP50 0.4041`, `loc AP50 0.7764`), but it still does not beat
   Nano5 as a filtered pseudo-label source. Its selected-label AP50 is `0.3507`
   at `score>=0.15/top20`, `0.3340` at `score>=0.20/top20`, and `0.3025` at
@@ -320,10 +320,10 @@ Pseudo-label filtering update:
   `loc AP50 0.1852`, `offcenter AP50 0.0074`. Both are far below the previous
   `score>=0.25/top20` teacher-only result (`class AP50 0.0552`, `loc AP50
   0.5499`). Do not run staged 1+3 on `s015/top20` or `s020/top20`.
-- Current detector-side distillation sweet spot remains Nano5
-  `score>=0.25/top20` teacher-only pretrain followed by GT finetune. Future
-  pseudo-label work needs a filtering objective that accounts for training
-  stability, not only static train-GT pseudo AP.
+- This old Nano5 filtering result is now superseded by Small-resume8 as the
+  first train-split teacher that beats Nano5 under the checked filters. The
+  lasting lesson is narrower: pseudo filters must be judged by both static
+  train-GT quality and training stability.
 
 Protocol caveat:
 
@@ -368,6 +368,21 @@ Independent-test artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_indtest_seed43_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_indtest_seed43_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_resume5ep_indtest_seed43_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_slices.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_slices.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacherpre_gtfinetune_s025k20_384_3ep_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacherpre_gtfinetune_s025k20_384_3ep_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacherpre_gtfinetune_s025k20_384_3ep_slices.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_seed43_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_seed43_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacher_only_s025k20_384_1ep_seed43_slices.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacherpre_gtfinetune_s025k20_384_3ep_seed43_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacherpre_gtfinetune_s025k20_384_3ep_seed43_loc_cocoeval.csv`
+- `results/rfdetr_indtest_seed43_small_resume8_teacherpre_gtfinetune_s025k20_384_3ep_seed43_slices.csv`
 
 Distillation interpretation:
 
@@ -415,37 +430,33 @@ Distillation interpretation:
 - Small-resume8 `s025/top20` teacher-only 1ep is still only a weak standalone
   model on independent test: class AP50 `0.0547`, AP75 `0.0504`,
   class-agnostic AP50 `0.3288`, offcenter AP50 `0.0437`, and small AP50
-  `0.0337`. It beats old Nano5 teacher-only 1ep and GT-only 1ep on this split,
-  but remains far below direct GT 4ep and Small long-train. Use it as a
+  `0.0337`. It is numerically above the earlier GT-only 1ep and old Nano5
+  teacher-only 1ep checks on this split, but those are not same-seed controls;
+  it remains far below direct GT 4ep and Small long-train. Use it as a
   pretraining-stage candidate, not as a final detector.
 - Small-resume8 `s025/top20` teacher-only pretrain followed by 3 GT-finetune
-  epochs is a better weak-student warm-start: independent-test class AP50
-  reaches `0.1855`, AP75 `0.1386`, class-agnostic AP50 `0.6300`, offcenter
-  AP50 `0.1486`, small AP50 `0.1269`, and large AP50 `0.3164`. This improves
-  over the earlier Nano5 staged seed41 run (`0.1502`) and equal-budget Nano
-  GT-only seed41 (`0.1517`), but remains clearly below direct Small-resume8
-  (`0.2677`). The current decision is to keep stronger-teacher pseudo-pretrain
-  as a weak-Nano warm-start diagnostic, not as a replacement for direct
-  detector-side Small long training.
+  epochs is a useful but not decisive weak-student warm-start. Seed41 reaches
+  independent-test class AP50 `0.1855`, AP75 `0.1386`, class-agnostic AP50
+  `0.6300`, offcenter AP50 `0.1486`, small AP50 `0.1269`, and large AP50
+  `0.3164`. Seed43 is weaker: teacher-only AP50 `0.0493`, staged 1+3 class
+  AP50 `0.1540`, AP75 `0.1035`, class-agnostic AP50 `0.6300`, offcenter AP50
+  `0.1342`, small AP50 `0.1251`, and large AP50 `0.2539`. Across the two
+  seeds, the staged AP50 mean is about `0.1697`, but seed43 is below same-seed
+  GT-only 4ep (`0.1618`). The current decision is to keep stronger-teacher
+  pseudo-pretrain as a weak-Nano warm-start diagnostic, not as a robust
+  equal-budget win and not as a replacement for direct detector-side Small long
+  training.
 - Naively appending pseudo labels to GT is negative: GT+pseudo lowers class AP50
   to `0.0484` and class-agnostic AP50 to `0.3737`, suggesting duplicate/noisy
   pseudo boxes interfere with Hungarian matching.
-- Teacher-only pretraining followed by GT finetuning is the first clear positive
-  distillation schedule: class AP50 improves to `0.0816`, above GT 1 epoch
-  (`0.0495`), teacher-only (`0.0552`), and raw GT+pseudo (`0.0484`).
-- Lengthening the GT finetune to 2 epochs strengthens the staged schedule:
-  class AP50 reaches `0.1088`, AP75 `0.0820`, class-agnostic AP50 `0.6273`,
-  off-center AP50 `0.1163`, and large-object AP50 `0.2240`.
-- Lengthening the GT finetune to 3 epochs pushes class AP50 to `0.1428`, nearly
-  tying GT-only Nano 5ep class AP50 (`0.1437`) while exceeding GT-only Nano 5ep
-  off-center AP50 (`0.1514` vs `0.1454`). This is the strongest detector-side
-  pseudo-label result so far, though class-agnostic AP50 (`0.6198`) remains close
-  to the 2ep value (`0.6273`), so the main gain is class/ranking-side rather than
-  raw localization.
-- A second seeded run (`--seed 43`) reproduces the 1+3 result with class AP50
-  `0.1413`, AP75 `0.1070`, class-agnostic AP50 `0.6367`, and off-center AP50
-  `0.1522`. This makes the 1+3 self-teacher staged schedule a 2-run stable
-  signal rather than a single lucky checkpoint.
+- Historical validation-mirrored result: teacher-only pretraining followed by GT
+  finetuning was the first positive detector-side distillation schedule under
+  the old mirrored protocol, reaching class AP50 `0.1428` at Nano5 1+3 and
+  reproducing around `0.1413` with a second seed. The independent-test and
+  equal-budget checks above supersede the older strong wording: staged
+  pseudo-pretrain remains useful as a warm-start / localization route, but the
+  self-teacher Nano5 result is not a clear class-AP50 win over equal-budget
+  GT-only, and Small-resume8 direct training is currently stronger.
 - The staged 1+3 student is not a better train-split pseudo-label teacher under
   the current pseudo protocol. On train-split predictions, the original Nano5
   teacher is stronger (`AP50 0.4474`, loc AP50 `0.7814`) than the staged13
