@@ -935,6 +935,52 @@ Native category transform artifacts:
   longer detector-side class-head training, stronger teacher initialization, or
   detector-side distillation rather than another external crop-prior patch.
 
+## Stratified RF-DETR Split Check
+
+The original random `train1000/valid200/test200` split was later found to have
+category-coverage artifacts: some test-positive categories had zero or very few
+training boxes. A category-stratified replacement was built at
+`data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3`
+with train `1000` images / `4409` boxes, valid `200` images, and test `200`
+images / `604` boxes. It enforces at least `3` train boxes for every category
+present in the test split.
+
+| Setting | Split | Class AP | Class AP50 | Class AP75 | Loc AP | Loc AP50 | Loc AP75 | Offcenter AP50 | Small AP50 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Small 384, 2ep | stratified train1000 | 0.0949 | 0.1122 | 0.1001 | 0.4111 | 0.5426 | 0.4504 | 0.0871 | 0.0646 |
+| Small 384, 2best + 4ep fresh lr1e-4 | stratified train1000 | 0.1543 | 0.1869 | 0.1645 | 0.4206 | 0.5584 | 0.4484 | 0.1675 | 0.1544 |
+
+Stratified long-run artifacts:
+
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2ep_test_cocoeval.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2ep_test_loc_cocoeval.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2ep_test_slices.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_freshlr1e4_4ep_test_cocoeval.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_freshlr1e4_4ep_test_loc_cocoeval.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_freshlr1e4_4ep_test_slices.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_score_iou_loc.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_score_iou_classaware.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_category_coverage_gap.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_per_category_coverage_gap_with_split_counts.csv`
+
+Stratified interpretation:
+
+- The split-coverage issue is fixed for this protocol: test-positive categories
+  are no longer absent from training.
+- The detector-side class head still remains the limiting factor. At top-100 /
+  IoU 0.5, localization recall is `0.8427`, global class-aware recall is
+  `0.6424`, and per-category class recall is `0.7119`.
+- Score-IoU alignment remains weak despite improved AP: loc Spearman is
+  `-0.0036`, class-aware Spearman is `0.0862`, while top-100 boxes have high
+  nearest IoU (`0.9053` loc, `0.8891` class-aware).
+- Off-center and small slices remain weaker than center/large: AP50 is
+  `0.1675` off-center versus `0.1877` center, and `0.1544` small versus
+  `0.2968` large.
+- Per-category diagnostics still show trained categories with high localization
+  recall and zero class recall, e.g. `n07695742`, `n04468005`, `n03790512`,
+  `n03761084`, and `n02992211`. Therefore the remaining category gap is not
+  explained only by missing train coverage.
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.
