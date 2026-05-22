@@ -474,6 +474,13 @@ Distillation interpretation:
   `5/8/12/16/20` epochs. Current decision: keep direct Small long training as
   the main RF-DETR path, and next confirm with seed43 rather than returning to
   pseudo-label distillation or persistent proposal-state experiments.
+- The seed43 confirmation is mixed rather than monotonic. Resuming seed43 from
+  12 to 16 epochs lowers class AP50 from `0.2923` to `0.2753`, while improving
+  AP75 from `0.1802` to `0.1957`, class-agnostic AP50 from `0.6290` to
+  `0.6348`, medium AP50 from `0.2555` to `0.2780`, and large AP50 from
+  `0.4235` to `0.4359`. This keeps direct Small as the active path, but it
+  turns the next question into epoch selection / LR schedule rather than simply
+  pushing every seed longer.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
