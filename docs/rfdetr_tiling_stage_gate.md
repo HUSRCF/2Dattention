@@ -656,6 +656,15 @@ Distillation interpretation:
   lower AP50 because duplicate ordering and COCO precision behavior change
   under pure IoU scoring. Treat these oracle paths as diagnostics, not
   deployable inference recipes.
+- Per-category coverage diagnostics turn the category bottleneck into a
+  concrete target list. At `top100 / IoU 0.5 / gt_count >= 3`, some classes
+  have near-perfect localization coverage but zero class-aware recall:
+  `n02503517` (`gt=11`, loc `1.000`, class `0.000`), `n03188531`
+  (`gt=11`, loc `1.000`, class `0.000`), and `n04004767` (`gt=5`, loc
+  `1.000`, class `0.000`). Valid-calibrated scoring does not repair these
+  failures, and can worsen class recall while localization remains high. This
+  shifts the next detector-side work toward category assignment / class-head
+  candidate coverage rather than more score-only calibration.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
