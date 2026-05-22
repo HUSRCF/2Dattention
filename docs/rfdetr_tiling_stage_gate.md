@@ -527,6 +527,24 @@ Distillation interpretation:
   improves (`0.5550 -> 0.6111`). This establishes the larger split as a valid
   long-train protocol rather than a failed smoke. Continue this protocol only
   with longer detector-side training or a clearly stronger training recipe.
+- Continuing the same train1000 route for another 4-epoch fresh-optimizer stage
+  strengthens the result again. Official test export from the new
+  `checkpoint_best_regular.pth` gives class AP50 `0.2912`, AP75 `0.2395`, AP
+  `0.2190`, class-agnostic AP50 `0.6265`, AP75 `0.5350`, offcenter AP50
+  `0.2603`, center AP50 `0.2615`, small AP50 `0.2458`, medium AP50 `0.2865`,
+  and large AP50 `0.3646`. The staged progression on this larger split is now
+  class AP50 `0.0864 -> 0.2196 -> 0.2912`, so the active RF-DETR direction is
+  no longer schedule tweaking on the old 330-image split. It is controlled,
+  low-frequency longer detector-side training on the 1000-image image-disjoint
+  protocol.
+- RF-DETR deformable attention visualization is now available through
+  `scripts/visualize_rfdetr_deformable_attention.py`. The script hooks
+  `MSDeformAttn`, aggregates captured deformable cross-attention sampling
+  locations, and overlays sampling density with GT boxes and top predicted
+  boxes. The first smoke artifact is
+  `results/rfdetr_attention_overlays_train1000_6best/contact_sheet.jpg`. Treat
+  it as a qualitative sampling-coverage diagnostic, not as a ViT-style full
+  attention map and not as a quantitative result.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
