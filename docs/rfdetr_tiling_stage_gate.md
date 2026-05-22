@@ -590,6 +590,15 @@ Distillation interpretation:
   predicts the nearest GT category correctly. The remaining class AP gap is more
   likely a full-set ranking, duplicate/false-positive, and long-tail candidate
   coverage issue than a universal top-query representation failure.
+- Full-prediction diagnostics confirm that interpretation. For the same 6best
+  checkpoint, top100 recall at IoU 0.5 is `loc=0.872`, `class-aware=0.665`, and
+  `per-category=0.717`; offcenter top100 is `0.812/0.577/0.624`, and small
+  top100 is `0.720/0.543/0.603`. Full-set score-IoU correlation is weak despite
+  the strong top-1 queries (`loc Pearson=0.058`, Spearman=`-0.009`;
+  class-aware Pearson=`0.386`, Spearman=`0.059`). The next detector-side work
+  should therefore improve category candidate coverage and ranking/calibration
+  on the full prediction set, not chase a generic "attention cannot see the
+  object" explanation.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
