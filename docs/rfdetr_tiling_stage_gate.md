@@ -371,6 +371,9 @@ Independent-test artifacts:
 - `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_resume8ep_indtest_seed43_slices.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed41_resume12ep_indtest_seed43_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed41_resume12ep_indtest_seed43_loc_cocoeval.csv`
+- `results/rfdetr_offcenter_seed41_full_small_384_seed41_resume12ep_indtest_seed43_slices.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_loc_cocoeval.csv`
 - `results/rfdetr_offcenter_seed41_full_small_384_seed43_5ep_indtest_seed43_slices.csv`
@@ -430,6 +433,10 @@ Distillation interpretation:
   class AP50 further to `0.2677`, AP75 `0.2053`, center AP50 `0.2527`, and
   small AP50 `0.2594`, while class-agnostic AP50 remains high at `0.6271`.
   This is the current strongest RF-DETR checkpoint in the project.
+- Extending seed41 further to 12 epochs improves independent-test class AP50
+  again to `0.3070`, AP75 to `0.2155`, class-agnostic AP50 to `0.6397`,
+  offcenter AP50 to `0.2955`, small AP50 to `0.2911`, and medium AP50 to
+  `0.2997`.
 - A second direct Small 5ep run with seed43 reaches independent-test class
   AP50 `0.1762`, AP75 `0.1318`, class-agnostic AP50 `0.6327`, offcenter
   AP50 `0.1506`, small AP50 `0.1220`, and large AP50 `0.3263`. It is weaker
@@ -448,9 +455,9 @@ Distillation interpretation:
 - Extending seed43 further to 12 epochs gives another large independent-test
   jump: class AP50 `0.2923`, AP75 `0.1802`, class-agnostic AP50 `0.6290`,
   offcenter AP50 `0.2562`, small AP50 `0.2921`, and large AP50 `0.4235`. This
-  is now the strongest single RF-DETR checkpoint in the project. The fair next
-  protocol step is seed41 8ep -> 12ep, so the direct-Small long-train route has
-  an equal-budget two-seed estimate.
+  confirms the direct-Small long-train route with a two-seed 12ep mean class
+  AP50 of about `0.2997`. This is now the strongest current RF-DETR route in
+  the project.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
