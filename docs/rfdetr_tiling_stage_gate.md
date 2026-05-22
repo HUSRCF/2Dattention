@@ -683,6 +683,15 @@ Distillation interpretation:
   detector-side smoke benchmark, but the next serious RF-DETR protocol should
   be category-stratified or should enforce minimum train coverage for evaluated
   classes.
+- A category-stratified replacement split is now prepared by
+  `scripts/build_stratified_rfdetr_coco_split.py`:
+  `rfdetr_stratified_seed41_train1000_val200_test200_min3` keeps the same
+  `1000/200/200` image counts, preserves the full 200-category table, and
+  guarantees at least `3` train boxes per category (`zero=0`, `lt_min=0`,
+  `min=3`). The RF-DETR handoff check passes with no missing files, no invalid
+  boxes, matching category tables, and `valid_test_annotations_identical=false`.
+  Use this as the next serious RF-DETR benchmark before attributing class gaps
+  to architecture.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs

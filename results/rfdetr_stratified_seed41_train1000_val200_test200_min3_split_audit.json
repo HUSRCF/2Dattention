@@ -1,0 +1,31 @@
+{
+  "splits": {
+    "test": {
+      "boxes": 604,
+      "categories_below_min_boxes": 155,
+      "categories_with_boxes": 110,
+      "categories_with_zero_boxes": 90,
+      "images": 200,
+      "min_boxes_per_category": 0
+    },
+    "train": {
+      "boxes": 4409,
+      "categories_below_min_boxes": 0,
+      "categories_with_boxes": 200,
+      "categories_with_zero_boxes": 0,
+      "images": 1000,
+      "min_boxes_per_category": 3
+    },
+    "valid": {
+      "boxes": 708,
+      "categories_below_min_boxes": 149,
+      "categories_with_boxes": 110,
+      "categories_with_zero_boxes": 90,
+      "images": 200,
+      "min_boxes_per_category": 0
+    }
+  },
+  "train_categories_below_min": 0,
+  "train_categories_with_zero_boxes": 0,
+  "train_min_boxes_per_category": 3
+}
