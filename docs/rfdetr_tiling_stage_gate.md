@@ -621,6 +621,18 @@ Distillation interpretation:
   `0.2767`. Treat this as a diagnostic: same-split alpha/temperature tuning is
   not the next lever; the remaining gap still needs better candidate/category
   coverage and detector-side learning rather than only post-hoc score repair.
+- Continuing the 10best checkpoint with a fresh optimizer at lower LR `5e-5`
+  for 4 epochs gives a small class AP gain but does not change the diagnosis.
+  The best regular checkpoint is continuation epoch 1 (`val mAP/AP50/AP75 =
+  0.2454/0.3231/0.2557`); later epochs regress. Independent test reaches class
+  `AP/AP50/AP75 = 0.2421/0.3242/0.2523`, but localization drops to
+  `loc AP/AP50/AP75 = 0.4733/0.6271/0.5081`. Offcenter AP50 is roughly flat
+  (`0.3081 -> 0.3064`), small AP50 improves (`0.2792 -> 0.2980`), and large
+  AP50 improves (`0.3572 -> 0.3864`). Coverage/ranking diagnostics remain
+  similar (`top100 loc/class/percat = 0.872/0.689/0.733`; class-aware
+  score-IoU Pearson/Spearman `0.375/0.033`). This supports low-frequency longer
+  RF-DETR training as an incremental baseline improver, not a replacement for
+  candidate coverage and class/ranking mechanism work.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
