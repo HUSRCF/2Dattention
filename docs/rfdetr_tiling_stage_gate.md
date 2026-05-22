@@ -981,6 +981,25 @@ Stratified interpretation:
   `n03761084`, and `n02992211`. Therefore the remaining category gap is not
   explained only by missing train coverage.
 
+Stratified oracle headroom:
+
+| Diagnostic | AP | AP50 | AP75 | Meaning |
+|---|---:|---:|---:|---|
+| Base regular checkpoint | 0.1543 | 0.1869 | 0.1645 | Actual detector output |
+| Same-category IoU-score oracle | 0.4257 | 0.5178 | 0.4592 | Ranking headroom when category is already correct |
+| Nearest-GT relabel, keep original score | 0.4555 | 0.6009 | 0.4778 | Category-assignment upper bound with current scores |
+| Nearest-GT relabel + IoU score | 0.4515 | 0.5384 | 0.4935 | Diagnostic mixed oracle |
+
+Oracle artifacts:
+
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_oracle_classaware_iou_score_cocoeval.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_oracle_relabel_keep_score_cocoeval.csv`
+- `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_oracle_relabel_iou_score_cocoeval.csv`
+
+This confirms the same mechanism on the fair split: the model has substantial
+box/candidate potential, but detector-side category assignment and score
+calibration still leave most AP50 on the table.
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.
