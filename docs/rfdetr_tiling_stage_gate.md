@@ -464,6 +464,26 @@ Distillation interpretation:
   0.3991`, `s025/top20 0.3832 vs 0.3689`). This makes Small-resume8 the first
   checked candidate worth using for a new teacher-only pretrain -> GT finetune
   schedule.
+- Small-resume12 seed41 now supersedes Small-resume8 as the checked train
+  teacher. Its train raw class AP50 is `0.6764` and class-agnostic AP50 is
+  `0.8741`. Filtered pseudo labels also clear the gate by a wide margin:
+  `s015/top20` keeps `3,323` boxes with class AP50 `0.6430` and loc AP50
+  `0.8508`; `s020/top20` keeps `2,608` boxes with class AP50 `0.6260` and loc
+  AP50 `0.8457`; `s025/top20` keeps `2,110` boxes with class AP50 `0.6170` and
+  loc AP50 `0.8275`. This is the first train-split teacher that is strong
+  enough to justify a renewed teacher-only pretrain -> GT finetune check. It
+  does not revive raw GT+pseudo appending.
+- The renewed staged check is negative for the main route. Using
+  Small-resume12 `s015/top20` pseudo labels for 1 epoch and then GT-finetuning
+  for 3 epochs reaches independent-test class AP50 `0.1601`, AP75 `0.1038`,
+  loc AP50 `0.6258`, offcenter AP50 `0.1389`, small AP50 `0.1276`, medium AP50
+  `0.2103`, and large AP50 `0.2542`. This improves over the same teacher-only
+  checkpoint (`0.0629` AP50) and is close to the old weak-student staged range,
+  but it is below Small-resume8 seed41 staged (`0.1855` AP50) and far below
+  direct Small 12ep (`0.3070` / `0.2923` AP50 across seeds). Static pseudo-label
+  quality is therefore not sufficient as a training-success predictor.
+  Teacher-only pretrain remains a diagnostic / warm-start branch, not the
+  active RF-DETR mainline.
 - The seed43 direct Small resume8 checkpoint is not a stronger train teacher.
   Its raw train class AP50 is `0.4274`, below seed41 Small-resume8 `0.4599`.
   After filtering, `s015/s020/s025 top20` class AP50 is
