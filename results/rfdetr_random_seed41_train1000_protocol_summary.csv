@@ -1,0 +1,2 @@
+setting,split_protocol,train_images,train_annotations,test_images,test_annotations,class_ap,class_ap50,class_ap75,loc_ap,loc_ap50,loc_ap75,offcenter_ap50,center_ap50,small_ap50,medium_ap50,large_ap50,model_num_classes,checkpoint_source,notes
+rfdetr_random_seed41_train1000_small_384_2ep,random_seed41_train1000_val200_test200,1000,2894,200,611,0.070757,0.086445,0.074122,0.449143,0.554953,0.502503,0.066300,0.101700,0.085500,0.090800,0.187800,200,checkpoint_best_regular.pth,rf-detr_small_384_random_image_split_train1000_valid200_test200_seed41_2epoch_regular_checkpoint

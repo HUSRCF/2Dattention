@@ -506,6 +506,18 @@ Distillation interpretation:
   strong checkpoint. Stop blind schedule sweeping; the next RF-DETR progress
   should come from more data/resolution or a stronger detector-side training
   protocol.
+- A larger image-disjoint RF-DETR protocol is now prepared and runnable:
+  `rfdetr_random_seed41_train1000_val200_test200` has train/valid/test
+  `1000/200/200` images, `2894/681/611` annotations, and the same preserved
+  200-category table. A Small 384px seed41 2ep run is not a performance
+  competitor yet, but it is a useful cost and direction gate: official test
+  export from `checkpoint_best_regular.pth` gives class AP50 `0.0864`, AP75
+  `0.0741`, AP `0.0708`, class-agnostic AP50 `0.5550`, offcenter AP50
+  `0.0663`, center AP50 `0.1017`, small AP50 `0.0855`, medium AP50 `0.0908`,
+  and large AP50 `0.1878`. This confirms the larger split has usable
+  localization after only two epochs, but the class head is severely underfit.
+  Treat this as the next formal protocol entry point; it needs longer
+  detector-side training rather than another short LR/alpha sweep.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
