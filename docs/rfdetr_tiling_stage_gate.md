@@ -555,6 +555,13 @@ Distillation interpretation:
   Use this for failure analysis: a high-score query with low or zero
   `query_gt_attention_mass` indicates a query/representation alignment failure,
   while high GT mass with a bad box points to box refinement or scoring.
+- `scripts/summarize_rfdetr_attention_manifest.py` now flattens the attention
+  manifest into image-level and query-level CSVs. On the first 6-image
+  off-center smoke, top-query GT attention mass has mean `0.605`, median
+  `0.818`, and `2/14` zero-GT-mass query failures. This is not a benchmark, but
+  it gives a concrete filter for selecting failure cases before deciding
+  whether the next fix should target query representation, box refinement, or
+  scoring.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
