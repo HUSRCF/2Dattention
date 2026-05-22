@@ -547,6 +547,14 @@ Distillation interpretation:
   peak location in `manifest.json`. Treat it as a qualitative sampling-coverage
   diagnostic, not as a ViT-style full attention map and not as a quantitative
   result.
+- The same diagnostic now supports query-level overlays with
+  `--query-overlays K`. This path preserves RF-DETR query indices before
+  postprocessing, then renders the sampled locations for each top prediction's
+  originating query. The first artifact is
+  `results/rfdetr_attention_query_overlays_train1000_6best/query_contact_sheet.jpg`.
+  Use this for failure analysis: a high-score query with low or zero
+  `query_gt_attention_mass` indicates a query/representation alignment failure,
+  while high GT mass with a bad box points to box refinement or scoring.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs

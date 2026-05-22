@@ -12,11 +12,13 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
+from torchvision.transforms import functional as tvF
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -38,6 +40,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolution", type=int, default=384)
     parser.add_argument("--threshold", type=float, default=0.2)
     parser.add_argument("--max-images", type=int, default=8)
+    parser.add_argument(
+        "--query-overlays",
+        type=int,
+        default=0,
+        help="Also save per-query attention overlays for the top K predictions per image.",
+    )
     parser.add_argument(
         "--prefer-slice",
         choices=("all", "offcenter", "small"),
@@ -70,15 +78,26 @@ def main() -> None:
             image_path = args.image_root / image["file_name"]
             pil = load_rgb_image(image_path)
             capture.clear()
-            detections = model.predict(pil, threshold=args.threshold, shape=shape)
+            detections = predict_with_query_indices(model, pil, threshold=args.threshold, shape=shape)
             if not capture.records:
                 raise RuntimeError("No MSDeformAttn records were captured; RF-DETR internals may have changed.")
-            heatmap = aggregate_sampling_heatmap(capture.records[-1], args.heatmap_size)
+            last_record = capture.records[-1]
+            heatmap = aggregate_sampling_heatmap(last_record, args.heatmap_size)
             image_annotations = annotations_by_image[int(image["id"])]
             overlay = render_overlay(pil, heatmap, image_annotations, detections)
             out_path = args.out_dir / f"{int(image['id']):012d}_{Path(image['file_name']).stem}_attn.jpg"
             overlay.save(out_path, quality=92)
             attention_stats = summarize_attention_alignment(heatmap, image, image_annotations, detections)
+            query_rows = save_query_overlays(
+                args.out_dir,
+                pil,
+                image,
+                image_annotations,
+                detections,
+                last_record,
+                args.heatmap_size,
+                args.query_overlays,
+            )
             manifest_rows.append(
                 {
                     "image_id": int(image["id"]),
@@ -87,16 +106,77 @@ def main() -> None:
                     "gt_boxes": len(image_annotations),
                     "predictions": int(len(getattr(detections, "xyxy", []))),
                     "captured_layers": len(capture.records),
+                    "query_overlays": query_rows,
                     **attention_stats,
                 }
             )
         manifest_path = args.out_dir / "manifest.json"
         manifest_path.write_text(json.dumps(manifest_rows, indent=2) + "\n", encoding="utf-8")
         make_contact_sheet([Path(row["out"]) for row in manifest_rows], args.out_dir / "contact_sheet.jpg")
+        query_paths = [Path(query["out"]) for row in manifest_rows for query in row.get("query_overlays", [])]
+        if query_paths:
+            make_contact_sheet(query_paths, args.out_dir / "query_contact_sheet.jpg")
         print(f"saved_attention_overlays: {args.out_dir}")
         print(f"images: {len(manifest_rows)}")
     finally:
         capture.uninstall()
+
+
+def predict_with_query_indices(
+    model: Any,
+    image: Image.Image,
+    threshold: float,
+    shape: tuple[int, int],
+) -> SimpleNamespace:
+    """Run RF-DETR forward while preserving the query index for each top-k detection."""
+    from rfdetr.detr import _ensure_model_on_device
+
+    _ensure_model_on_device(model.model)
+    model.model.model.eval()
+    orig_h, orig_w = image.height, image.width
+    tensor = tvF.to_tensor(image)
+    if (tensor > 1).any() or (tensor < 0).any():
+        raise ValueError("Expected image tensor values in [0, 1].")
+    tensor = tensor.to(model.model.device)
+    tensor = tvF.resize(tensor, list(shape))
+    tensor = tvF.normalize(tensor, model.means, model.stds)
+    batch = tensor.unsqueeze(0)
+    with torch.no_grad():
+        predictions = model.model.model(batch)
+    if isinstance(predictions, tuple):
+        predictions = {"pred_logits": predictions[1], "pred_boxes": predictions[0]}
+    logits = predictions["pred_logits"]
+    boxes_cxcywh = predictions["pred_boxes"]
+    prob = logits.sigmoid()
+    num_select = int(getattr(model.model.postprocess, "num_select", 300))
+    topk_values, topk_indexes = torch.topk(prob.view(logits.shape[0], -1), num_select, dim=1)
+    query_indices = topk_indexes // logits.shape[2]
+    labels = topk_indexes % logits.shape[2]
+    boxes = cxcywh_to_xyxy_tensor(boxes_cxcywh)
+    boxes = torch.gather(boxes, 1, query_indices.unsqueeze(-1).repeat(1, 1, 4))
+    scale = torch.tensor([orig_w, orig_h, orig_w, orig_h], device=boxes.device, dtype=boxes.dtype)
+    boxes = boxes * scale[None, None, :]
+    scores = topk_values[0]
+    keep = scores > threshold
+    return SimpleNamespace(
+        xyxy=boxes[0][keep].float().cpu().numpy(),
+        confidence=scores[keep].float().cpu().numpy(),
+        class_id=labels[0][keep].cpu().numpy(),
+        query_index=query_indices[0][keep].cpu().numpy(),
+    )
+
+
+def cxcywh_to_xyxy_tensor(boxes: torch.Tensor) -> torch.Tensor:
+    cx, cy, width, height = boxes.unbind(-1)
+    return torch.stack(
+        [
+            cx - 0.5 * width,
+            cy - 0.5 * height,
+            cx + 0.5 * width,
+            cy + 0.5 * height,
+        ],
+        dim=-1,
+    )
 
 
 class AttentionCapture:
@@ -209,12 +289,21 @@ def area_ratio(annotation: dict[str, Any], image: dict[str, Any]) -> float:
     return float((w * h) / (float(image["width"]) * float(image["height"])))
 
 
-def aggregate_sampling_heatmap(record: dict[str, torch.Tensor], size: int) -> np.ndarray:
+def aggregate_sampling_heatmap(
+    record: dict[str, torch.Tensor],
+    size: int,
+    query_index: int | None = None,
+) -> np.ndarray:
     locations = record["sampling_locations"].numpy()
     weights = record["attention_weights"].numpy()
     # locations: B, Q, H, L, P, 2. weights: B, Q, H, L*P.
     b, q, heads, levels, points, _ = locations.shape
     weights = weights.reshape(b, q, heads, levels, points)
+    if query_index is not None:
+        if query_index < 0 or query_index >= q:
+            raise ValueError(f"query_index={query_index} outside captured query range [0, {q})")
+        locations = locations[:, query_index : query_index + 1]
+        weights = weights[:, query_index : query_index + 1]
     heat = np.zeros((size, size), dtype=np.float32)
     xs = np.clip(locations[..., 0], 0.0, 0.999999)
     ys = np.clip(locations[..., 1], 0.0, 0.999999)
@@ -231,6 +320,7 @@ def render_overlay(
     heatmap: np.ndarray,
     annotations: list[dict[str, Any]],
     detections: Any,
+    selected_detection_index: int | None = None,
 ) -> Image.Image:
     base = image.convert("RGBA")
     heat_img = Image.fromarray((heatmap * 255).astype(np.uint8)).resize(base.size, Image.Resampling.BILINEAR)
@@ -247,7 +337,65 @@ def render_overlay(
     for idx in order:
         x1, y1, x2, y2 = boxes[idx]
         draw.rectangle([x1, y1, x2, y2], outline=(0, 128, 255, 255), width=2)
+    if selected_detection_index is not None and 0 <= selected_detection_index < len(boxes):
+        x1, y1, x2, y2 = boxes[selected_detection_index]
+        draw.rectangle([x1, y1, x2, y2], outline=(255, 230, 0, 255), width=4)
     return out.convert("RGB")
+
+
+def save_query_overlays(
+    out_dir: Path,
+    image: Image.Image,
+    image_record: dict[str, Any],
+    annotations: list[dict[str, Any]],
+    detections: Any,
+    attention_record: dict[str, torch.Tensor],
+    heatmap_size: int,
+    topk: int,
+) -> list[dict[str, Any]]:
+    if topk <= 0:
+        return []
+    boxes = np.asarray(getattr(detections, "xyxy", np.empty((0, 4))), dtype=float)
+    scores = np.asarray(getattr(detections, "confidence", np.empty((0,))), dtype=float)
+    labels = np.asarray(getattr(detections, "class_id", np.empty((0,), dtype=int)), dtype=int)
+    query_indices = np.asarray(getattr(detections, "query_index", np.empty((0,), dtype=int)), dtype=int)
+    if not scores.size:
+        return []
+    query_dir = out_dir / "query_overlays"
+    query_dir.mkdir(parents=True, exist_ok=True)
+    order = np.argsort(-scores)[:topk]
+    rows: list[dict[str, Any]] = []
+    for rank, det_idx in enumerate(order, start=1):
+        query_index = int(query_indices[det_idx])
+        heatmap = aggregate_sampling_heatmap(attention_record, heatmap_size, query_index=query_index)
+        overlay = render_overlay(image, heatmap, annotations, detections, selected_detection_index=int(det_idx))
+        out_path = query_dir / (
+            f"{int(image_record['id']):012d}_{Path(image_record['file_name']).stem}"
+            f"_rank{rank:02d}_q{query_index:03d}_attn.jpg"
+        )
+        overlay.save(out_path, quality=92)
+        stats = summarize_attention_alignment(heatmap, image_record, annotations, detection_subset(detections, det_idx))
+        rows.append(
+            {
+                "rank": rank,
+                "query_index": query_index,
+                "class_id": int(labels[det_idx]) if labels.size else -1,
+                "score": float(scores[det_idx]),
+                "box_xyxy": [float(v) for v in boxes[det_idx].tolist()],
+                "out": str(out_path),
+                **{f"query_{key}": value for key, value in stats.items()},
+            }
+        )
+    return rows
+
+
+def detection_subset(detections: Any, index: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        xyxy=np.asarray(getattr(detections, "xyxy", np.empty((0, 4))), dtype=float)[index : index + 1],
+        confidence=np.asarray(getattr(detections, "confidence", np.empty((0,))), dtype=float)[index : index + 1],
+        class_id=np.asarray(getattr(detections, "class_id", np.empty((0,), dtype=int)), dtype=int)[index : index + 1],
+        query_index=np.asarray(getattr(detections, "query_index", np.empty((0,), dtype=int)), dtype=int)[index : index + 1],
+    )
 
 
 def summarize_attention_alignment(
