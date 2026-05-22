@@ -21,6 +21,9 @@ from scripts.rescore_coco_predictions_by_oracle_iou import gt_boxes_by_image, xy
 
 
 SUMMARY_FIELDNAMES = (
+    "train_annotations",
+    "apply_annotations",
+    "prediction_json",
     "train_predictions",
     "apply_predictions",
     "class_aware",
@@ -182,6 +185,9 @@ def calibrate_prediction_scores(
             apply_calibrated_scores.append(calibrated)
 
     summary: dict[str, float | int | str | bool] = {
+        "train_annotations": str(train_annotation_json),
+        "apply_annotations": str(apply_annotation_json),
+        "prediction_json": str(prediction_json),
         "train_predictions": len(train_predictions),
         "apply_predictions": len([row for row in output_rows if int(row["image_id"]) in apply_image_ids]),
         "class_aware": class_aware,

@@ -612,15 +612,16 @@ Distillation interpretation:
   Spearman=`0.018`; class-aware Pearson=`0.361`, Spearman=`0.027`). This
   supports continuing detector-side training for candidate coverage while
   keeping ranking/calibration as a separate bottleneck.
-- A valid-split post-hoc calibrator on the 10best checkpoint confirms that the
-  ranking signal is learnable but not sufficient by itself. It raises
-  class-aware score-IoU Spearman from `0.027` to `0.291` and loc Spearman from
-  `0.018` to `0.120`, but class-aware COCOeval is essentially unchanged
-  (`AP50 0.3155 -> 0.3158`, `AP75 0.2517 -> 0.2521`). Offcenter AP50 only
-  moves from `0.3081` to `0.3120`, while small AP50 moves from `0.2792` to
-  `0.2767`. Treat this as a diagnostic: same-split alpha/temperature tuning is
-  not the next lever; the remaining gap still needs better candidate/category
-  coverage and detector-side learning rather than only post-hoc score repair.
+- A valid-split post-hoc calibrator on the 10best checkpoint confirms that
+  score-IoU correlation can be fitted without test-set tuning, but it is not
+  sufficient by itself. It raises class-aware score-IoU Spearman from `0.027`
+  to `0.291` and loc Spearman from `0.018` to `0.120`, but class-aware COCOeval
+  is essentially unchanged (`AP50 0.3155 -> 0.3158`, `AP75 0.2517 -> 0.2521`)
+  and class-aware top100 mean IoU drops from `0.9418` to `0.9283`. Offcenter
+  AP50 only moves from `0.3081` to `0.3120`, while small AP50 moves from
+  `0.2792` to `0.2767`. Treat this as a diagnostic: post-hoc score-rescoring
+  sweeps are not the next lever without a stronger candidate-generation or
+  class-head change.
 - Continuing the 10best checkpoint with a fresh optimizer at lower LR `5e-5`
   for 4 epochs gives a small class AP gain but does not change the diagnosis.
   The best regular checkpoint is continuation epoch 1 (`val mAP/AP50/AP75 =
@@ -871,10 +872,12 @@ Do not continue max4/max5 crop expansion unless category scoring improves first.
 
 Next useful directions:
 
-1. Stronger detector-aware category teacher or teacher distillation into the
-   detector-side class head.
-2. Longer integrated RF-DETR class-head finetune protocol with explicit
-   class-aware and class-agnostic reporting.
+1. Continue controlled 1000-image detector-side training only as a low-frequency
+   baseline extension, with regular-checkpoint export and explicit class-aware /
+   class-agnostic reporting.
+2. Stronger detector-aware category teacher or teacher distillation into the
+   detector-side class head remains a diagnostic branch, not the active main
+   route, unless direct training saturates.
 3. Category-aware quality calibration on an image-disjoint split after the
    detector-side class head is strong enough to provide candidate coverage.
 4. If trying DET-aware category again, prefer detector-integrated training or
