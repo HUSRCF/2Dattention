@@ -583,10 +583,13 @@ Distillation interpretation:
   `0.835`, median `0.935`, IoU50 is `177/196`, mean GT attention mass is
   `0.814`, and mass-IoU correlations are `Pearson=0.687`, `Spearman=0.242`.
   Buckets: `177` aligned hits, `8` high-mass/low-IoU, `8` aligned misses, and
-  `3` zero-mass. This confirms the attention diagnostic should not be framed as
-  "RF-DETR cannot look at off-center objects"; for most top predictions it does
-  sample target support. The remaining actionable failures split into rare
-  coverage misses and a larger box/refinement/scoring bucket.
+  `3` zero-mass. Nearest-GT category match is `149/196=0.760`, and rises to
+  `147/177=0.831` among IoU50 top-1 queries. This confirms the attention
+  diagnostic should not be framed as "RF-DETR cannot look at off-center
+  objects"; for most top predictions it does sample target support and often
+  predicts the nearest GT category correctly. The remaining class AP gap is more
+  likely a full-set ranking, duplicate/false-positive, and long-tail candidate
+  coverage issue than a universal top-query representation failure.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs

@@ -17,5 +17,23 @@
   "high_mass_low_iou_count": 0,
   "high_mass_low_iou_rate": 0.0,
   "high_iou_mean_mass": 0.8725122126987874,
-  "low_iou_mean_mass": 0.12441662940044478
+  "low_iou_mean_mass": 0.12441662940044478,
+  "nearest_gt_category_match_count": 7,
+  "nearest_gt_category_match_rate": 0.5,
+  "iou50_nearest_gt_category_match_count": 7,
+  "iou50_nearest_gt_category_match_rate": 0.7777777777777778,
+  "bucket_category_match": {
+    "aligned_hit": {
+      "count": 9,
+      "nearest_gt_category_match_rate": 0.7777777777777778
+    },
+    "aligned_miss": {
+      "count": 3,
+      "nearest_gt_category_match_rate": 0.0
+    },
+    "zero_mass": {
+      "count": 2,
+      "nearest_gt_category_match_rate": 0.0
+    }
+  }
 }

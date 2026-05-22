@@ -82,6 +82,8 @@ def image_summary_row(row: dict[str, Any]) -> dict[str, Any]:
 def query_summary_row(row: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
     gt_mass = query["query_gt_attention_mass"]
     best_iou = query.get("best_gt_iou", "")
+    class_id = query["class_id"]
+    best_gt_category_id = query.get("best_gt_category_id", "")
     return {
         "image_id": row["image_id"],
         "file_name": row["file_name"],
@@ -89,11 +91,12 @@ def query_summary_row(row: dict[str, Any], query: dict[str, Any]) -> dict[str, A
         "predictions": row["predictions"],
         "rank": query["rank"],
         "query_index": query["query_index"],
-        "class_id": query["class_id"],
+        "class_id": class_id,
         "score": query["score"],
         "best_gt_iou": best_iou,
         "best_gt_index": query.get("best_gt_index", ""),
-        "best_gt_category_id": query.get("best_gt_category_id", ""),
+        "best_gt_category_id": best_gt_category_id,
+        "nearest_gt_category_match": nearest_gt_category_match(class_id, best_gt_category_id),
         "box_x1": query["box_xyxy"][0],
         "box_y1": query["box_xyxy"][1],
         "box_x2": query["box_xyxy"][2],
@@ -132,6 +135,13 @@ def diagnostic_bucket(gt_mass: Any, best_iou: Any) -> str:
     return "mixed"
 
 
+def nearest_gt_category_match(class_id: Any, category_id: Any) -> int | str:
+    if class_id == "" or category_id == "":
+        return ""
+    # RF-DETR labels are zero-based after export; COCO category ids in this repo are one-based.
+    return int(int(class_id) + 1 == int(category_id))
+
+
 def build_diagnostics(image_rows: list[dict[str, Any]], query_rows: list[dict[str, Any]]) -> dict[str, Any]:
     pairs = [
         (float(row["query_gt_attention_mass"]), float(row["best_gt_iou"]))
@@ -145,6 +155,17 @@ def build_diagnostics(image_rows: list[dict[str, Any]], query_rows: list[dict[st
     zero_mass = [pair for pair in pairs if pair[0] <= 0.0]
     low_mass_high_iou = [pair for pair in pairs if pair[0] < 0.2 and pair[1] >= 0.5]
     high_mass_low_iou = [pair for pair in pairs if pair[0] >= 0.5 and pair[1] < 0.5]
+    category_rows = [row for row in query_rows if row.get("nearest_gt_category_match") != ""]
+    category_hits = [int(row["nearest_gt_category_match"]) for row in category_rows]
+    iou50_rows = [row for row in category_rows if float(row["best_gt_iou"]) >= 0.5]
+    iou50_category_hits = [int(row["nearest_gt_category_match"]) for row in iou50_rows]
+    bucket_category_rates = {}
+    for bucket in sorted({str(row["diagnostic_bucket"]) for row in category_rows}):
+        bucket_rows = [row for row in category_rows if str(row["diagnostic_bucket"]) == bucket]
+        bucket_category_rates[bucket] = {
+            "count": len(bucket_rows),
+            "nearest_gt_category_match_rate": mean([int(row["nearest_gt_category_match"]) for row in bucket_rows]),
+        }
     return {
         "images": len(image_rows),
         "queries": len(query_rows),
@@ -165,6 +186,11 @@ def build_diagnostics(image_rows: list[dict[str, Any]], query_rows: list[dict[st
         "high_mass_low_iou_rate": ratio(len(high_mass_low_iou), len(pairs)),
         "high_iou_mean_mass": mean([pair[0] for pair in high_iou]),
         "low_iou_mean_mass": mean([pair[0] for pair in low_iou]),
+        "nearest_gt_category_match_count": sum(category_hits),
+        "nearest_gt_category_match_rate": mean(category_hits),
+        "iou50_nearest_gt_category_match_count": sum(iou50_category_hits),
+        "iou50_nearest_gt_category_match_rate": mean(iou50_category_hits),
+        "bucket_category_match": bucket_category_rates,
     }
 
 
