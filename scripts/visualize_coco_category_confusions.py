@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from pathlib import Path
@@ -61,17 +62,43 @@ def main() -> None:
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     panels = []
+    manifest_rows = []
     for index, sample in enumerate(selected, start=1):
         panel = draw_sample(sample, image_by_id, categories, image_dir, args.thumb_width)
         out_path = args.out_dir / f"{index:02d}_img{sample['image_id']}_gt{sample['gt_category_id']}_pred{sample['pred_category_id']}.jpg"
         panel.save(out_path, quality=92)
         panels.append(panel)
+        manifest_rows.append(
+            {
+                "rank": index,
+                "image_id": sample["image_id"],
+                "file_name": sample["file_name"],
+                "gt_category_id": sample["gt_category_id"],
+                "gt_category_name": categories.get(sample["gt_category_id"], str(sample["gt_category_id"])),
+                "pred_category_id": sample["pred_category_id"],
+                "pred_category_name": categories.get(sample["pred_category_id"], str(sample["pred_category_id"])),
+                "iou": sample["iou"],
+                "score": sample["score"],
+                "overlay_path": str(out_path),
+                "top_k": args.top_k,
+                "iou_threshold": args.iou_threshold,
+                "max_per_pair": args.max_per_pair,
+                "max_per_image": args.max_per_image,
+            }
+        )
         print(
             f"saved_confusion_overlay: {out_path} "
             f"{categories.get(sample['gt_category_id'], sample['gt_category_id'])}"
             f"->{categories.get(sample['pred_category_id'], sample['pred_category_id'])} "
             f"iou={sample['iou']:.3f}"
         )
+    if manifest_rows:
+        manifest_path = args.out_dir / "manifest.csv"
+        with manifest_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(manifest_rows[0]), lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(manifest_rows)
+        print(f"saved_manifest: {manifest_path}")
     if panels:
         contact_path = args.out_dir / "contact_sheet.jpg"
         save_contact_sheet(panels, contact_path, cols=args.contact_cols)
