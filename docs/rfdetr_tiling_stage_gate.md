@@ -612,6 +612,15 @@ Distillation interpretation:
   Spearman=`0.018`; class-aware Pearson=`0.361`, Spearman=`0.027`). This
   supports continuing detector-side training for candidate coverage while
   keeping ranking/calibration as a separate bottleneck.
+- A valid-split post-hoc calibrator on the 10best checkpoint confirms that the
+  ranking signal is learnable but not sufficient by itself. It raises
+  class-aware score-IoU Spearman from `0.027` to `0.291` and loc Spearman from
+  `0.018` to `0.120`, but class-aware COCOeval is essentially unchanged
+  (`AP50 0.3155 -> 0.3158`, `AP75 0.2517 -> 0.2521`). Offcenter AP50 only
+  moves from `0.3081` to `0.3120`, while small AP50 moves from `0.2792` to
+  `0.2767`. Treat this as a diagnostic: same-split alpha/temperature tuning is
+  not the next lever; the remaining gap still needs better candidate/category
+  coverage and detector-side learning rather than only post-hoc score repair.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
