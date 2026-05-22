@@ -518,6 +518,15 @@ Distillation interpretation:
   localization after only two epochs, but the class head is severely underfit.
   Treat this as the next formal protocol entry point; it needs longer
   detector-side training rather than another short LR/alpha sweep.
+- Continuing that 2ep checkpoint for 4 more epochs with a fresh optimizer at
+  `lr=1e-4` validates the direction. Official test export now gives class AP50
+  `0.2196`, AP75 `0.1841`, AP `0.1746`, class-agnostic AP50 `0.6111`,
+  offcenter AP50 `0.2073`, center AP50 `0.2067`, small AP50 `0.1890`,
+  medium AP50 `0.2248`, and large AP50 `0.3263`. The improvement over the 2ep
+  gate is large (`0.0864 -> 0.2196` class AP50), and class-agnostic AP50 also
+  improves (`0.5550 -> 0.6111`). This establishes the larger split as a valid
+  long-train protocol rather than a failed smoke. Continue this protocol only
+  with longer detector-side training or a clearly stronger training recipe.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
