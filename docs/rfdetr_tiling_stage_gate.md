@@ -556,13 +556,16 @@ Distillation interpretation:
   `query_gt_attention_mass` indicates a query/representation alignment failure,
   while high GT mass with a bad box points to box refinement or scoring.
 - `scripts/summarize_rfdetr_attention_manifest.py` now flattens the attention
-  manifest into image-level and query-level CSVs. On the first 6-image
-  off-center smoke, top-query GT attention mass has mean `0.605`, median
-  `0.818`, and `2/14` zero-GT-mass query failures; `9/14` top queries have
-  nearest-GT IoU >= `0.5`, with mean IoU `0.581` and median IoU `0.773`. This
-  is not a benchmark, but it gives a concrete filter for selecting failure
-  cases before deciding whether the next fix should target query
-  representation, box refinement, or scoring.
+  manifest into image-level and query-level CSVs plus optional JSON diagnostics.
+  On the first 6-image off-center smoke, top-query GT attention mass has mean
+  `0.605`, median `0.818`, and `2/14` zero-GT-mass query failures; `9/14` top
+  queries have nearest-GT IoU >= `0.5`, with mean IoU `0.581` and median IoU
+  `0.773`. The JSON diagnostic reports strong mass-IoU alignment in this tiny
+  sample (`Pearson=0.950`, `Spearman=0.753`), with high-IoU queries averaging
+  `0.873` GT mass and low-IoU queries averaging `0.124`. This is not a
+  benchmark, but it gives a concrete filter for selecting failure cases before
+  deciding whether the next fix should target query representation, box
+  refinement, or scoring.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--image-out", type=Path, required=True)
     parser.add_argument("--query-out", type=Path, required=True)
+    parser.add_argument(
+        "--diagnostic-out",
+        type=Path,
+        default=None,
+        help="Optional JSON summary with correlation and failure-bucket diagnostics.",
+    )
     return parser.parse_args()
 
 
@@ -24,10 +31,20 @@ def main() -> None:
     query_rows = [query_summary_row(row, query) for row in rows for query in row.get("query_overlays", [])]
     write_csv(args.image_out, image_rows)
     write_csv(args.query_out, query_rows)
+    diagnostics = build_diagnostics(image_rows, query_rows)
+    if args.diagnostic_out is not None:
+        args.diagnostic_out.parent.mkdir(parents=True, exist_ok=True)
+        args.diagnostic_out.write_text(json.dumps(diagnostics, indent=2) + "\n", encoding="utf-8")
     print(f"saved_image_attention_csv: {args.image_out}")
     print(f"saved_query_attention_csv: {args.query_out}")
+    if args.diagnostic_out is not None:
+        print(f"saved_attention_diagnostics: {args.diagnostic_out}")
     print(f"images: {len(image_rows)}")
     print(f"queries: {len(query_rows)}")
+    print(f"query_mean_iou: {diagnostics['query_mean_iou']}")
+    print(f"query_mean_gt_attention_mass: {diagnostics['query_mean_gt_attention_mass']}")
+    print(f"mass_iou_pearson: {diagnostics['mass_iou_pearson']}")
+    print(f"mass_iou_spearman: {diagnostics['mass_iou_spearman']}")
 
 
 def image_summary_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -82,6 +99,93 @@ def mean(values: list[float]) -> float | str:
     if not values:
         return ""
     return float(sum(values) / len(values))
+
+
+def build_diagnostics(image_rows: list[dict[str, Any]], query_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    pairs = [
+        (float(row["query_gt_attention_mass"]), float(row["best_gt_iou"]))
+        for row in query_rows
+        if row.get("query_gt_attention_mass") != "" and row.get("best_gt_iou") != ""
+    ]
+    masses = [pair[0] for pair in pairs]
+    ious = [pair[1] for pair in pairs]
+    high_iou = [pair for pair in pairs if pair[1] >= 0.5]
+    low_iou = [pair for pair in pairs if pair[1] < 0.5]
+    zero_mass = [pair for pair in pairs if pair[0] <= 0.0]
+    low_mass_high_iou = [pair for pair in pairs if pair[0] < 0.2 and pair[1] >= 0.5]
+    high_mass_low_iou = [pair for pair in pairs if pair[0] >= 0.5 and pair[1] < 0.5]
+    return {
+        "images": len(image_rows),
+        "queries": len(query_rows),
+        "query_pairs_with_iou": len(pairs),
+        "query_mean_iou": mean(ious),
+        "query_median_iou": median(ious),
+        "query_iou50_count": len(high_iou),
+        "query_iou50_rate": ratio(len(high_iou), len(pairs)),
+        "query_mean_gt_attention_mass": mean(masses),
+        "query_median_gt_attention_mass": median(masses),
+        "query_zero_gt_attention_mass_count": len(zero_mass),
+        "query_zero_gt_attention_mass_rate": ratio(len(zero_mass), len(pairs)),
+        "mass_iou_pearson": pearson(masses, ious),
+        "mass_iou_spearman": spearman(masses, ious),
+        "low_mass_high_iou_count": len(low_mass_high_iou),
+        "low_mass_high_iou_rate": ratio(len(low_mass_high_iou), len(pairs)),
+        "high_mass_low_iou_count": len(high_mass_low_iou),
+        "high_mass_low_iou_rate": ratio(len(high_mass_low_iou), len(pairs)),
+        "high_iou_mean_mass": mean([pair[0] for pair in high_iou]),
+        "low_iou_mean_mass": mean([pair[0] for pair in low_iou]),
+    }
+
+
+def ratio(numerator: int, denominator: int) -> float | str:
+    if denominator == 0:
+        return ""
+    return float(numerator / denominator)
+
+
+def median(values: list[float]) -> float | str:
+    if not values:
+        return ""
+    sorted_values = sorted(values)
+    mid = len(sorted_values) // 2
+    if len(sorted_values) % 2:
+        return float(sorted_values[mid])
+    return float((sorted_values[mid - 1] + sorted_values[mid]) / 2.0)
+
+
+def pearson(xs: list[float], ys: list[float]) -> float | str:
+    if len(xs) < 2 or len(xs) != len(ys):
+        return ""
+    x_mean = sum(xs) / len(xs)
+    y_mean = sum(ys) / len(ys)
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+    x_var = sum((x - x_mean) ** 2 for x in xs)
+    y_var = sum((y - y_mean) ** 2 for y in ys)
+    denominator = math.sqrt(x_var * y_var)
+    if denominator == 0:
+        return ""
+    return float(numerator / denominator)
+
+
+def spearman(xs: list[float], ys: list[float]) -> float | str:
+    if len(xs) < 2 or len(xs) != len(ys):
+        return ""
+    return pearson(ranks(xs), ranks(ys))
+
+
+def ranks(values: list[float]) -> list[float]:
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    out = [0.0] * len(values)
+    idx = 0
+    while idx < len(indexed):
+        end = idx + 1
+        while end < len(indexed) and indexed[end][1] == indexed[idx][1]:
+            end += 1
+        avg_rank = (idx + 1 + end) / 2.0
+        for original_idx, _ in indexed[idx:end]:
+            out[original_idx] = avg_rank
+        idx = end
+    return out
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
