@@ -672,6 +672,17 @@ Distillation interpretation:
   n03720891` (`5/9`, mean IoU `0.904`). These are high-overlap boxes with
   wrong categories, so the failure is semantic/category assignment after
   localization rather than missing object support alone.
+- Joining per-category coverage with split counts reveals a protocol caveat.
+  In this random train1000 split, `2` test-positive categories have zero train
+  boxes and `18` have fewer than `3` train boxes; among categories with
+  `test_gt >= 3`, six have `train_gt < 3`. Some of the largest gaps are
+  therefore not fair class-head architecture failures: `n02503517` has
+  `test=11/train=0`, `n03188531` has `test=11/train=2`, `n04004767` has
+  `test=5/train=2`, `n07714571` has `test=18/train=1`, and `n02799071` has
+  `test=9/train=1`. Treat the current train1000 protocol as a useful
+  detector-side smoke benchmark, but the next serious RF-DETR protocol should
+  be category-stratified or should enforce minimum train coverage for evaluated
+  classes.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
