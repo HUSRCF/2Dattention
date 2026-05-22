@@ -465,6 +465,15 @@ Distillation interpretation:
   small AP50 `0.3258`, medium AP50 `0.2987`, and large AP50 `0.4014`. Direct
   Small long training remains the active RF-DETR mainline; staged pseudo
   pretraining is now clearly secondary.
+- Resuming seed41 direct Small to 20 epochs gives the largest independent-test
+  jump so far. Official regular-checkpoint export gives class AP50 `0.3625`,
+  AP75 `0.2566`, AP `0.2573`, loc AP50 `0.6273`, offcenter AP50 `0.3241`,
+  center AP50 `0.3046`, small AP50 `0.3334`, medium AP50 `0.2885`, and large
+  AP50 `0.4588`. This extends the seed41 direct-Small curve from
+  `0.2405 -> 0.2677 -> 0.3070 -> 0.3209 -> 0.3625` class AP50 across
+  `5/8/12/16/20` epochs. Current decision: keep direct Small long training as
+  the main RF-DETR path, and next confirm with seed43 rather than returning to
+  pseudo-label distillation or persistent proposal-state experiments.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
