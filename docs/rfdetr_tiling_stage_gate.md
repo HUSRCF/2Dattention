@@ -634,6 +634,15 @@ Distillation interpretation:
   score-IoU Pearson/Spearman `0.375/0.033`). This supports low-frequency longer
   RF-DETR training as an incremental baseline improver, not a replacement for
   candidate coverage and class/ranking mechanism work.
+- The same valid-split calibrator is more useful on the 14best checkpoint than
+  on 10best. It improves class `AP/AP50/AP75` from `0.2421/0.3242/0.2523` to
+  `0.2494/0.3297/0.2593`, raises offcenter AP50 from `0.3064` to `0.3248`, and
+  raises large AP50 from `0.3864` to `0.3960`. Score-IoU correlation improves
+  (`class-aware Pearson/Spearman 0.375/0.033 -> 0.413/0.274`; loc Spearman
+  `0.071 -> 0.158`), while top100 class-aware coverage slightly drops
+  (`0.689 -> 0.678`). This keeps the route split clean: stronger detector-side
+  training makes post-hoc quality ranking more useful, but the calibrator is
+  still a ranking layer rather than a candidate/category generator.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
