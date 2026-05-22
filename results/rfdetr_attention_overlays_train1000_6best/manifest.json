@@ -5,7 +5,12 @@
     "out": "results/rfdetr_attention_overlays_train1000_6best/000000000492_000000000492_ILSVRC2012_val_00001641_attn.jpg",
     "gt_boxes": 6,
     "predictions": 5,
-    "captured_layers": 3
+    "captured_layers": 3,
+    "gt_attention_mass": 0.745611343086214,
+    "top_pred_attention_mass": 0.7055328703564326,
+    "attention_entropy": 0.8976471568424678,
+    "attention_peak_x": 0.0390625,
+    "attention_peak_y": 0.9921875
   },
   {
     "image_id": 1527,
@@ -13,7 +18,12 @@
     "out": "results/rfdetr_attention_overlays_train1000_6best/000000001527_000000001527_ILSVRC2012_val_00005152_attn.jpg",
     "gt_boxes": 4,
     "predictions": 28,
-    "captured_layers": 3
+    "captured_layers": 3,
+    "gt_attention_mass": 0.09338037707435604,
+    "top_pred_attention_mass": 0.24479970593969597,
+    "attention_entropy": 0.7707999296012877,
+    "attention_peak_x": 0.9921875,
+    "attention_peak_y": 0.9921875
   },
   {
     "image_id": 1151,
@@ -21,7 +31,12 @@
     "out": "results/rfdetr_attention_overlays_train1000_6best/000000001151_000000001151_ILSVRC2012_val_00003867_attn.jpg",
     "gt_boxes": 10,
     "predictions": 1,
-    "captured_layers": 3
+    "captured_layers": 3,
+    "gt_attention_mass": 0.14619060702583578,
+    "top_pred_attention_mass": 0.84896315233904,
+    "attention_entropy": 0.9343196527951207,
+    "attention_peak_x": 0.0078125,
+    "attention_peak_y": 0.4609375
   },
   {
     "image_id": 945,
@@ -29,7 +44,12 @@
     "out": "results/rfdetr_attention_overlays_train1000_6best/000000000945_000000000945_ILSVRC2012_val_00003195_attn.jpg",
     "gt_boxes": 7,
     "predictions": 1,
-    "captured_layers": 3
+    "captured_layers": 3,
+    "gt_attention_mass": 0.583726051390197,
+    "top_pred_attention_mass": 0.5053003799882096,
+    "attention_entropy": 0.927492505648499,
+    "attention_peak_x": 0.0078125,
+    "attention_peak_y": 0.9453125
   },
   {
     "image_id": 999,
@@ -37,7 +57,12 @@
     "out": "results/rfdetr_attention_overlays_train1000_6best/000000000999_000000000999_ILSVRC2012_val_00003377_attn.jpg",
     "gt_boxes": 4,
     "predictions": 10,
-    "captured_layers": 3
+    "captured_layers": 3,
+    "gt_attention_mass": 0.4428424116136381,
+    "top_pred_attention_mass": 0.7381405359729425,
+    "attention_entropy": 0.9361320737986193,
+    "attention_peak_x": 0.9921875,
+    "attention_peak_y": 0.9921875
   },
   {
     "image_id": 487,
@@ -45,6 +70,11 @@
     "out": "results/rfdetr_attention_overlays_train1000_6best/000000000487_000000000487_ILSVRC2012_val_00001624_attn.jpg",
     "gt_boxes": 3,
     "predictions": 4,
-    "captured_layers": 3
+    "captured_layers": 3,
+    "gt_attention_mass": 0.44704822066220323,
+    "top_pred_attention_mass": 0.8772870550401017,
+    "attention_entropy": 0.9298648164111265,
+    "attention_peak_x": 0.0078125,
+    "attention_peak_y": 0.5703125
   }
 ]

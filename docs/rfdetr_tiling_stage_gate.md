@@ -542,9 +542,11 @@ Distillation interpretation:
   `MSDeformAttn`, aggregates captured deformable cross-attention sampling
   locations, and overlays sampling density with GT boxes and top predicted
   boxes. The first smoke artifact is
-  `results/rfdetr_attention_overlays_train1000_6best/contact_sheet.jpg`. Treat
-  it as a qualitative sampling-coverage diagnostic, not as a ViT-style full
-  attention map and not as a quantitative result.
+  `results/rfdetr_attention_overlays_train1000_6best/contact_sheet.jpg`, with
+  per-image GT-box attention mass, top-prediction attention mass, entropy, and
+  peak location in `manifest.json`. Treat it as a qualitative sampling-coverage
+  diagnostic, not as a ViT-style full attention map and not as a quantitative
+  result.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs

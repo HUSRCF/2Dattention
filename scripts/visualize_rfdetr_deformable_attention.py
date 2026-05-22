@@ -74,17 +74,20 @@ def main() -> None:
             if not capture.records:
                 raise RuntimeError("No MSDeformAttn records were captured; RF-DETR internals may have changed.")
             heatmap = aggregate_sampling_heatmap(capture.records[-1], args.heatmap_size)
-            overlay = render_overlay(pil, heatmap, annotations_by_image[int(image["id"])], detections)
+            image_annotations = annotations_by_image[int(image["id"])]
+            overlay = render_overlay(pil, heatmap, image_annotations, detections)
             out_path = args.out_dir / f"{int(image['id']):012d}_{Path(image['file_name']).stem}_attn.jpg"
             overlay.save(out_path, quality=92)
+            attention_stats = summarize_attention_alignment(heatmap, image, image_annotations, detections)
             manifest_rows.append(
                 {
                     "image_id": int(image["id"]),
                     "file_name": image["file_name"],
                     "out": str(out_path),
-                    "gt_boxes": len(annotations_by_image[int(image["id"])]),
+                    "gt_boxes": len(image_annotations),
                     "predictions": int(len(getattr(detections, "xyxy", []))),
                     "captured_layers": len(capture.records),
+                    **attention_stats,
                 }
             )
         manifest_path = args.out_dir / "manifest.json"
@@ -245,6 +248,66 @@ def render_overlay(
         x1, y1, x2, y2 = boxes[idx]
         draw.rectangle([x1, y1, x2, y2], outline=(0, 128, 255, 255), width=2)
     return out.convert("RGB")
+
+
+def summarize_attention_alignment(
+    heatmap: np.ndarray,
+    image: dict[str, Any],
+    annotations: list[dict[str, Any]],
+    detections: Any,
+    topk: int = 5,
+) -> dict[str, float | int]:
+    heat = np.maximum(heatmap.astype(np.float64), 0.0)
+    total_mass = float(heat.sum())
+    if total_mass <= 0:
+        return {
+            "gt_attention_mass": 0.0,
+            "top_pred_attention_mass": 0.0,
+            "attention_entropy": 0.0,
+            "attention_peak_x": -1.0,
+            "attention_peak_y": -1.0,
+        }
+    gt_mask = boxes_to_heatmap_mask([xywh_to_xyxy(ann["bbox"]) for ann in annotations], image, heat.shape)
+    boxes = np.asarray(getattr(detections, "xyxy", np.empty((0, 4))), dtype=float)
+    scores = np.asarray(getattr(detections, "confidence", np.empty((0,))), dtype=float)
+    order = np.argsort(-scores)[:topk] if scores.size else []
+    pred_mask = boxes_to_heatmap_mask([boxes[idx].tolist() for idx in order], image, heat.shape)
+    prob = heat / total_mass
+    entropy = float(-(prob[prob > 0] * np.log(prob[prob > 0])).sum() / np.log(prob.size))
+    peak_y, peak_x = np.unravel_index(int(np.argmax(heat)), heat.shape)
+    return {
+        "gt_attention_mass": float(heat[gt_mask].sum() / total_mass),
+        "top_pred_attention_mass": float(heat[pred_mask].sum() / total_mass),
+        "attention_entropy": entropy,
+        "attention_peak_x": float((peak_x + 0.5) / heat.shape[1]),
+        "attention_peak_y": float((peak_y + 0.5) / heat.shape[0]),
+    }
+
+
+def xywh_to_xyxy(box: list[float] | tuple[float, float, float, float]) -> list[float]:
+    x, y, w, h = [float(v) for v in box]
+    return [x, y, x + w, y + h]
+
+
+def boxes_to_heatmap_mask(
+    boxes_xyxy: list[list[float]],
+    image: dict[str, Any],
+    heatmap_shape: tuple[int, int],
+) -> np.ndarray:
+    height, width = heatmap_shape
+    mask = np.zeros((height, width), dtype=bool)
+    image_width = float(image["width"])
+    image_height = float(image["height"])
+    for box in boxes_xyxy:
+        x1, y1, x2, y2 = [float(v) for v in box]
+        left = int(np.floor(np.clip(x1 / image_width, 0.0, 1.0) * width))
+        right = int(np.ceil(np.clip(x2 / image_width, 0.0, 1.0) * width))
+        top = int(np.floor(np.clip(y1 / image_height, 0.0, 1.0) * height))
+        bottom = int(np.ceil(np.clip(y2 / image_height, 0.0, 1.0) * height))
+        if right <= left or bottom <= top:
+            continue
+        mask[top:bottom, left:right] = True
+    return mask
 
 
 def make_contact_sheet(paths: list[Path], out_path: Path, thumb_width: int = 320) -> None:
