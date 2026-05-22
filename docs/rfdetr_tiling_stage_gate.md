@@ -604,6 +604,14 @@ Distillation interpretation:
   should therefore improve category candidate coverage and ranking/calibration
   on the full prediction set, not chase a generic "attention cannot see the
   object" explanation.
+- The same diagnostics on the 10best checkpoint show coverage is improving but
+  score calibration is still weak. Top100 coverage rises to `loc=0.876`,
+  `class-aware=0.683`, and `per-category=0.741`; offcenter top100 becomes
+  `0.826/0.594/0.658`, and small top100 becomes `0.728/0.595/0.647`.
+  Full-set score-IoU correlation remains low (`loc Pearson=0.064`,
+  Spearman=`0.018`; class-aware Pearson=`0.361`, Spearman=`0.027`). This
+  supports continuing detector-side training for candidate coverage while
+  keeping ranking/calibration as a separate bottleneck.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
