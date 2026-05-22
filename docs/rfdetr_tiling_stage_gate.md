@@ -458,6 +458,13 @@ Distillation interpretation:
   confirms the direct-Small long-train route with a two-seed 12ep mean class
   AP50 of about `0.2997`. This is now the strongest current RF-DETR route in
   the project.
+- Resuming seed41 direct Small to 16 epochs further improves the independent
+  test result despite non-monotonic RF-DETR internal validation logs. Official
+  regular-checkpoint export gives class AP50 `0.3209`, AP75 `0.2268`, AP
+  `0.2206`, loc AP50 `0.6374`, offcenter AP50 `0.2881`, center AP50 `0.2951`,
+  small AP50 `0.3258`, medium AP50 `0.2987`, and large AP50 `0.4014`. Direct
+  Small long training remains the active RF-DETR mainline; staged pseudo
+  pretraining is now clearly secondary.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
