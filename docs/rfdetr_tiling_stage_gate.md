@@ -494,6 +494,18 @@ Distillation interpretation:
   resume16 (`0.2753` AP50). Current decision: the next direct-Small schedule
   should favor low-LR fresh-optimizer continuation from a strong checkpoint,
   not blind resume of the old optimizer state.
+- The same lower-LR fresh-optimizer continuation does not push the already
+  strong seed41 20ep checkpoint higher. Loading seed41 20ep
+  `checkpoint_best_regular.pth` and training 4 more epochs at `lr=3e-5`
+  reaches independent-test class AP50 `0.3546`, AP75 `0.2396`, AP `0.2494`,
+  loc AP50 `0.6304`, offcenter AP50 `0.3084`, center AP50 `0.3186`, small
+  AP50 `0.3111`, medium AP50 `0.3751`, and large AP50 `0.3888`. This is below
+  the seed41 20ep peak class AP50 `0.3625`, although medium AP50 improves
+  strongly. Updated decision: low-LR fresh continuation is a useful rescue for
+  a seed that has started to overstep, not a universal way to extend every
+  strong checkpoint. Stop blind schedule sweeping; the next RF-DETR progress
+  should come from more data/resolution or a stronger detector-side training
+  protocol.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
