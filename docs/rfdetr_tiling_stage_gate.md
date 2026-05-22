@@ -1000,6 +1000,20 @@ This confirms the same mechanism on the fair split: the model has substantial
 box/candidate potential, but detector-side category assignment and score
 calibration still leave most AP50 on the table.
 
+Stratified high-IoU category confusions:
+
+- The top wrong-category flows include `n07695742 -> n01726692` (`7/9`,
+  mean IoU `0.955`), `n07739125 -> n07749582` (`6/11`, mean IoU `0.893`),
+  and `n02799071 -> n02786058` (`5/6`, mean IoU `0.956`).
+- These are localized GT-level confusions: for each GT, the diagnostic selects
+  the highest-IoU prediction in the image top-100. It is not a full COCO AP
+  error decomposition, but it is useful for inspecting class assignment after
+  successful localization.
+- Overlay artifacts:
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_category_confusions_top100_iou50.csv`
+  - `results/rfdetr_stratified_seed41_2best_category_confusion_overlays/contact_sheet.jpg`
+  - `results/rfdetr_stratified_seed41_2best_category_confusion_overlays/manifest.csv`
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.
