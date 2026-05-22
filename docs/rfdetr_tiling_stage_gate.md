@@ -645,6 +645,17 @@ Distillation interpretation:
   training makes post-hoc quality ranking more useful, but the calibrator is
   still reordering existing predictions rather than generating missing
   candidates/categories.
+- Oracle rescoring on the 14best checkpoint quantifies that remaining gap.
+  Same-category oracle IoU scoring reaches class `AP/AP50/AP75 =
+  0.452/0.569/0.473`, so there is still large ranking-quality headroom when
+  the predicted category is already correct. Nearest-GT category relabeling
+  while keeping the detector's original score reaches `0.469/0.648/0.482`,
+  which is much higher than the valid-calibrated score path; this makes
+  category assignment/candidate coverage the dominant class-aware AP50
+  bottleneck. Full nearest-GT relabel + IoU score gives `0.433/0.512/0.471`,
+  lower AP50 because duplicate ordering and COCO precision behavior change
+  under pure IoU scoring. Treat these oracle paths as diagnostics, not
+  deployable inference recipes.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
