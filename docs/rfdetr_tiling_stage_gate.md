@@ -692,6 +692,17 @@ Distillation interpretation:
   boxes, matching category tables, and `valid_test_annotations_identical=false`.
   Use this as the next serious RF-DETR benchmark before attributing class gaps
   to architecture.
+- RF-DETR Small 2ep smoke on this stratified split completes cleanly and
+  establishes the new protocol baseline. Independent test class
+  `AP/AP50/AP75 = 0.0949/0.1122/0.1001`, localization `AP/AP50/AP75 =
+  0.4111/0.5426/0.4504`, offcenter AP50 `0.0871`, center AP50 `0.1348`,
+  small AP50 `0.0646`, medium AP50 `0.1300`, and large AP50 `0.2094`.
+  Category coverage confirms the split fix (`train_zero=0`, `train_lt3=0`
+  among test-positive categories), but top100 still has loc/class/percat
+  recall `0.8295/0.5513/0.6457`, so high-localization / low-class gaps remain
+  for trained categories. Treat this as the fairer 2ep smoke baseline for the
+  next serious RF-DETR run, not as a direct comparison against the random-split
+  14best long-trained checkpoint.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
