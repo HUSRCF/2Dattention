@@ -382,6 +382,7 @@ def save_query_overlays(
                 "class_id": int(labels[det_idx]) if labels.size else -1,
                 "score": float(scores[det_idx]),
                 "box_xyxy": [float(v) for v in boxes[det_idx].tolist()],
+                **nearest_gt_box_stats(boxes[det_idx].tolist(), annotations),
                 "out": str(out_path),
                 **{f"query_{key}": value for key, value in stats.items()},
             }
@@ -396,6 +397,39 @@ def detection_subset(detections: Any, index: int) -> SimpleNamespace:
         class_id=np.asarray(getattr(detections, "class_id", np.empty((0,), dtype=int)), dtype=int)[index : index + 1],
         query_index=np.asarray(getattr(detections, "query_index", np.empty((0,), dtype=int)), dtype=int)[index : index + 1],
     )
+
+
+def nearest_gt_box_stats(pred_box: list[float], annotations: list[dict[str, Any]]) -> dict[str, float | int]:
+    if not annotations:
+        return {
+            "best_gt_iou": 0.0,
+            "best_gt_index": -1,
+            "best_gt_category_id": -1,
+        }
+    gt_boxes = [xywh_to_xyxy(annotation["bbox"]) for annotation in annotations]
+    ious = [box_iou_xyxy(pred_box, gt_box) for gt_box in gt_boxes]
+    best_index = int(np.argmax(ious))
+    return {
+        "best_gt_iou": float(ious[best_index]),
+        "best_gt_index": best_index,
+        "best_gt_category_id": int(annotations[best_index].get("category_id", -1)),
+    }
+
+
+def box_iou_xyxy(a: list[float], b: list[float]) -> float:
+    ax1, ay1, ax2, ay2 = [float(value) for value in a]
+    bx1, by1, bx2, by2 = [float(value) for value in b]
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+    inter = max(0.0, inter_x2 - inter_x1) * max(0.0, inter_y2 - inter_y1)
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    if union <= 0:
+        return 0.0
+    return inter / union
 
 
 def summarize_attention_alignment(

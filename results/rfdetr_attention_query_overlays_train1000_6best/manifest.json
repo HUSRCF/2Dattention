@@ -18,6 +18,9 @@
           199.24758911132812,
           243.5293731689453
         ],
+        "best_gt_iou": 0.760108865690576,
+        "best_gt_index": 0,
+        "best_gt_category_id": 4,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000492_000000000492_ILSVRC2012_val_00001641_rank01_q000_attn.jpg",
         "query_gt_attention_mass": 0.8124999969715248,
         "query_top_pred_attention_mass": 0.8202269914101852,
@@ -36,6 +39,9 @@
           407.8697509765625,
           323.8876037597656
         ],
+        "best_gt_iou": 0.8045988963346022,
+        "best_gt_index": 1,
+        "best_gt_category_id": 4,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000492_000000000492_ILSVRC2012_val_00001641_rank02_q001_attn.jpg",
         "query_gt_attention_mass": 0.9838714808133154,
         "query_top_pred_attention_mass": 0.8758707112753734,
@@ -54,6 +60,9 @@
           55.77845764160156,
           140.0594024658203
         ],
+        "best_gt_iou": 0.9866518741024181,
+        "best_gt_index": 4,
+        "best_gt_category_id": 4,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000492_000000000492_ILSVRC2012_val_00001641_rank03_q002_attn.jpg",
         "query_gt_attention_mass": 0.8822972407278207,
         "query_top_pred_attention_mass": 0.8822972407278207,
@@ -87,6 +96,9 @@
           249.84979248046875,
           374.4341735839844
         ],
+        "best_gt_iou": 0.0,
+        "best_gt_index": 0,
+        "best_gt_category_id": 179,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000001527_000000001527_ILSVRC2012_val_00005152_rank01_q000_attn.jpg",
         "query_gt_attention_mass": 0.0,
         "query_top_pred_attention_mass": 0.8803636180286442,
@@ -105,6 +117,9 @@
           454.5278625488281,
           374.2201232910156
         ],
+        "best_gt_iou": 0.0,
+        "best_gt_index": 0,
+        "best_gt_category_id": 179,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000001527_000000001527_ILSVRC2012_val_00005152_rank02_q007_attn.jpg",
         "query_gt_attention_mass": 0.0,
         "query_top_pred_attention_mass": 0.8210796109145001,
@@ -123,6 +138,9 @@
           272.4464111328125,
           260.4476318359375
         ],
+        "best_gt_iou": 0.7855109165093385,
+        "best_gt_index": 1,
+        "best_gt_category_id": 179,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000001527_000000001527_ILSVRC2012_val_00005152_rank03_q003_attn.jpg",
         "query_gt_attention_mass": 0.9109185875191766,
         "query_top_pred_attention_mass": 0.9109185875191766,
@@ -156,6 +174,9 @@
           474.0365905761719,
           316.1746520996094
         ],
+        "best_gt_iou": 0.0630772240302958,
+        "best_gt_index": 0,
+        "best_gt_category_id": 143,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000001151_000000001151_ILSVRC2012_val_00003867_rank01_q000_attn.jpg",
         "query_gt_attention_mass": 0.25694424953638323,
         "query_top_pred_attention_mass": 0.81735844768671,
@@ -189,6 +210,9 @@
           235.15284729003906,
           428.1515808105469
         ],
+        "best_gt_iou": 0.948014646684269,
+        "best_gt_index": 6,
+        "best_gt_category_id": 1,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000945_000000000945_ILSVRC2012_val_00003195_rank01_q000_attn.jpg",
         "query_gt_attention_mass": 0.9262047431264337,
         "query_top_pred_attention_mass": 0.8699697398600433,
@@ -222,6 +246,9 @@
           335.9228820800781,
           254.9285888671875
         ],
+        "best_gt_iou": 0.9677493763096973,
+        "best_gt_index": 0,
+        "best_gt_category_id": 19,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000999_000000000999_ILSVRC2012_val_00003377_rank01_q000_attn.jpg",
         "query_gt_attention_mass": 0.8309777012059127,
         "query_top_pred_attention_mass": 0.8309777012059127,
@@ -240,6 +267,9 @@
           497.5595397949219,
           373.68878173828125
         ],
+        "best_gt_iou": 0.15286527335214675,
+        "best_gt_index": 1,
+        "best_gt_category_id": 176,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000999_000000000999_ILSVRC2012_val_00003377_rank02_q008_attn.jpg",
         "query_gt_attention_mass": 0.1888481952259535,
         "query_top_pred_attention_mass": 0.9346980507129977,
@@ -258,6 +288,9 @@
           485.9360656738281,
           373.2216491699219
         ],
+        "best_gt_iou": 0.8648258264740883,
+        "best_gt_index": 1,
+        "best_gt_category_id": 176,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000999_000000000999_ILSVRC2012_val_00003377_rank03_q001_attn.jpg",
         "query_gt_attention_mass": 0.9431118409350112,
         "query_top_pred_attention_mass": 1.0,
@@ -291,6 +324,9 @@
           376.4071350097656,
           278.8818664550781
         ],
+        "best_gt_iou": 0.6229692314108194,
+        "best_gt_index": 1,
+        "best_gt_category_id": 19,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000487_000000000487_ILSVRC2012_val_00001624_rank01_q000_attn.jpg",
         "query_gt_attention_mass": 0.8237640216017408,
         "query_top_pred_attention_mass": 0.8133652564722085,
@@ -309,6 +345,9 @@
           303.97119140625,
           231.1111602783203
         ],
+        "best_gt_iou": 0.9226101051006049,
+        "best_gt_index": 0,
+        "best_gt_category_id": 19,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000487_000000000487_ILSVRC2012_val_00001624_rank02_q001_attn.jpg",
         "query_gt_attention_mass": 0.7389643013881508,
         "query_top_pred_attention_mass": 0.8328624994795968,
@@ -327,6 +366,9 @@
           497.04779052734375,
           371.3037414550781
         ],
+        "best_gt_iou": 0.2571773994939297,
+        "best_gt_index": 0,
+        "best_gt_category_id": 19,
         "out": "results/rfdetr_attention_query_overlays_train1000_6best/query_overlays/000000000487_000000000487_ILSVRC2012_val_00001624_rank03_q004_attn.jpg",
         "query_gt_attention_mass": 0.1762907022398872,
         "query_top_pred_attention_mass": 1.0,
