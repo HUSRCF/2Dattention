@@ -1,0 +1,21 @@
+{
+  "images": 200,
+  "queries": 196,
+  "query_pairs_with_iou": 196,
+  "query_mean_iou": 0.8354982432282235,
+  "query_median_iou": 0.9354724843433657,
+  "query_iou50_count": 177,
+  "query_iou50_rate": 0.9030612244897959,
+  "query_mean_gt_attention_mass": 0.8137130804857668,
+  "query_median_gt_attention_mass": 0.8585885712275148,
+  "query_zero_gt_attention_mass_count": 3,
+  "query_zero_gt_attention_mass_rate": 0.015306122448979591,
+  "mass_iou_pearson": 0.6874258880434739,
+  "mass_iou_spearman": 0.24186382753131677,
+  "low_mass_high_iou_count": 0,
+  "low_mass_high_iou_rate": 0.0,
+  "high_mass_low_iou_count": 8,
+  "high_mass_low_iou_rate": 0.04081632653061224,
+  "high_iou_mean_mass": 0.8502083009147732,
+  "low_iou_mean_mass": 0.4737312901734463
+}
