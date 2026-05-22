@@ -29,6 +29,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad-accum-steps", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--lr-encoder", type=float, default=None)
+    parser.add_argument("--lr-drop", type=int, default=None)
+    parser.add_argument("--lr-scheduler", choices=("step", "cosine"), default=None)
+    parser.add_argument("--lr-min-factor", type=float, default=None)
+    parser.add_argument("--warmup-epochs", type=float, default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="auto")
     parser.add_argument("--resolution", type=int, default=None)
     parser.add_argument(
@@ -89,6 +93,14 @@ def main() -> None:
         train_kwargs["resolution"] = args.resolution
     if args.lr_encoder is not None:
         train_kwargs["lr_encoder"] = args.lr_encoder
+    if args.lr_drop is not None:
+        train_kwargs["lr_drop"] = args.lr_drop
+    if args.lr_scheduler is not None:
+        train_kwargs["lr_scheduler"] = args.lr_scheduler
+    if args.lr_min_factor is not None:
+        train_kwargs["lr_min_factor"] = args.lr_min_factor
+    if args.warmup_epochs is not None:
+        train_kwargs["warmup_epochs"] = args.warmup_epochs
     if args.resume is not None:
         train_kwargs["resume"] = str(args.resume)
     print(f"rfdetr_model: {MODEL_CLASSES[args.model_size]}")
