@@ -527,16 +527,21 @@ Distillation interpretation:
   improves (`0.5550 -> 0.6111`). This establishes the larger split as a valid
   long-train protocol rather than a failed smoke. Continue this protocol only
   with longer detector-side training or a clearly stronger training recipe.
-- Continuing the same train1000 route for another 4-epoch fresh-optimizer stage
-  strengthens the result again. Official test export from the new
-  `checkpoint_best_regular.pth` gives class AP50 `0.2912`, AP75 `0.2395`, AP
-  `0.2190`, class-agnostic AP50 `0.6265`, AP75 `0.5350`, offcenter AP50
-  `0.2603`, center AP50 `0.2615`, small AP50 `0.2458`, medium AP50 `0.2865`,
-  and large AP50 `0.3646`. The staged progression on this larger split is now
-  class AP50 `0.0864 -> 0.2196 -> 0.2912`, so the active RF-DETR direction is
-  no longer schedule tweaking on the old 330-image split. It is controlled,
+- Continuing the same train1000 route in repeated 4-epoch fresh-optimizer stages
+  keeps strengthening the result. Official test export from the 6best regular
+  checkpoint gives class AP50 `0.2912`, AP75 `0.2395`, AP `0.2190`,
+  class-agnostic AP50 `0.6265`, AP75 `0.5350`, offcenter AP50 `0.2603`, small
+  AP50 `0.2458`, medium AP50 `0.2865`, and large AP50 `0.3646`. The next
+  10best regular checkpoint improves again to class AP50 `0.3155`, AP75
+  `0.2517`, AP `0.2394`, class-agnostic AP50 `0.6427`, offcenter AP50
+  `0.3081`, small AP50 `0.2792`, medium AP50 `0.3167`, and large AP50
+  `0.3572`. The staged progression on this larger split is now class AP50
+  `0.0864 -> 0.2196 -> 0.2912 -> 0.3155`, so the active RF-DETR direction is no
+  longer schedule tweaking on the old 330-image split. It is controlled,
   low-frequency longer detector-side training on the 1000-image image-disjoint
-  protocol.
+  protocol. Caveat: the last block's internal validation dipped at the final
+  epoch, so keep using independent test export from `checkpoint_best_regular.pth`
+  for conclusions.
 - RF-DETR deformable attention visualization is now available through
   `scripts/visualize_rfdetr_deformable_attention.py`. The script hooks
   `MSDeformAttn`, aggregates captured deformable cross-attention sampling
