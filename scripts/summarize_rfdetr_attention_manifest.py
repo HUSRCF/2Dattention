@@ -21,6 +21,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional JSON summary with correlation and failure-bucket diagnostics.",
     )
+    parser.add_argument(
+        "--bucket-contact-dir",
+        type=Path,
+        default=None,
+        help="Optional directory for contact sheets grouped by query diagnostic bucket.",
+    )
     return parser.parse_args()
 
 
@@ -35,10 +41,14 @@ def main() -> None:
     if args.diagnostic_out is not None:
         args.diagnostic_out.parent.mkdir(parents=True, exist_ok=True)
         args.diagnostic_out.write_text(json.dumps(diagnostics, indent=2) + "\n", encoding="utf-8")
+    if args.bucket_contact_dir is not None:
+        write_bucket_contact_sheets(args.bucket_contact_dir, query_rows)
     print(f"saved_image_attention_csv: {args.image_out}")
     print(f"saved_query_attention_csv: {args.query_out}")
     if args.diagnostic_out is not None:
         print(f"saved_attention_diagnostics: {args.diagnostic_out}")
+    if args.bucket_contact_dir is not None:
+        print(f"saved_bucket_contact_dir: {args.bucket_contact_dir}")
     print(f"images: {len(image_rows)}")
     print(f"queries: {len(query_rows)}")
     print(f"query_mean_iou: {diagnostics['query_mean_iou']}")
@@ -70,6 +80,8 @@ def image_summary_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def query_summary_row(row: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+    gt_mass = query["query_gt_attention_mass"]
+    best_iou = query.get("best_gt_iou", "")
     return {
         "image_id": row["image_id"],
         "file_name": row["file_name"],
@@ -79,14 +91,15 @@ def query_summary_row(row: dict[str, Any], query: dict[str, Any]) -> dict[str, A
         "query_index": query["query_index"],
         "class_id": query["class_id"],
         "score": query["score"],
-        "best_gt_iou": query.get("best_gt_iou", ""),
+        "best_gt_iou": best_iou,
         "best_gt_index": query.get("best_gt_index", ""),
         "best_gt_category_id": query.get("best_gt_category_id", ""),
         "box_x1": query["box_xyxy"][0],
         "box_y1": query["box_xyxy"][1],
         "box_x2": query["box_xyxy"][2],
         "box_y2": query["box_xyxy"][3],
-        "query_gt_attention_mass": query["query_gt_attention_mass"],
+        "query_gt_attention_mass": gt_mass,
+        "diagnostic_bucket": diagnostic_bucket(gt_mass, best_iou),
         "query_top_pred_attention_mass": query["query_top_pred_attention_mass"],
         "query_attention_entropy": query["query_attention_entropy"],
         "query_attention_peak_x": query["query_attention_peak_x"],
@@ -99,6 +112,24 @@ def mean(values: list[float]) -> float | str:
     if not values:
         return ""
     return float(sum(values) / len(values))
+
+
+def diagnostic_bucket(gt_mass: Any, best_iou: Any) -> str:
+    if gt_mass == "" or best_iou == "":
+        return "missing"
+    mass = float(gt_mass)
+    iou = float(best_iou)
+    if mass <= 0.0:
+        return "zero_mass"
+    if mass < 0.2 and iou >= 0.5:
+        return "low_mass_high_iou"
+    if mass >= 0.5 and iou < 0.5:
+        return "high_mass_low_iou"
+    if mass >= 0.5 and iou >= 0.5:
+        return "aligned_hit"
+    if mass < 0.5 and iou < 0.5:
+        return "aligned_miss"
+    return "mixed"
 
 
 def build_diagnostics(image_rows: list[dict[str, Any]], query_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -197,6 +228,55 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_bucket_contact_sheets(path: Path, rows: list[dict[str, Any]]) -> None:
+    from PIL import Image, ImageDraw
+
+    path.mkdir(parents=True, exist_ok=True)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["diagnostic_bucket"]), []).append(row)
+    for bucket, bucket_rows in grouped.items():
+        images = []
+        for row in bucket_rows:
+            image_path = Path(str(row["out"]))
+            if not image_path.exists():
+                continue
+            image = Image.open(image_path).convert("RGB")
+            image.thumbnail((360, 270))
+            tile = Image.new("RGB", (380, 320), "white")
+            tile.paste(image, ((380 - image.width) // 2, 0))
+            draw = ImageDraw.Draw(tile)
+            draw.text(
+                (8, 276),
+                f"id={row['image_id']} q={row['query_index']} score={float(row['score']):.3f}",
+                fill=(0, 0, 0),
+            )
+            draw.text(
+                (8, 296),
+                f"IoU={float(row['best_gt_iou']):.3f} mass={float(row['query_gt_attention_mass']):.3f}",
+                fill=(0, 0, 0),
+            )
+            images.append(tile)
+        if images:
+            contact = make_contact_sheet(images)
+            contact.save(path / f"{bucket}.jpg", quality=92)
+
+
+def make_contact_sheet(images: list[Any], columns: int = 3) -> Any:
+    from PIL import Image
+
+    if not images:
+        raise ValueError("Expected at least one image.")
+    width, height = images[0].size
+    rows = math.ceil(len(images) / columns)
+    sheet = Image.new("RGB", (columns * width, rows * height), "white")
+    for idx, image in enumerate(images):
+        x = (idx % columns) * width
+        y = (idx // columns) * height
+        sheet.paste(image, (x, y))
+    return sheet
 
 
 if __name__ == "__main__":

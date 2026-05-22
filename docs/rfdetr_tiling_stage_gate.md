@@ -566,6 +566,17 @@ Distillation interpretation:
   benchmark, but it gives a concrete filter for selecting failure cases before
   deciding whether the next fix should target query representation, box
   refinement, or scoring.
+- A larger top-1 off-center mining pass is available at
+  `results/rfdetr_attention_top1_offcenter40_train1000_6best/`. It covers 40
+  test images with one query overlay per image and writes bucket contact sheets
+  under `bucket_contact_sheets/`. Summary: mean nearest-GT IoU `0.751`, median
+  `0.858`, IoU50 `32/40`, mean GT attention mass `0.834`, and mass-IoU
+  correlations `Pearson=0.726`, `Spearman=0.359`. Bucket counts are `32`
+  aligned hits, `5` high-mass/low-IoU failures, `2` aligned misses, and `1`
+  zero-mass miss. The new practical diagnostic split is: zero/low-mass misses
+  point to query representation coverage, while high-mass/low-IoU cases point
+  to box refinement, duplicates, assignment, or scoring rather than a pure
+  attention-coverage failure.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
