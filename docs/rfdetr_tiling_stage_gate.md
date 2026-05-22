@@ -665,6 +665,13 @@ Distillation interpretation:
   failures, and can worsen class recall while localization remains high. This
   shifts the next detector-side work toward category assignment / class-head
   candidate coverage rather than more score-only calibration.
+- High-IoU category-confusion diagnostics show where those failures go. On
+  14best `top100 / IoU 0.5`, representative wrong-class flows include
+  `n07714571 -> n07739125` (`14/18`, mean IoU `0.894`), `n03188531 ->
+  n07747607` (`6/11`, mean IoU `0.916`; calibrated `9/11`), and `n02799071 ->
+  n03720891` (`5/9`, mean IoU `0.904`). These are high-overlap boxes with
+  wrong categories, so the failure is semantic/category assignment after
+  localization rather than missing object support alone.
 - Small-resume8 also clears the train-teacher gate: raw train AP50 `0.4599`
   beats Nano5 raw train AP50 `0.4474`, and filtered pseudo AP50 beats Nano5 at
   the same filters (`s015/top20 0.4221 vs 0.4098`, `s020/top20 0.4033 vs
