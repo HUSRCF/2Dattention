@@ -1054,22 +1054,30 @@ Low-interference class-head-only continuation:
 |---|---|---:|---:|---:|---:|---:|---:|
 | Base regular checkpoint | all, previous 4ep continuation | 0.1543 | 0.1869 | 0.1645 | 0.4206 | 0.5584 | 0.4484 |
 | Class-head-only +1ep | classification heads only | 0.1609 | 0.1942 | 0.1704 | 0.4253 | 0.5661 | 0.4499 |
+| Query+class +1ep | query/refpoint embeddings + class heads | 0.1603 | 0.1938 | 0.1707 | 0.4269 | 0.5677 | 0.4547 |
 
-- `scripts/train_rfdetr_coco.py` now supports `--trainable-scope class-head`.
+- `scripts/train_rfdetr_coco.py` now supports `--trainable-scope class-head`
+  and `--trainable-scope query-class-head`.
   RF-DETR rebuilds its LightningModule inside `.train(...)`, so the script
   patches the internal module construction and freezes after checkpoint loading.
-  The verified run had `723K` trainable parameters and `31.6M` frozen.
+  The verified class-head run had `723K` trainable parameters and `31.6M`
+  frozen; the query+class run had `1.7M` trainable and `30.6M` frozen.
 - The gain is real but small: class AP improves by `+0.0066` and AP50 by
   `+0.0073`. It also slightly improves class-agnostic localization eval, likely
   through score/ranking effects rather than new box geometry.
+- Releasing query feature and reference-point embeddings does not improve class
+  AP over class-head-only. It slightly improves class-agnostic localization
+  metrics, but coverage and class-aware score-IoU alignment remain basically
+  unchanged.
 - The remaining bottleneck is not solved: class-aware score-IoU Spearman only
   moves from `0.0862` to `0.0946`, and top-100 category coverage is nearly flat
   (`loc=0.8510`, global class-aware `0.6440`, per-category `0.7103`).
 - Interpretation: low-interference class-head finetuning is a useful detector-
-  side control, but it is not enough to close the category-assignment/oracle gap.
-  Future work should target query semantic representation or detector-integrated
-  category supervision rather than only recalibrating the final class linear
-  layers.
+  side control, but neither final class-head tuning nor learned query/refpoint
+  tuning is enough to close the category-assignment/oracle gap. Future work
+  should target detector-integrated category supervision or stronger teacher
+  signals, not only recalibrating the final class linear layers or query
+  embeddings.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_loc_cocoeval.csv`
@@ -1078,6 +1086,13 @@ Low-interference class-head-only continuation:
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_category_coverage_gap.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_per_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_score_iou_loc.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_score_iou_classaware.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_per_category_coverage_gap.csv`
 
 ## Stop / Continue Rule
 

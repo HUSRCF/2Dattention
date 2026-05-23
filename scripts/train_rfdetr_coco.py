@@ -49,11 +49,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pretrain-weights", type=Path, default=None)
     parser.add_argument(
         "--trainable-scope",
-        choices=("all", "class-head"),
+        choices=("all", "class-head", "query-class-head"),
         default="all",
         help=(
             "Restrict trainable RF-DETR parameters. `class-head` freezes the "
-            "backbone/decoder/box heads and trains only detector classification heads."
+            "backbone/decoder/box heads and trains only detector classification heads. "
+            "`query-class-head` also trains query features and reference points."
         ),
     )
     parser.add_argument("--seed", type=int, default=None, help="Seed Python, NumPy, Torch, and Lightning if available.")
@@ -207,6 +208,9 @@ def configure_trainable_scope(model: Any, scope: str) -> dict[str, int]:
     elif scope == "class-head":
         for name, parameter in inner.named_parameters():
             parameter.requires_grad_(is_class_head_parameter(name))
+    elif scope == "query-class-head":
+        for name, parameter in inner.named_parameters():
+            parameter.requires_grad_(is_class_head_parameter(name) or is_query_parameter(name))
     else:  # pragma: no cover - argparse constrains this.
         raise ValueError(f"unknown trainable scope: {scope}")
     return trainable_parameter_report(inner)
@@ -228,6 +232,10 @@ def is_class_head_parameter(name: str) -> bool:
     return name == "class_embed.weight" or name == "class_embed.bias" or name.startswith(
         "transformer.enc_out_class_embed."
     )
+
+
+def is_query_parameter(name: str) -> bool:
+    return name in {"query_feat.weight", "refpoint_embed.weight"}
 
 
 def trainable_parameter_report(module: Any) -> dict[str, int]:
