@@ -1289,6 +1289,13 @@ Full low-LR detector continuation:
   zero-hit, and only `2` categories rescued from zero-hit, so the extra-low-LR
   continuation should be treated as class-AP-positive but candidate-coverage
   mixed rather than a monotonic candidate repair.
+- `scripts/summarize_candidate_failure_categories.py` now joins those
+  transitions with split counts and base high-IoU confusion flows in
+  `results/rfdetr_stratified_seed41_candidate_failure_categories.csv`. The
+  clearest qualitative targets are `n03676483`, `n07695742`, and `n04468005`:
+  they have nontrivial train/test support, high nearest-box IoU, and stable
+  wrong-category flows, so they are better debugging targets than aggregate AP
+  alone.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
