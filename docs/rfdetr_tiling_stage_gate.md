@@ -1141,13 +1141,23 @@ Category candidate-set diagnostic:
   `n02374451`, `n04228054`, `n04379243`), while several already-good classes
   degrade. This rules out a broad class-candidate repair from local decoder
   unfreezing.
+- Joining split counts confirms this is not only residual data starvation after
+  stratification. For base zero-hit categories with `groups>=20`, train box
+  counts range from `6` to `20` with median `13.5`; for decoder+class they range
+  from `6` to `20` with median `12.0`. The clearest failures,
+  `n03676483` and `n07695742`, each have `20` train boxes and high nearest-box
+  IoU, but still no emitted correct category candidate. Training count and hit
+  rate are only weakly correlated in the high-support set (`r≈0.27` base,
+  `r≈0.25` decoder+class).
 - Artifacts:
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_summary.csv`
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_groupmax_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_per_category.csv`
+  - `results/rfdetr_stratified_seed41_2best_candidate_oracle_per_category_with_split_counts.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_summary.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_groupmax_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_per_category.csv`
+  - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_per_category_with_split_counts.csv`
 
 ## Stop / Continue Rule
 
