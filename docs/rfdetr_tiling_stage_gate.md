@@ -1048,6 +1048,37 @@ Small deformable-attention probe:
   - `results/rfdetr_stratified_seed41_2best_attention_offcenter_probe_diagnostics.json`
   - `results/rfdetr_stratified_seed41_2best_attention_offcenter_probe_queries.csv`
 
+Low-interference class-head-only continuation:
+
+| Model | Trainable scope | AP | AP50 | AP75 | Loc AP | Loc AP50 | Loc AP75 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Base regular checkpoint | all, previous 4ep continuation | 0.1543 | 0.1869 | 0.1645 | 0.4206 | 0.5584 | 0.4484 |
+| Class-head-only +1ep | classification heads only | 0.1609 | 0.1942 | 0.1704 | 0.4253 | 0.5661 | 0.4499 |
+
+- `scripts/train_rfdetr_coco.py` now supports `--trainable-scope class-head`.
+  RF-DETR rebuilds its LightningModule inside `.train(...)`, so the script
+  patches the internal module construction and freezes after checkpoint loading.
+  The verified run had `723K` trainable parameters and `31.6M` frozen.
+- The gain is real but small: class AP improves by `+0.0066` and AP50 by
+  `+0.0073`. It also slightly improves class-agnostic localization eval, likely
+  through score/ranking effects rather than new box geometry.
+- The remaining bottleneck is not solved: class-aware score-IoU Spearman only
+  moves from `0.0862` to `0.0946`, and top-100 category coverage is nearly flat
+  (`loc=0.8510`, global class-aware `0.6440`, per-category `0.7103`).
+- Interpretation: low-interference class-head finetuning is a useful detector-
+  side control, but it is not enough to close the category-assignment/oracle gap.
+  Future work should target query semantic representation or detector-integrated
+  category supervision rather than only recalibrating the final class linear
+  layers.
+- Artifacts:
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_score_iou_loc.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_score_iou_classaware.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_per_category_coverage_gap.csv`
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.

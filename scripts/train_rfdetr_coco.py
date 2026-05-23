@@ -47,6 +47,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-interval", type=int, default=1)
     parser.add_argument("--resume", type=Path, default=None)
     parser.add_argument("--pretrain-weights", type=Path, default=None)
+    parser.add_argument(
+        "--trainable-scope",
+        choices=("all", "class-head"),
+        default="all",
+        help=(
+            "Restrict trainable RF-DETR parameters. `class-head` freezes the "
+            "backbone/decoder/box heads and trains only detector classification heads."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=None, help="Seed Python, NumPy, Torch, and Lightning if available.")
     parser.add_argument("--tensorboard", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=False)
@@ -72,7 +81,9 @@ def main() -> None:
         print(f"requested_num_classes: {args.num_classes if args.num_classes is not None else 'auto'}")
         print(f"rfdetr_classes: {', '.join(report['classes'])}")
         return
+    install_rfdetr_trainable_scope_patch(args.trainable_scope)
     model = build_rfdetr_model(args.model_size, pretrain_weights=args.pretrain_weights, num_classes=args.num_classes)
+    trainable_report = configure_trainable_scope(model, args.trainable_scope)
     train_kwargs = {
         "dataset_dir": str(args.dataset_dir),
         "output_dir": str(args.output_dir),
@@ -108,6 +119,12 @@ def main() -> None:
     print(f"output_dir: {args.output_dir}")
     if args.seed is not None:
         print(f"seed: {args.seed}")
+    print(f"trainable_scope: {args.trainable_scope}")
+    print(
+        "trainable_parameters: "
+        f"{trainable_report['trainable_tensors']}/{trainable_report['total_tensors']} tensors, "
+        f"{trainable_report['trainable_elements']}/{trainable_report['total_elements']} elements"
+    )
     model.train(**train_kwargs)
 
 
@@ -152,6 +169,83 @@ def rfdetr_availability_report() -> dict[str, list[str]]:
     module = import_rfdetr_module()
     return {
         "classes": [class_name for class_name in MODEL_CLASSES.values() if hasattr(module, class_name)],
+    }
+
+
+def install_rfdetr_trainable_scope_patch(scope: str) -> None:
+    if scope == "all":
+        return
+    try:
+        from rfdetr.training.module_model import RFDETRModelModule
+    except ImportError:
+        # Let RF-DETR raise its normal training-dependency error later.
+        return
+    if getattr(RFDETRModelModule, "_attention2d_trainable_scope_patch", None) == scope:
+        return
+    original_init = RFDETRModelModule.__init__
+
+    def patched_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        original_init(self, *args, **kwargs)
+        report = configure_trainable_scope(self.model, scope)
+        print(
+            "inner_trainable_parameters: "
+            f"{report['trainable_tensors']}/{report['total_tensors']} tensors, "
+            f"{report['trainable_elements']}/{report['total_elements']} elements"
+        )
+
+    RFDETRModelModule.__init__ = patched_init
+    RFDETRModelModule._attention2d_trainable_scope_patch = scope
+
+
+def configure_trainable_scope(model: Any, scope: str) -> dict[str, int]:
+    inner = locate_torch_module(model)
+    if inner is None:
+        raise RuntimeError("Unable to locate RF-DETR torch module for trainable-scope configuration")
+    if scope == "all":
+        for _name, parameter in inner.named_parameters():
+            parameter.requires_grad_(True)
+    elif scope == "class-head":
+        for name, parameter in inner.named_parameters():
+            parameter.requires_grad_(is_class_head_parameter(name))
+    else:  # pragma: no cover - argparse constrains this.
+        raise ValueError(f"unknown trainable scope: {scope}")
+    return trainable_parameter_report(inner)
+
+
+def locate_torch_module(model: Any) -> Any | None:
+    if hasattr(model, "named_parameters"):
+        return model
+    context_model = getattr(model, "model", None)
+    if hasattr(context_model, "named_parameters"):
+        return context_model
+    nested_model = getattr(context_model, "model", None)
+    if hasattr(nested_model, "named_parameters"):
+        return nested_model
+    return None
+
+
+def is_class_head_parameter(name: str) -> bool:
+    return name == "class_embed.weight" or name == "class_embed.bias" or name.startswith(
+        "transformer.enc_out_class_embed."
+    )
+
+
+def trainable_parameter_report(module: Any) -> dict[str, int]:
+    total_tensors = 0
+    trainable_tensors = 0
+    total_elements = 0
+    trainable_elements = 0
+    for _name, parameter in module.named_parameters():
+        total_tensors += 1
+        total_elements += parameter.numel()
+        if parameter.requires_grad:
+            trainable_tensors += 1
+            trainable_elements += parameter.numel()
+    return {
+        "total_tensors": total_tensors,
+        "trainable_tensors": trainable_tensors,
+        "total_elements": total_elements,
+        "trainable_elements": trainable_elements,
     }
 
 
