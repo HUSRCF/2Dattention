@@ -32,6 +32,11 @@ FIELDNAMES = (
     "top100_class_percat_recall",
     "score_iou_loc_spearman",
     "score_iou_class_spearman",
+    "high_support_min_groups",
+    "high_support_categories",
+    "high_support_zero_hit",
+    "high_support_weighted_hit",
+    "high_support_mean_nearest_iou",
     "notes",
 )
 
@@ -45,8 +50,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Run entry as comma-separated fields: "
             "name,protocol=...,class=...,loc=...,slices=...,candidate=...,"
-            "candidate_oracle=...,coverage=...,score_loc=...,score_class=...,notes=..."
+            "candidate_per_category=...,candidate_oracle=...,coverage=...,"
+            "score_loc=...,score_class=...,notes=..."
         ),
+    )
+    parser.add_argument(
+        "--high-support-min-groups",
+        type=int,
+        default=20,
+        help="Minimum grouped boxes for high-support candidate diagnostics.",
     )
     parser.add_argument("--out", type=Path, required=True)
     return parser.parse_args()
@@ -54,7 +66,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    rows = [summarize_entry(entry) for entry in args.entry]
+    rows = [
+        summarize_entry(entry, high_support_min_groups=args.high_support_min_groups)
+        for entry in args.entry
+    ]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(FIELDNAMES), lineterminator="\n")
@@ -68,12 +83,13 @@ def main() -> None:
         )
 
 
-def summarize_entry(entry: str) -> dict[str, str]:
+def summarize_entry(entry: str, high_support_min_groups: int) -> dict[str, str]:
     name, values = parse_entry(entry)
     out = {field: "" for field in FIELDNAMES}
     out["setting"] = name
     out["protocol"] = values.get("protocol", "")
     out["notes"] = values.get("notes", "")
+    out["high_support_min_groups"] = str(high_support_min_groups)
 
     if "class" in values:
         row = read_single_row(Path(values["class"]))
@@ -102,6 +118,28 @@ def summarize_entry(entry: str) -> dict[str, str]:
         out["candidate_hit_rate"] = row.get("candidate_hit_rate", "")
         out["candidate_mean_nearest_iou"] = row.get("mean_nearest_iou", "")
         out["candidate_mean_hit_iou"] = row.get("mean_hit_iou", "")
+    if "candidate_per_category" in values:
+        rows = read_rows(Path(values["candidate_per_category"]))
+        high_support = [
+            row
+            for row in rows
+            if parse_int(row.get("groups", "0")) >= high_support_min_groups
+        ]
+        if high_support:
+            groups = [parse_int(row["groups"]) for row in high_support]
+            hits = [parse_int(row["candidate_hits"]) for row in high_support]
+            nearest = [float(row.get("mean_nearest_iou", "0") or 0.0) for row in high_support]
+            total_groups = sum(groups)
+            out["high_support_categories"] = str(len(high_support))
+            out["high_support_zero_hit"] = str(sum(1 for hit in hits if hit == 0))
+            out["high_support_weighted_hit"] = format_float(
+                sum(hits) / total_groups if total_groups else 0.0
+            )
+            out["high_support_mean_nearest_iou"] = format_float(
+                sum(value * group for value, group in zip(nearest, groups, strict=True)) / total_groups
+                if total_groups
+                else 0.0
+            )
     if "candidate_oracle" in values:
         row = read_single_row(Path(values["candidate_oracle"]))
         out["candidate_oracle_ap"] = row.get("ap", "")
@@ -161,6 +199,14 @@ def first_row(rows: list[dict[str, str]], key: str, value: str) -> dict[str, str
         if row.get(key) == value:
             return row
     return None
+
+
+def format_float(value: float) -> str:
+    return f"{value:.12g}"
+
+
+def parse_int(value: str) -> int:
+    return int(float(value or "0"))
 
 
 if __name__ == "__main__":

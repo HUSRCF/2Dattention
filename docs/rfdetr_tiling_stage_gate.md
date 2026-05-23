@@ -1280,7 +1280,8 @@ Full low-LR detector continuation:
 - `scripts/summarize_rfdetr_mainline.py` now produces
   `results/rfdetr_stratified_mainline_summary.csv`, the compact comparison
   table for class AP, loc AP, slice AP50, candidate hit/oracle AP, top-k
-  coverage, and score-IoU correlation across stratified RF-DETR runs.
+  coverage, score-IoU correlation, and high-support candidate zero-hit
+  diagnostics across stratified RF-DETR runs.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
