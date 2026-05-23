@@ -100,18 +100,28 @@ local_anchor_residual_query
 
 ## 推荐旗舰路线
 
-建议把 6-12 个月主项目定义为：
+当前最新实验已经进一步收缩了路线。`reinject`、querymask、grid query、reference-box
+controls 和 minimal DAB-style updates 都暴露了 AP/geometry trade-off，但没有解决
+off-center object binding。因此 6-12 个月主项目不应继续停留在 tiny detector
+scaffold，而应定义为：
 
 ```text
-Layerwise Proposal Refresh + Frozen Rank Calibration
+Real RF-DETR Adaptation
++ Category-Candidate Diagnostics
++ Robustness Slice Protocol
 ```
 
-分两阶段执行：
+分三阶段执行：
 
-1. 低成本验证：冻结式排序校准头。
-2. 中风险创新：轻量 layerwise proposal refresh / `reinject`。
+1. 正式 RF-DETR 长训 / continuation：使用 `checkpoint_best_regular.pth`、独立 test
+   export、class-aware/class-agnostic/slice/candidate-oracle 共同报告。
+2. 类别候选修复：围绕 category assignment / candidate coverage，而不是 post-hoc
+   crop-prior 或 scalar calibration。
+3. off-center robustness：把 tiny-detector 的 offcenter 失败结论转化为真实 detector
+   诊断，不再在 tiny scaffold 上堆 query/reference 小启发式。
 
-这样可以先回答 ranking/calibration 是否真是瓶颈；如果成立，再推进 proposal 在 decoder 中以轻量方式被持续消费。`persistent proposal state` 已经在标准 mini 协议下未能救回 predicted proposal，因此不再作为 active detector architecture；只作为 oracle/proposal-quality 诊断分支保留。
+`persistent proposal state` 仍只保留为 oracle/proposal-quality 诊断分支。`reinject`
+也降级为轻量 proposal-consumption probe，不再作为 active detector architecture。
 
 ## 方向 A：冻结式排序校准头
 
@@ -185,6 +195,55 @@ reinject/refresh 必须同时改善 geometry 与 AP，才继续扩大。
 persistent 只有在 future proposal-quality 或 oracle-gap run 同时超过 reinject 的 geometry/AP 后，才允许回到 mainline。
 ```
 
+当前状态更新：
+
+- 标准 mini 协议下，`reinject` 能给出有限 aggregate AP/ranking 信号，但不能解决
+  offcenter object binding。
+- 在 `no_object_weight=0.5` offcenter stress 中，`reinject_g003_quality_head`
+  对 aggregate AP50 有小幅帮助，但 final/best IoU、AP75 和 offcenter AP50 都下降。
+- 结论：`reinject` 是机制诊断，不是当前主线。不要继续扩大 gate/alpha/persistent
+  sweep；如果再碰这条线，只应作为 oracle-gap / proposal-quality 诊断。
+
+## 方向 B2：Real RF-DETR Direct Adaptation
+
+目标：
+
+```text
+使用真实 RF-DETR Small/Nano 训练协议验证类别候选、定位和 slice robustness；
+把 tiny-detector 的机制假设迁移到成熟 detector，而不是继续修补玩具 scaffold。
+```
+
+当前证据：
+
+- Stratified RF-DETR Small 384 2ep 是 fair-split smoke baseline。
+- Seed41 full low-LR all-parameter continuation 首次同时改善 class AP 和 category
+  candidate generation。
+- 同 seed 继续低 LR 能继续提高 deployed AP，但 candidate coverage 不再单调改善。
+- Seed43 forced-head 2ep sanity 已确认 `num_classes=200` head 修复在推理路径生效；
+  它是 repaired-head baseline row，不改变长训主线。
+- 更长 direct Small 训练已成为当前最强 RF-DETR 路线，但 epoch optimum 是
+  seed-sensitive；结论必须来自 independent `predict_rfdetr_coco.py` export，而不是
+  RF-DETR internal EMA/best-total。
+
+主指标：
+
+- class AP/AP50/AP75
+- class-agnostic loc AP/AP50/AP75
+- offcenter / center / small / medium / large slice AP50
+- candidate hit rate
+- candidate-oracle AP/AP50/AP75
+- top-k loc/class/per-category coverage
+- score-IoU correlation
+
+阶段门：
+
+```text
+如果 longer direct RF-DETR 在第二 seed 上也稳定提高 class AP50 和 slice AP50，
+主线转为 real RF-DETR long-train / category-candidate repair。
+如果 AP 提升但 candidate hit/candidate-oracle 不升，说明只是 scoring/ranking 改善，
+不能宣称 candidate generation 被修复。
+```
+
 ## 方向 C：任务自适应 Local-State Interaction
 
 这不是当前第一优先级，但可作为后续 backbone 方向。
@@ -226,16 +285,16 @@ persistent 只有在 future proposal-quality 或 oracle-gap run 同时超过 rei
 
 | 时间 | 任务 |
 |---|---|
-| 2026-06 | 固定 baseline、slice 协议、predicted-vs-oracle proposal gap |
-| 2026-07 | frozen rank calibrator 原型与 calibration split |
-| 2026-08 | calibration / ranking 消融，阶段门 1 |
-| 2026-09 | layerwise proposal refresh / reinject 原型 |
-| 2026-10 | init-only / re-inject / oracle proposal 对照，persistent 仅保留为诊断 |
-| 2026-11 | ambiguity split 大规模评测，阶段门 2 |
-| 2026-12 | 可选 teacher-guided proposal-ranking distillation |
-| 2027-01 | license / IP / FTO 复核，阶段门 3 |
-| 2027-02 | 论文写作、图表整理、外部复现 |
-| 2027-03 | 补实验、投稿/专利评估 |
+| 2026-06 | 固定 strict split、slice 协议、RF-DETR regular-checkpoint export |
+| 2026-07 | 完成 RF-DETR direct Small 多 seed / epoch curve |
+| 2026-08 | category-candidate diagnostics：hit rate、oracle AP、per-category zero-hit |
+| 2026-09 | offcenter/small robustness slice + qualitative attention / prediction overlays |
+| 2026-10 | 若 direct training 饱和，再做 teacher-guided category / proposal-use distillation |
+| 2026-11 | 更大协议或外部 benchmark 复验 |
+| 2026-12 | license / IP / FTO 复核 |
+| 2027-01 | 论文主表、negative findings、消融表整理 |
+| 2027-02 | 外部复现与补实验 |
+| 2027-03 | 投稿/专利评估 |
 
 ## 预算口径
 
@@ -258,17 +317,18 @@ persistent 只有在 future proposal-quality 或 oracle-gap run 同时超过 rei
 
 P0:
 
-- 保持 `class_prob * quality^2`, `temperature=1.0` 作为预注册基线。
-- 建立 calibration split；启用 calibration 时，用 calibration-selected alpha 作为 final eval 的 fixed score，不再用 eval set 调 alpha / temperature。
-- 补 score-IoU / quality-IoU / combined-score-IoU correlation。
-- 汇总 predicted-vs-oracle proposal gap。
+- 继续使用 RF-DETR `checkpoint_best_regular.pth` 做独立 prediction export；不要用
+  `best_total`/EMA 做结论。
+- 维护 class-aware、class-agnostic、slice、candidate-oracle、coverage、score-IoU
+  统一报告。
+- 把 forced-head seed43 2ep 作为 repaired-head sanity row，不要和 seed41 long
+  continuation 混作同阶段比较。
 
 P1:
 
-- 以 `reinject` / layerwise refresh 作为 active predicted-proposal 路线。
-- 做 init-only vs layerwise re-inject vs oracle-proposal refresh 对照。
-- 记录 oracle-gap closing ratio。
-- 不再继续抢救 predicted persistent；persistent 只用于 oracle/proposal-quality branch。
+- RF-DETR direct Small long-train / continuation 是 active detector route。
+- 只在 direct route 饱和后，再考虑 teacher-guided category/proposal-use distillation。
+- 类别候选修复优先于 post-hoc crop-prior 或 scalar calibration。
 
 P2:
 
@@ -281,7 +341,7 @@ P2:
 
 P3:
 
-- 仅在 P0/P1 成立后，再做 RF-DETR teacher distillation。
+- 仅在 direct RF-DETR route 明确饱和后，再做 teacher distillation。
 
 ## 最终判断
 
@@ -298,12 +358,13 @@ P3:
 实验显示 early memory 不稳；
 classification 更受益于 local-state refinement；
 dense spatial 与 detection 更需要 proposal/anchor signal 被 query 持续消费；
-real DET 的 AP ranking 需要低干扰 quality calibration。
+real DET 的 AP ranking 需要低干扰 quality calibration；
+但真正 RF-DETR 路线目前更受 category-candidate generation 和长训协议支配。
 ```
 
 一句话：
 
 ```text
-先用 frozen ranking calibrator 低成本确认 score-quality gap；
-再用 layerwise proposal refresh / reinject 解决 predicted proposal consumption gap。
+tiny detector 已经完成机制排雷；
+下一阶段用真实 RF-DETR regular-checkpoint 长训和 category-candidate diagnostics 推进。
 ```
