@@ -1254,6 +1254,22 @@ Full low-LR detector continuation:
   serious check is another seed and/or a longer regular-checkpoint continuation,
   with class-aware AP, class-agnostic loc AP, slice AP, candidate hit rate, and
   candidate-oracle AP reported together.
+- A same-seed 2-epoch continuation from this checkpoint at lr `3e-5` improves
+  deployed class AP further, but it does not keep repairing category candidates.
+  Independent test class AP/AP50/AP75 becomes `0.2016/0.2625/0.2252`, with
+  strong slice AP50 on offcenter (`0.2455`), small (`0.1952`), medium
+  (`0.3222`), and large (`0.3566`) objects. However class-agnostic loc AP/AP50
+  drops to `0.4131/0.5640`, grouped candidate hit rate drops to `39.8%`,
+  high-support weighted hit drops to `39.9%`, and high-support zero-hit
+  categories increase to `13`. Candidate-oracle AP/AP50/AP75 is
+  `0.4242/0.5668/0.4557`. This is useful for deployed AP, but it suggests the
+  candidate-coverage repair has likely plateaued on this seed.
+- Updated decision: do not keep extending seed41 blindly. The next formal
+  experiment should either repeat the full low-LR route on a second seed or run
+  a longer planned RF-DETR protocol with candidate-hit diagnostics as a stage
+  gate. If the second seed repeats the pattern, full detector-side adaptation
+  becomes the current main route; if not, the 2ep gain should be treated as a
+  seed-specific continuation result.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
@@ -1267,6 +1283,13 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_per_category_coverage_gap_with_split_counts.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_candidate_oracle_summary.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_per_category_coverage_gap_with_split_counts.csv`
 
 Avoid:
 

@@ -1683,6 +1683,7 @@ Stronger-background offcenter slice-calibration control:
   - A high-support category check confirms the candidate gain is not purely a low-support artifact. For categories with at least `20` grouped boxes, weighted hit rate improves from `37.8%` in the base checkpoint to `41.1%` after full low-LR continuation, while zero-hit high-support categories fall from `10` to `8`.
   - Top-k coverage diagnostics agree with the candidate-oracle read: class-aware global top-100 recall improves from `0.6424` to `0.6887`, and per-category class-aware recall improves from `0.7119` to `0.7467`; class-agnostic loc recall is roughly flat/slightly lower (`0.8427 -> 0.8311`). Score-IoU alignment is still not solved (`loc Spearman=-0.1376`, class-aware Spearman `0.1082`), so the improvement is primarily semantic candidate generation rather than scalar calibration.
   - Interpretation: the category-candidate problem is not fixed by class-head-only, query-only, decoder-only, hard-category oversampling, scalar calibration, or persistent proposal state. It does respond to real full detector-side adaptation. The active route should therefore move to a formal longer RF-DETR protocol: repeat full low-LR continuation on another seed and/or extend the best regular checkpoint, while continuing to report candidate hit rate and candidate-oracle AP as primary diagnostics. Do not treat hard-category oversampling as the fix; it slightly regularizes AP but worsens candidate generation.
+  - Follow-up full-model continuation from the full low-LR checkpoint at lr `3e-5` for 2 more epochs gives a mixed result. Class AP/AP50/AP75 continues to improve to `0.2016/0.2625/0.2252`, with strong slice AP50 gains on offcenter (`0.2455`), small (`0.1952`), medium (`0.3222`), and large (`0.3566`) objects. However class-agnostic loc AP/AP50/AP75 drops to `0.4131/0.5640/0.4450`, candidate hit rate drops from `40.6%` to `39.8%`, high-support weighted hit drops from `41.1%` to `39.9%`, and high-support zero-hit categories increase from `8` to `13`. Candidate-oracle AP/AP50/AP75 is `0.4242/0.5668/0.4557`, roughly flat in AP50 but below the prior AP/AP75. This means same-seed longer continuation improves deployed class AP but does not continue repairing candidate coverage. Next serious check should be second seed or a formal longer protocol, not indefinite continuation of seed41.
   - Artifacts:
     - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
     - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
@@ -1697,3 +1698,10 @@ Stronger-background offcenter slice-calibration control:
     - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
     - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
     - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_per_category_coverage_gap_with_split_counts.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_test_cocoeval.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_test_loc_cocoeval.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_test_slices.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_candidate_oracle_summary.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_candidate_oracle_groupmax_cocoeval.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_category_coverage_gap.csv`
+    - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_per_category_coverage_gap_with_split_counts.csv`
