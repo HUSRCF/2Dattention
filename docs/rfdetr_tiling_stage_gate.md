@@ -1220,6 +1220,54 @@ Hard-category oversampling hook:
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_candidate_oracle_per_category.csv`
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_candidate_oracle_per_category_with_split_counts.csv`
 
+Full low-LR detector continuation:
+
+- A 2-epoch all-parameter continuation from the same stratified regular
+  checkpoint, using lr `5e-5`, is the first intervention in this series that
+  clearly improves both AP and category candidate generation. Independent test
+  metrics from `checkpoint_best_regular.pth` are class AP/AP50/AP75
+  `0.1930/0.2558/0.2154` and class-agnostic loc AP/AP50/AP75
+  `0.4277/0.5754/0.4622`.
+- The slice gains are broad rather than a single-slice artifact:
+  `offcenter AP50=0.2252`, `center=0.2582`, `small=0.1772`,
+  `medium=0.2634`, and `large=0.3483`.
+- Candidate-set diagnostics also move in the right direction. The grouped-box
+  candidate hit rate rises to `40.6%`, mean nearest IoU to `0.3330`, and
+  candidate-oracle AP/AP50/AP75 to `0.4290/0.5627/0.4716`. This is the opposite
+  of the hard-category oversampling result, which slightly improved AP but
+  worsened candidate coverage.
+- The high-support category summary confirms the improvement is not purely a
+  few low-support classes. For categories with at least `20` grouped boxes,
+  weighted hit rate improves from `37.8%` in the base checkpoint to `41.1%` in
+  the full low-LR continuation; zero-hit high-support categories fall from
+  `10` to `8`.
+- Standard coverage diagnostics show the same semantic-candidate shift. Top-100
+  class-aware global recall improves from `0.6424` in the base checkpoint to
+  `0.6887`, and per-category class-aware recall improves from `0.7119` to
+  `0.7467`; class-agnostic loc recall is roughly flat/slightly lower
+  (`0.8427 -> 0.8311`). Score-IoU alignment is still imperfect: loc Spearman is
+  `-0.1376`, while class-aware Spearman is `0.1082`. The gain is candidate
+  generation/semantic coverage more than clean scalar calibration.
+- Current decision: the active RF-DETR route should be formal full-detector
+  adaptation, not further low-interference class-head repair, hard-category
+  oversampling, scalar calibration, or persistent proposal state. The next
+  serious check is another seed and/or a longer regular-checkpoint continuation,
+  with class-aware AP, class-agnostic loc AP, slice AP, candidate hit rate, and
+  candidate-oracle AP reported together.
+- Artifacts:
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_candidate_oracle_summary.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_candidate_oracle_per_category.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_candidate_oracle_per_category_with_split_counts.csv`
+  - `results/rfdetr_stratified_seed41_candidate_high_support_summary.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_per_category_coverage_gap_with_split_counts.csv`
+
 Avoid:
 
 - Returning to persistent proposal state.
