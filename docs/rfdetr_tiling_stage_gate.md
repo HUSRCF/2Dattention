@@ -1087,6 +1087,7 @@ Low-interference class-head-only continuation:
   signals, or data/split scale, not only low-interference parameter-scope
   expansion.
 - Artifacts:
+  - `results/rfdetr_stratified_seed41_low_interference_scope_summary.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_loc_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_slices.csv`
