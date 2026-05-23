@@ -1277,6 +1277,10 @@ Full low-LR detector continuation:
   `0.1474/0.1888/0.1608`, loc AP/AP50/AP75 `0.3635/0.5068/0.3868`, candidate
   hit rate `37.8%`, and candidate-oracle AP/AP50/AP75 `0.3729/0.4849/0.4079`.
   This is a repaired-head baseline sanity row, not a new long-train result.
+- `scripts/summarize_rfdetr_mainline.py` now produces
+  `results/rfdetr_stratified_mainline_summary.csv`, the compact comparison
+  table for class AP, loc AP, slice AP50, candidate hit/oracle AP, top-k
+  coverage, and score-IoU correlation across stratified RF-DETR runs.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
@@ -1304,6 +1308,7 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed43_forced_2ep_candidate_oracle_groupmax_cocoeval.csv`
   - `results/rfdetr_stratified_seed43_forced_2ep_category_coverage_gap.csv`
   - `results/rfdetr_stratified_seed43_forced_2ep_per_category_coverage_gap_with_split_counts.csv`
+  - `results/rfdetr_stratified_mainline_summary.csv`
 
 Avoid:
 
