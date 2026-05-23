@@ -1185,6 +1185,25 @@ Next useful directions:
 4. If trying DET-aware category again, prefer detector-integrated training or
    distillation rather than post-hoc crop-prior relabeling.
 
+Hard-category oversampling hook:
+
+- `scripts/build_coco_hard_category_oversample.py` builds an RF-DETR-compatible
+  dataset by duplicating train image records that contain candidate-missing hard
+  categories, while preserving the original valid/test splits. It keeps image
+  files linked by default and rewrites only the train COCO annotations.
+- The first smoke uses base candidate misses with `groups>=20` and
+  `candidate_hit_rate=0`, targets `60` train boxes per hard category, and caps
+  per-image repeat at `5`. The generated dataset
+  `/private/tmp/rfdetr_stratified_seed41_train1000_hardcat_oversample60` passes
+  `scripts/train_rfdetr_coco.py --check-only --num-classes 200`. Train images /
+  annotations change from `1000/4409` to `1087/5221`.
+- This is a controlled class-supervision lever. It should be tested before
+  heavier teacher/distillation runs, but it should not be framed as an
+  architectural fix unless it improves candidate hit rate and class AP on the
+  unchanged stratified test split.
+- Artifact:
+  - `results/rfdetr_stratified_seed41_hardcat_oversample60_summary.csv`
+
 Avoid:
 
 - Returning to persistent proposal state.
