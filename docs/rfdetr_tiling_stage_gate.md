@@ -1205,7 +1205,12 @@ Hard-category oversampling hook:
   `34.1%`, candidate-oracle AP50 drops to `0.4875`, and the original `10`
   zero-hit hard categories recover only `3.98%` weighted hit rate. Treat this
   as a weak regularization result, not a route worth scaling blindly.
+- The intervention summary table confirms the split: hard-category oversampling
+  is the best/near-best AP row among the low-cost class interventions, but it
+  has the worst candidate-hit diagnostics. Small AP gains alone should not be
+  interpreted as candidate coverage repair.
 - Artifact:
+  - `results/rfdetr_stratified_seed41_category_intervention_summary.csv`
   - `results/rfdetr_stratified_seed41_hardcat_oversample60_abs_summary.csv`
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_loc_cocoeval.csv`
