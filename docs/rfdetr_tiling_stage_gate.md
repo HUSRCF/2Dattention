@@ -1014,6 +1014,20 @@ Stratified high-IoU category confusions:
   - `results/rfdetr_stratified_seed41_2best_category_confusion_overlays/contact_sheet.jpg`
   - `results/rfdetr_stratified_seed41_2best_category_confusion_overlays/manifest.csv`
 
+Validation-split score calibration check:
+
+| Scoring | Train target | AP | AP50 | AP75 | Note |
+|---|---|---:|---:|---:|---|
+| Base regular checkpoint | none | 0.1543 | 0.1869 | 0.1645 | Original detector scores |
+| Valid-calibrated class-aware quality | same-category IoU | 0.1550 | 0.1864 | 0.1650 | Essentially flat |
+| Valid-calibrated localization quality | nearest IoU | 0.1509 | 0.1794 | 0.1606 | Hurts class-aware AP |
+
+The calibrators learn a signal on the validation split (`Spearman=0.3051` for
+class-aware quality and `0.6153` for localization quality), but they do not
+translate into test AP gains. This makes simple post-hoc score calibration a
+negative result for this fair split. The remaining bottleneck is more likely
+detector-side category assignment/representation than a scalar score remap.
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.
