@@ -36,6 +36,16 @@ SUMMARY_FIELDS = (
     "score_mode",
 )
 
+PER_CATEGORY_FIELDS = (
+    "category_id",
+    "category_name",
+    "groups",
+    "candidate_hits",
+    "candidate_hit_rate",
+    "mean_nearest_iou",
+    "mean_hit_iou",
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -43,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--out-predictions", type=Path, required=True)
     parser.add_argument("--out-summary", type=Path, required=True)
+    parser.add_argument("--out-per-category", type=Path)
     parser.add_argument("--bbox-decimals", type=int, default=3)
     parser.add_argument("--score-mode", choices=("candidate", "group_max", "oracle_iou"), default="candidate")
     parser.add_argument(
@@ -61,6 +72,7 @@ def main() -> None:
         bbox_decimals=args.bbox_decimals,
         score_mode=args.score_mode,
         keep_missing=args.keep_missing,
+        out_per_category=args.out_per_category,
     )
     args.out_predictions.parent.mkdir(parents=True, exist_ok=True)
     args.out_predictions.write_text(json.dumps(predictions, indent=2) + "\n", encoding="utf-8")
@@ -84,26 +96,47 @@ def oracle_category_candidates(
     bbox_decimals: int = 3,
     score_mode: str = "candidate",
     keep_missing: bool = False,
+    out_per_category: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float | int | str]]:
     annotations = json.loads(annotation_json.read_text(encoding="utf-8"))
     predictions = json.loads(prediction_json.read_text(encoding="utf-8"))
     gt_by_image = gt_boxes_by_image(annotations)
     groups = group_predictions_by_image_box(predictions, bbox_decimals=bbox_decimals)
+    category_names = {
+        int(row["id"]): str(row.get("name", row["id"]))
+        for row in annotations.get("categories", [])
+    }
 
     output: list[dict[str, Any]] = []
     nearest_ious: list[float] = []
     hit_ious: list[float] = []
     candidate_hits = 0
+    per_category: dict[int, dict[str, Any]] = {}
     for group in groups:
         nearest = nearest_gt_for_group(group, gt_by_image)
         if nearest is None:
             continue
         target_category, nearest_iou = nearest
         nearest_ious.append(nearest_iou)
+        category_stats = per_category.setdefault(
+            target_category,
+            {
+                "category_id": target_category,
+                "category_name": category_names.get(target_category, str(target_category)),
+                "groups": 0,
+                "candidate_hits": 0,
+                "nearest_ious": [],
+                "hit_ious": [],
+            },
+        )
+        category_stats["groups"] += 1
+        category_stats["nearest_ious"].append(nearest_iou)
         target_rows = [row for row in group if int(row["category_id"]) == target_category]
         if target_rows:
             candidate_hits += 1
             hit_ious.append(nearest_iou)
+            category_stats["candidate_hits"] += 1
+            category_stats["hit_ious"].append(nearest_iou)
             best_target_row = max(target_rows, key=lambda row: float(row.get("score", 0.0)))
             row = dict(best_target_row)
             row["category_id"] = target_category
@@ -128,6 +161,8 @@ def oracle_category_candidates(
         "mean_hit_iou": mean(hit_ious),
         "score_mode": score_mode,
     }
+    if out_per_category is not None:
+        write_per_category_summary(per_category, out_per_category)
     return output, summary
 
 
@@ -175,6 +210,30 @@ def oracle_score(
     if score_mode == "oracle_iou":
         return nearest_iou
     raise ValueError(f"unsupported score_mode: {score_mode}")
+
+
+def write_per_category_summary(per_category: dict[int, dict[str, Any]], out_path: Path) -> None:
+    rows: list[dict[str, Any]] = []
+    for stats in per_category.values():
+        groups = int(stats["groups"])
+        hits = int(stats["candidate_hits"])
+        rows.append(
+            {
+                "category_id": int(stats["category_id"]),
+                "category_name": str(stats["category_name"]),
+                "groups": groups,
+                "candidate_hits": hits,
+                "candidate_hit_rate": 0.0 if groups == 0 else hits / groups,
+                "mean_nearest_iou": mean(stats["nearest_ious"]),
+                "mean_hit_iou": mean(stats["hit_ious"]),
+            }
+        )
+    rows.sort(key=lambda row: (float(row["candidate_hit_rate"]), -int(row["groups"]), int(row["category_id"])))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(PER_CATEGORY_FIELDS), lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def mean(values: list[float]) -> float:

@@ -1130,11 +1130,24 @@ Category candidate-set diagnostic:
   not include the correct category among their emitted candidates at all. This
   points toward stronger detector-side category supervision or teacher signals,
   not further low-interference score calibration or decoder-scope expansion.
+- Per-category breakdown sharpens the diagnosis. Among categories with at
+  least `20` grouped boxes, the base checkpoint has `10` zero-hit categories,
+  including localized-but-wrong classes such as `n03676483` (`47` groups,
+  hit rate `0.000`, mean nearest IoU `0.560`) and `n07695742` (`40` groups,
+  hit rate `0.000`, mean nearest IoU `0.546`). Decoder+class still has
+  `8` zero-hit categories in the same high-support regime, and its weighted
+  hit rate for `groups>=20` drops from `0.378` to `0.362`. Its improvements
+  are concentrated in a few categories (`n03495258`, `n02131653`,
+  `n02374451`, `n04228054`, `n04379243`), while several already-good classes
+  degrade. This rules out a broad class-candidate repair from local decoder
+  unfreezing.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_summary.csv`
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_2best_candidate_oracle_per_category.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_summary.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_per_category.csv`
 
 ## Stop / Continue Rule
 
