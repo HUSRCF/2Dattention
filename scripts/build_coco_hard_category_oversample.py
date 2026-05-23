@@ -224,7 +224,7 @@ def write_split(
         if copy_images:
             shutil.copy2(source, destination)
         else:
-            os.symlink(source, destination)
+            os.symlink(source.resolve(), destination)
 
 
 if __name__ == "__main__":

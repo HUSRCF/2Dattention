@@ -1190,19 +1190,30 @@ Hard-category oversampling hook:
 - `scripts/build_coco_hard_category_oversample.py` builds an RF-DETR-compatible
   dataset by duplicating train image records that contain candidate-missing hard
   categories, while preserving the original valid/test splits. It keeps image
-  files linked by default and rewrites only the train COCO annotations.
+  files linked by default through absolute symlinks and rewrites only the train
+  COCO annotations.
 - The first smoke uses base candidate misses with `groups>=20` and
   `candidate_hit_rate=0`, targets `60` train boxes per hard category, and caps
   per-image repeat at `5`. The generated dataset
-  `/private/tmp/rfdetr_stratified_seed41_train1000_hardcat_oversample60` passes
+  `/private/tmp/rfdetr_stratified_seed41_train1000_hardcat_oversample60_abs` passes
   `scripts/train_rfdetr_coco.py --check-only --num-classes 200`. Train images /
   annotations change from `1000/4409` to `1087/5221`.
-- This is a controlled class-supervision lever. It should be tested before
-  heavier teacher/distillation runs, but it should not be framed as an
-  architectural fix unless it improves candidate hit rate and class AP on the
-  unchanged stratified test split.
+- A 1ep class-head continuation from the stratified 2best checkpoint gives only
+  a weak AP gain: class `AP/AP50/AP75 = 0.1624/0.1961/0.1729`. It is slightly
+  above the base checkpoint and comparable to decoder+class +1ep, but it does
+  not fix candidate generation. Grouped-box candidate hit rate drops to
+  `34.1%`, candidate-oracle AP50 drops to `0.4875`, and the original `10`
+  zero-hit hard categories recover only `3.98%` weighted hit rate. Treat this
+  as a weak regularization result, not a route worth scaling blindly.
 - Artifact:
-  - `results/rfdetr_stratified_seed41_hardcat_oversample60_summary.csv`
+  - `results/rfdetr_stratified_seed41_hardcat_oversample60_abs_summary.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_candidate_oracle_summary.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_candidate_oracle_per_category.csv`
+  - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_candidate_oracle_per_category_with_split_counts.csv`
 
 Avoid:
 
