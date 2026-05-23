@@ -1270,6 +1270,13 @@ Full low-LR detector continuation:
   gate. If the second seed repeats the pattern, full detector-side adaptation
   becomes the current main route; if not, the 2ep gain should be treated as a
   seed-specific continuation result.
+- Forced-head second-seed 2ep sanity on
+  `rfdetr_stratified_seed43_train1000_val200_test200_min3` confirms the RF-DETR
+  head-size fix is active in the export path (`model_num_classes=200`). Regular
+  checkpoint independent test metrics are class AP/AP50/AP75
+  `0.1474/0.1888/0.1608`, loc AP/AP50/AP75 `0.3635/0.5068/0.3868`, candidate
+  hit rate `37.8%`, and candidate-oracle AP/AP50/AP75 `0.3729/0.4849/0.4079`.
+  This is a repaired-head baseline sanity row, not a new long-train result.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
@@ -1290,6 +1297,13 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_candidate_oracle_groupmax_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_category_coverage_gap.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_then3e5_2ep_per_category_coverage_gap_with_split_counts.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_candidate_oracle_summary.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed43_forced_2ep_per_category_coverage_gap_with_split_counts.csv`
 
 Avoid:
 
