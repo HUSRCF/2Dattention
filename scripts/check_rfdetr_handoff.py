@@ -75,18 +75,20 @@ def package_report() -> dict[str, dict[str, Any]]:
 
 def dataset_report(dataset_dir: Path) -> dict[str, Any]:
     splits = {}
+    split_image_ids = {}
     for split in SPLITS:
         annotation_path = dataset_dir / split / "_annotations.coco.json"
         split_report: dict[str, Any] = {"annotation_path": str(annotation_path), "exists": annotation_path.exists()}
         if annotation_path.exists():
             data = json.loads(annotation_path.read_text(encoding="utf-8"))
+            split_image_ids[split] = {int(image["id"]) for image in data.get("images", [])}
             split_report.update(coco_split_report(data, dataset_dir / split))
             split_report["annotation_sha256"] = file_sha256(annotation_path)
         splits[split] = split_report
     return {
         "dataset_dir": str(dataset_dir),
         "splits": splits,
-        "split_consistency": split_consistency_report(splits),
+        "split_consistency": split_consistency_report(splits, split_image_ids),
     }
 
 
@@ -95,6 +97,7 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
     category_rows = list(data.get("categories", []))
     images = data.get("images", [])
     annotations = data.get("annotations", [])
+    image_ids = sorted(int(image["id"]) for image in images)
     image_by_id = {int(image["id"]): image for image in images}
     annotation_categories = {int(annotation["category_id"]) for annotation in data.get("annotations", [])}
     missing_category_ids = sorted(annotation_categories.difference(categories))
@@ -128,6 +131,7 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
                 out_of_bounds_bbox_ids.append(annotation.get("id"))
     return {
         "images": len(images),
+        "image_ids_sha256": integer_list_sha256(image_ids),
         "annotations": len(annotations),
         "categories": len(categories),
         "min_category_id": min(categories) if categories else None,
@@ -154,7 +158,10 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
     }
 
 
-def split_consistency_report(splits: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def split_consistency_report(
+    splits: dict[str, dict[str, Any]],
+    split_image_ids: dict[str, set[int]],
+) -> dict[str, Any]:
     category_ranges = {
         split: (report.get("min_category_id"), report.get("max_category_id"), report.get("categories"))
         for split, report in splits.items()
@@ -183,6 +190,13 @@ def split_consistency_report(splits: dict[str, dict[str, Any]]) -> dict[str, Any
         for split, report in splits.items()
         if split != "train" and report.get("exists")
     }
+    image_id_overlap_counts = {}
+    for left_index, left in enumerate(SPLITS):
+        for right in SPLITS[left_index + 1 :]:
+            if left in split_image_ids and right in split_image_ids:
+                image_id_overlap_counts[f"{left}_{right}"] = len(
+                    split_image_ids[left].intersection(split_image_ids[right])
+                )
     return {
         "category_ranges": {
             split: {
@@ -197,6 +211,10 @@ def split_consistency_report(splits: dict[str, dict[str, Any]]) -> dict[str, Any
         "category_table_matches_train": category_table_matches_train,
         "valid_test_annotations_identical": hashes.get("valid") == hashes.get("test")
         if "valid" in hashes and "test" in hashes
+        else None,
+        "image_id_overlap_counts": image_id_overlap_counts,
+        "image_ids_disjoint": all(count == 0 for count in image_id_overlap_counts.values())
+        if image_id_overlap_counts
         else None,
     }
 
@@ -213,6 +231,11 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def integer_list_sha256(values: list[int]) -> str:
+    payload = json.dumps(values, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 if __name__ == "__main__":

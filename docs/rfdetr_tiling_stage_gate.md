@@ -1289,6 +1289,11 @@ Full low-LR detector continuation:
   zero-hit, and only `2` categories rescued from zero-hit, so the extra-low-LR
   continuation should be treated as class-AP-positive but candidate-coverage
   mixed rather than a monotonic candidate repair.
+- `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
+  overlap diagnostics. The refreshed stratified seed41 handoff check reports
+  `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
+  `image_ids_disjoint=true`, closing the previous audit caveat that the note
+  only proved annotation-hash/category consistency.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`

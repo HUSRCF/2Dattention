@@ -68,6 +68,7 @@
         "annotation_path": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/train/_annotations.coco.json",
         "exists": true,
         "images": 1000,
+        "image_ids_sha256": "512ba4f6b267b7e171fcb79774a8db8257c32cdfc9bdc9b70c11d06e7304e4c0",
         "annotations": 4409,
         "categories": 200,
         "min_category_id": 1,
@@ -292,6 +293,7 @@
         "annotation_path": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/valid/_annotations.coco.json",
         "exists": true,
         "images": 200,
+        "image_ids_sha256": "6b072ba0b85323f930972dcc7cebc58d424517e52a6747211eb6db820656f35e",
         "annotations": 708,
         "categories": 200,
         "min_category_id": 1,
@@ -516,6 +518,7 @@
         "annotation_path": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test/_annotations.coco.json",
         "exists": true,
         "images": 200,
+        "image_ids_sha256": "9fb2e5fdcd7ae0e0aef0b2af8f3991e1e45cac46b01d961f46d09fda8718d87e",
         "annotations": 604,
         "categories": 200,
         "min_category_id": 1,
@@ -767,7 +770,13 @@
         "valid": true,
         "test": true
       },
-      "valid_test_annotations_identical": false
+      "valid_test_annotations_identical": false,
+      "image_id_overlap_counts": {
+        "train_valid": 0,
+        "train_test": 0,
+        "valid_test": 0
+      },
+      "image_ids_disjoint": true
     }
   }
 }
