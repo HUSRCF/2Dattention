@@ -6,6 +6,7 @@ from pathlib import Path
 
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
+from scripts.select_coco_category_samples import select_category_samples
 
 
 def test_candidate_category_transitions_label_zero_hit_changes(
@@ -129,3 +130,34 @@ def test_candidate_failure_categories_join_counts_and_top_confusion(
     assert rows[0]["train_gt_count"] == "7"
     assert rows[0]["top_wrong_pred_category_id"] == "8"
     assert rows[0]["top_wrong_pair_count"] == "3"
+
+
+def test_select_coco_category_samples_filters_transition_and_limits() -> None:
+    annotations = {
+        "images": [
+            {"id": 1, "file_name": "one.jpg", "width": 100, "height": 50},
+            {"id": 2, "file_name": "two.jpg", "width": 100, "height": 100},
+        ],
+        "annotations": [
+            {"id": 10, "image_id": 1, "category_id": 1, "bbox": [10, 5, 20, 10]},
+            {"id": 11, "image_id": 2, "category_id": 1, "bbox": [0, 0, 10, 10]},
+            {"id": 12, "image_id": 2, "category_id": 2, "bbox": [5, 5, 20, 20]},
+        ],
+    }
+    category_report = [
+        {"category_id": "1", "category_name": "cat_one", "transition": "persistent_zero_hit"},
+        {"category_id": "2", "category_name": "cat_two", "transition": "rescued_from_zero_hit"},
+    ]
+
+    rows = select_category_samples(
+        annotations=annotations,
+        category_report=category_report,
+        transitions={"persistent_zero_hit"},
+        max_per_category=1,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["image_id"] == "1"
+    assert rows[0]["category_name"] == "cat_one"
+    assert rows[0]["area"] == "200"
+    assert rows[0]["area_ratio"] == "0.04"

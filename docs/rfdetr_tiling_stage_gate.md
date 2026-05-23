@@ -1296,6 +1296,11 @@ Full low-LR detector continuation:
   they have nontrivial train/test support, high nearest-box IoU, and stable
   wrong-category flows, so they are better debugging targets than aggregate AP
   alone.
+- `scripts/select_coco_category_samples.py` now exports
+  `results/rfdetr_stratified_seed41_candidate_failure_test_samples.csv`, a
+  fixed 52-annotation test-set target list for those persistent/regressed
+  zero-hit categories. Use this for future prediction overlays or manual
+  failure inspection.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
