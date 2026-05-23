@@ -1282,6 +1282,13 @@ Full low-LR detector continuation:
   table for class AP, loc AP, slice AP50, candidate hit/oracle AP, top-k
   coverage, score-IoU correlation, and high-support candidate zero-hit
   diagnostics across stratified RF-DETR runs.
+- `scripts/summarize_candidate_category_transitions.py` now produces
+  `results/rfdetr_stratified_seed41_candidate_category_transitions.csv` for
+  the seed41 base -> full_lr_2ep -> extra_low_lr chain. It identifies `7`
+  persistent high-support zero-hit categories, `4` categories that regress to
+  zero-hit, and only `2` categories rescued from zero-hit, so the extra-low-LR
+  continuation should be treated as class-AP-positive but candidate-coverage
+  mixed rather than a monotonic candidate repair.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_test_loc_cocoeval.csv`
