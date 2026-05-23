@@ -49,12 +49,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pretrain-weights", type=Path, default=None)
     parser.add_argument(
         "--trainable-scope",
-        choices=("all", "class-head", "query-class-head"),
+        choices=("all", "class-head", "query-class-head", "decoder-class-head"),
         default="all",
         help=(
             "Restrict trainable RF-DETR parameters. `class-head` freezes the "
             "backbone/decoder/box heads and trains only detector classification heads. "
-            "`query-class-head` also trains query features and reference points."
+            "`query-class-head` also trains query features and reference points. "
+            "`decoder-class-head` trains decoder/query representation parameters and "
+            "classification heads, but keeps backbone and box heads frozen."
         ),
     )
     parser.add_argument("--seed", type=int, default=None, help="Seed Python, NumPy, Torch, and Lightning if available.")
@@ -211,6 +213,13 @@ def configure_trainable_scope(model: Any, scope: str) -> dict[str, int]:
     elif scope == "query-class-head":
         for name, parameter in inner.named_parameters():
             parameter.requires_grad_(is_class_head_parameter(name) or is_query_parameter(name))
+    elif scope == "decoder-class-head":
+        for name, parameter in inner.named_parameters():
+            parameter.requires_grad_(
+                is_class_head_parameter(name)
+                or is_query_parameter(name)
+                or is_decoder_representation_parameter(name)
+            )
     else:  # pragma: no cover - argparse constrains this.
         raise ValueError(f"unknown trainable scope: {scope}")
     return trainable_parameter_report(inner)
@@ -236,6 +245,12 @@ def is_class_head_parameter(name: str) -> bool:
 
 def is_query_parameter(name: str) -> bool:
     return name in {"query_feat.weight", "refpoint_embed.weight"}
+
+
+def is_decoder_representation_parameter(name: str) -> bool:
+    if not name.startswith("transformer.decoder."):
+        return False
+    return not name.startswith("transformer.decoder.ref_point_head.")
 
 
 def trainable_parameter_report(module: Any) -> dict[str, int]:

@@ -1055,13 +1055,16 @@ Low-interference class-head-only continuation:
 | Base regular checkpoint | all, previous 4ep continuation | 0.1543 | 0.1869 | 0.1645 | 0.4206 | 0.5584 | 0.4484 |
 | Class-head-only +1ep | classification heads only | 0.1609 | 0.1942 | 0.1704 | 0.4253 | 0.5661 | 0.4499 |
 | Query+class +1ep | query/refpoint embeddings + class heads | 0.1603 | 0.1938 | 0.1707 | 0.4269 | 0.5677 | 0.4547 |
+| Decoder+class +1ep | decoder representation + query/refpoint + class heads | 0.1615 | 0.1968 | 0.1734 | 0.4222 | 0.5597 | 0.4481 |
 
-- `scripts/train_rfdetr_coco.py` now supports `--trainable-scope class-head`
-  and `--trainable-scope query-class-head`.
+- `scripts/train_rfdetr_coco.py` now supports `--trainable-scope class-head`,
+  `--trainable-scope query-class-head`, and
+  `--trainable-scope decoder-class-head`.
   RF-DETR rebuilds its LightningModule inside `.train(...)`, so the script
   patches the internal module construction and freezes after checkpoint loading.
   The verified class-head run had `723K` trainable parameters and `31.6M`
-  frozen; the query+class run had `1.7M` trainable and `30.6M` frozen.
+  frozen; the query+class run had `1.7M` trainable and `30.6M` frozen; the
+  decoder+class run had `6.2M` trainable and `26.2M` frozen.
 - The gain is real but small: class AP improves by `+0.0066` and AP50 by
   `+0.0073`. It also slightly improves class-agnostic localization eval, likely
   through score/ranking effects rather than new box geometry.
@@ -1069,15 +1072,20 @@ Low-interference class-head-only continuation:
   AP over class-head-only. It slightly improves class-agnostic localization
   metrics, but coverage and class-aware score-IoU alignment remain basically
   unchanged.
+- Releasing decoder representation layers gives the highest class AP/AP50 among
+  the three 1-epoch low-interference continuations, but the gain over class-head
+  only is tiny (`+0.0006` AP, `+0.0026` AP50), while class-aware score-IoU
+  Spearman drops to `0.0804` and localization/coverage diagnostics do not
+  improve. This is not a strong enough signal to keep expanding trainable scope.
 - The remaining bottleneck is not solved: class-aware score-IoU Spearman only
   moves from `0.0862` to `0.0946`, and top-100 category coverage is nearly flat
   (`loc=0.8510`, global class-aware `0.6440`, per-category `0.7103`).
 - Interpretation: low-interference class-head finetuning is a useful detector-
-  side control, but neither final class-head tuning nor learned query/refpoint
-  tuning is enough to close the category-assignment/oracle gap. Future work
-  should target detector-integrated category supervision or stronger teacher
-  signals, not only recalibrating the final class linear layers or query
-  embeddings.
+  side control, but final class-head tuning, learned query/refpoint tuning, and
+  decoder representation tuning all leave the category-assignment/oracle gap
+  mostly open. Future work should target stronger category supervision, teacher
+  signals, or data/split scale, not only low-interference parameter-scope
+  expansion.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_classhead_fixed_1ep_test_loc_cocoeval.csv`
@@ -1093,6 +1101,13 @@ Low-interference class-head-only continuation:
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_category_coverage_gap.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_queryclass_fixed_1ep_per_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_test_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_test_loc_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_test_slices.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_score_iou_loc.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_score_iou_classaware.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_category_coverage_gap.csv`
+  - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_per_category_coverage_gap.csv`
 
 ## Stop / Continue Rule
 
