@@ -84,8 +84,14 @@ def main() -> None:
         print(f"requested_num_classes: {args.num_classes if args.num_classes is not None else 'auto'}")
         print(f"rfdetr_classes: {', '.join(report['classes'])}")
         return
-    install_rfdetr_trainable_scope_patch(args.trainable_scope)
-    model = build_rfdetr_model(args.model_size, pretrain_weights=args.pretrain_weights, num_classes=args.num_classes)
+    effective_num_classes = args.num_classes if args.num_classes is not None else dataset_num_classes
+    install_rfdetr_runtime_patch(args.trainable_scope, effective_num_classes)
+    model = build_rfdetr_model(
+        args.model_size,
+        pretrain_weights=args.pretrain_weights,
+        num_classes=effective_num_classes,
+    )
+    force_detection_head_num_classes(model, effective_num_classes)
     trainable_report = configure_trainable_scope(model, args.trainable_scope)
     train_kwargs = {
         "dataset_dir": str(args.dataset_dir),
@@ -175,20 +181,35 @@ def rfdetr_availability_report() -> dict[str, list[str]]:
     }
 
 
-def install_rfdetr_trainable_scope_patch(scope: str) -> None:
-    if scope == "all":
-        return
+def install_rfdetr_runtime_patch(scope: str, num_classes: int) -> None:
     try:
+        from rfdetr._namespace import build_namespace
+        from rfdetr.config import TrainConfig
+        from rfdetr.models.lwdetr import build_criterion_and_postprocessors
         from rfdetr.training.module_model import RFDETRModelModule
     except ImportError:
         # Let RF-DETR raise its normal training-dependency error later.
         return
-    if getattr(RFDETRModelModule, "_attention2d_trainable_scope_patch", None) == scope:
+    patch_key = (scope, num_classes)
+    if getattr(RFDETRModelModule, "_attention2d_runtime_patch", None) == patch_key:
         return
     original_init = RFDETRModelModule.__init__
 
     def patched_init(self: Any, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
+        class_report = force_detection_head_num_classes(self.model, num_classes)
+        if class_report["changed"]:
+            self.model_config.num_classes = num_classes
+            namespace = build_namespace(
+                self.model_config,
+                self.train_config if hasattr(self, "train_config") else TrainConfig(dataset_dir=".", output_dir="."),
+            )
+            self.criterion, self.postprocess = build_criterion_and_postprocessors(namespace)
+            print(
+                "inner_forced_num_classes: "
+                f"{class_report['before_out_features']} -> {class_report['after_out_features']} "
+                f"(foreground={num_classes})"
+            )
         report = configure_trainable_scope(self.model, scope)
         print(
             "inner_trainable_parameters: "
@@ -197,7 +218,29 @@ def install_rfdetr_trainable_scope_patch(scope: str) -> None:
         )
 
     RFDETRModelModule.__init__ = patched_init
-    RFDETRModelModule._attention2d_trainable_scope_patch = scope
+    RFDETRModelModule._attention2d_runtime_patch = patch_key
+
+
+def force_detection_head_num_classes(model: Any, num_classes: int) -> dict[str, int | bool]:
+    inner = locate_torch_module(model)
+    if inner is None or not hasattr(inner, "class_embed"):
+        return {"changed": False, "before_out_features": -1, "after_out_features": -1}
+    desired_out_features = num_classes + 1
+    before = int(getattr(inner.class_embed, "out_features", inner.class_embed.weight.shape[0]))
+    if before != desired_out_features:
+        if not hasattr(inner, "reinitialize_detection_head"):
+            raise RuntimeError("RF-DETR model lacks reinitialize_detection_head; cannot force class count safely")
+        inner.reinitialize_detection_head(desired_out_features)
+    after = int(getattr(inner.class_embed, "out_features", inner.class_embed.weight.shape[0]))
+    if after != desired_out_features:
+        raise RuntimeError(
+            f"failed to force RF-DETR detection head to {desired_out_features} outputs; got {after}"
+        )
+    return {
+        "changed": before != after,
+        "before_out_features": before,
+        "after_out_features": after,
+    }
 
 
 def configure_trainable_scope(model: Any, scope: str) -> dict[str, int]:
