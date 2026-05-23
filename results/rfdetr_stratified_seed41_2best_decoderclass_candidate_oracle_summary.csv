@@ -1,0 +1,2 @@
+groups,emitted_predictions,candidate_hits,candidate_hit_rate,mean_nearest_iou,mean_hit_iou,score_mode
+8374,2953,2953,0.35263912108908524,0.3062100783943212,0.48744243944562066,group_max

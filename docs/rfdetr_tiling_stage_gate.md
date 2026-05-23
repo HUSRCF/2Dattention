@@ -1110,6 +1110,32 @@ Low-interference class-head-only continuation:
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_category_coverage_gap.csv`
   - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_decoderclass_fixed_1ep_per_category_coverage_gap.csv`
 
+Category candidate-set diagnostic:
+
+| Model | Candidate hit rate | Mean nearest IoU | Candidate-oracle AP | Candidate-oracle AP50 | Candidate-oracle AP75 |
+|---|---:|---:|---:|---:|---:|
+| Base regular checkpoint | 0.3686 | 0.3218 | 0.3869 | 0.4996 | 0.4126 |
+| Decoder+class +1ep | 0.3526 | 0.3062 | 0.3821 | 0.4974 | 0.4172 |
+
+- RF-DETR postprocess takes the top predictions from the flattened
+  `query x class` score table, so identical boxes can appear with multiple
+  category candidates. `scripts/oracle_coco_category_candidates.py` groups
+  predictions by image and rounded bbox, then checks whether the nearest GT
+  category is present in that box group's candidate set.
+- The base candidate hit rate is only `36.9%`, and decoder+class decreases it
+  to `35.3%`. This is far below the nearest-GT relabel oracle, which reaches
+  AP50 `0.6009` by assigning each localized box to its nearest GT category.
+- Interpretation: the category bottleneck is not just ranking the right class
+  lower within an otherwise good candidate set. Many localized box groups do
+  not include the correct category among their emitted candidates at all. This
+  points toward stronger detector-side category supervision or teacher signals,
+  not further low-interference score calibration or decoder-scope expansion.
+- Artifacts:
+  - `results/rfdetr_stratified_seed41_2best_candidate_oracle_summary.csv`
+  - `results/rfdetr_stratified_seed41_2best_candidate_oracle_groupmax_cocoeval.csv`
+  - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_summary.csv`
+  - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_groupmax_cocoeval.csv`
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.
