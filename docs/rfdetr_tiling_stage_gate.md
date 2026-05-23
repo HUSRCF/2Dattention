@@ -1028,6 +1028,26 @@ translate into test AP gains. This makes simple post-hoc score calibration a
 negative result for this fair split. The remaining bottleneck is more likely
 detector-side category assignment/representation than a scalar score remap.
 
+Small deformable-attention probe:
+
+- A targeted off-center probe was run on 8 test images with top-3 query overlays
+  per image. The query-level mean IoU is `0.5638`; `62.5%` of inspected queries
+  have IoU >= 0.5.
+- Query attention is already strongly concentrated on GT regions: mean GT
+  attention mass is `0.8379`, median is `0.9375`, and no inspected query has
+  zero GT mass.
+- Category assignment is still weak: nearest-GT category match is `0.5417`
+  overall and `0.6667` among IoU>=0.5 queries. There are aligned-hit examples
+  with high IoU/high GT attention mass but wrong category.
+- This supports the current direction: the main remaining problem is not merely
+  off-center attention coverage, but semantic/category assignment from the
+  query representation.
+- Artifacts:
+  - `results/rfdetr_stratified_seed41_2best_attention_offcenter_probe/contact_sheet.jpg`
+  - `results/rfdetr_stratified_seed41_2best_attention_offcenter_probe/query_contact_sheet.jpg`
+  - `results/rfdetr_stratified_seed41_2best_attention_offcenter_probe_diagnostics.json`
+  - `results/rfdetr_stratified_seed41_2best_attention_offcenter_probe_queries.csv`
+
 ## Stop / Continue Rule
 
 Do not continue max4/max5 crop expansion unless category scoring improves first.

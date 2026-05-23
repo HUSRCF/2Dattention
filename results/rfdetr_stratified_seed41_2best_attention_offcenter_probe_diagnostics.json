@@ -1,0 +1,39 @@
+{
+  "images": 8,
+  "queries": 24,
+  "query_pairs_with_iou": 24,
+  "query_mean_iou": 0.5638275170397862,
+  "query_median_iou": 0.6848451555225874,
+  "query_iou50_count": 15,
+  "query_iou50_rate": 0.625,
+  "query_mean_gt_attention_mass": 0.8379003478552244,
+  "query_median_gt_attention_mass": 0.9375000014809849,
+  "query_zero_gt_attention_mass_count": 0,
+  "query_zero_gt_attention_mass_rate": 0.0,
+  "mass_iou_pearson": 0.5207149473377101,
+  "mass_iou_spearman": 0.09781752653451364,
+  "low_mass_high_iou_count": 0,
+  "low_mass_high_iou_rate": 0.0,
+  "high_mass_low_iou_count": 6,
+  "high_mass_low_iou_rate": 0.25,
+  "high_iou_mean_mass": 0.9366918699787011,
+  "low_iou_mean_mass": 0.6732478109827629,
+  "nearest_gt_category_match_count": 13,
+  "nearest_gt_category_match_rate": 0.5416666666666666,
+  "iou50_nearest_gt_category_match_count": 10,
+  "iou50_nearest_gt_category_match_rate": 0.6666666666666666,
+  "bucket_category_match": {
+    "aligned_hit": {
+      "count": 15,
+      "nearest_gt_category_match_rate": 0.6666666666666666
+    },
+    "aligned_miss": {
+      "count": 3,
+      "nearest_gt_category_match_rate": 0.6666666666666666
+    },
+    "high_mass_low_iou": {
+      "count": 6,
+      "nearest_gt_category_match_rate": 0.16666666666666666
+    }
+  }
+}
