@@ -1149,6 +1149,13 @@ Category candidate-set diagnostic:
   IoU, but still no emitted correct category candidate. Training count and hit
   rate are only weakly correlated in the high-support set (`r≈0.27` base,
   `r≈0.25` decoder+class).
+- A qualitative high-IoU confusion sheet confirms the same pattern visually.
+  The selected predictions have high overlap with GT boxes but wrong categories,
+  often within fine-grained or semantically nearby groups (`n07695742 ->
+  n01726692`, `n07739125 -> n07749582`, `n02799071 -> n02786058`,
+  `n02484322 -> n02131653`, `n03676483 -> n07880968`). This is not a simple
+  box-alignment bug; the detector is often looking at the right object support
+  while emitting the wrong semantic candidate.
 - Artifacts:
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_summary.csv`
   - `results/rfdetr_stratified_seed41_2best_candidate_oracle_groupmax_cocoeval.csv`
@@ -1158,6 +1165,8 @@ Category candidate-set diagnostic:
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_groupmax_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_per_category.csv`
   - `results/rfdetr_stratified_seed41_2best_decoderclass_candidate_oracle_per_category_with_split_counts.csv`
+  - `results/rfdetr_stratified_seed41_2best_confusion_overlays/manifest.csv`
+  - `results/rfdetr_stratified_seed41_2best_confusion_overlays/contact_sheet.jpg`
 
 ## Stop / Continue Rule
 
