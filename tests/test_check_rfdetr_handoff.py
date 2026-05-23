@@ -147,7 +147,12 @@ def test_split_consistency_checks_full_category_ids_and_table() -> None:
                 "category_table_sha256": category_table_sha256(renamed_categories),
                 "annotation_sha256": "valid",
             },
-        }
+        },
+        {
+            "train": {1, 2},
+            "valid": {3},
+            "test": {3, 4},
+        },
     )
 
     assert report["category_range_matches_train"]["valid"] is False
@@ -155,6 +160,12 @@ def test_split_consistency_checks_full_category_ids_and_table() -> None:
     assert report["category_ids_match_train"]["test"] is True
     assert report["category_table_matches_train"]["test"] is False
     assert report["valid_test_annotations_identical"] is True
+    assert report["image_id_overlap_counts"] == {
+        "train_valid": 0,
+        "train_test": 0,
+        "valid_test": 1,
+    }
+    assert report["image_ids_disjoint"] is False
 
 
 def test_package_report_exposes_import_failure(monkeypatch) -> None:
