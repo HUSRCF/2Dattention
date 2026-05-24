@@ -652,32 +652,65 @@ def load_semantic_hard_negative_loss_map(
 ) -> dict[int, list[tuple[int, float]]]:
     """Load semantic hard negatives and adapt them to the active logits indices."""
 
+    mapping, _stats = load_semantic_hard_negative_loss_map_with_stats(path, class_name_to_index)
+    return mapping
+
+
+def load_semantic_hard_negative_loss_map_with_stats(
+    path: Path | None,
+    class_name_to_index: dict[str, int] | None = None,
+) -> tuple[dict[int, list[tuple[int, float]]], dict[str, int]]:
+    """Load semantic hard negatives and report remapping/drop statistics."""
+
+    stats = {
+        "entries": 0,
+        "mapped_entries": 0,
+        "dropped_positive": 0,
+        "dropped_negative": 0,
+        "duplicate_positive_entries": 0,
+        "duplicate_negative_pairs": 0,
+    }
     if path is None:
-        return {}
+        return {}, stats
     payload = json.loads(path.read_text(encoding="utf-8"))
     entries = payload.get("entries", [])
-    hard_negatives: dict[int, list[tuple[int, float]]] = {}
+    stats["entries"] = len(entries)
+    hard_negatives_by_positive: dict[int, dict[int, float]] = {}
     for entry in entries:
         if class_name_to_index is not None and "positive_category_name" in entry:
             positive_name = str(entry["positive_category_name"])
             if positive_name not in class_name_to_index:
+                stats["dropped_positive"] += 1
                 continue
             positive = class_name_to_index[positive_name]
         else:
             positive = int(entry["positive_class_index"])
-        negatives = []
+        if positive in hard_negatives_by_positive:
+            stats["duplicate_positive_entries"] += 1
+        negatives = hard_negatives_by_positive.setdefault(positive, {})
         for negative in entry.get("hard_negatives", []):
             if class_name_to_index is not None and "negative_category_name" in negative:
                 negative_name = str(negative["negative_category_name"])
                 if negative_name not in class_name_to_index:
+                    stats["dropped_negative"] += 1
                     continue
                 negative_index = class_name_to_index[negative_name]
             else:
                 negative_index = int(negative["negative_class_index"])
-            negatives.append((negative_index, float(negative["weight"])))
+            weight = float(negative["weight"])
+            if negative_index in negatives:
+                stats["duplicate_negative_pairs"] += 1
+                negatives[negative_index] = max(negatives[negative_index], weight)
+            else:
+                negatives[negative_index] = weight
         if negatives:
-            hard_negatives[positive] = negatives
-    return hard_negatives
+            stats["mapped_entries"] += 1
+    hard_negatives = {
+        positive: sorted(negative_weights.items())
+        for positive, negative_weights in sorted(hard_negatives_by_positive.items())
+        if negative_weights
+    }
+    return hard_negatives, stats
 
 
 def semantic_hard_negative_dataset_coverage(
@@ -798,10 +831,19 @@ def main() -> None:
         train_size = max(1, min(len(indices), int(len(indices) * args.train_frac)))
         label_source_samples = [all_samples[idx] for idx in indices[:train_size]]
     label_to_id = build_label_map(label_source_samples, top_classes=args.top_classes)
-    args.semantic_hard_negatives = load_semantic_hard_negative_loss_map(
+    args.semantic_hard_negatives, semantic_mapping_stats = load_semantic_hard_negative_loss_map_with_stats(
         args.semantic_hard_negative_loss_map,
         class_name_to_index=label_to_id,
     )
+    if (
+        args.semantic_hard_negative_loss_map is not None
+        and args.semantic_hard_negative_weight > 0
+        and not args.semantic_hard_negatives
+    ):
+        raise ValueError(
+            "semantic hard-negative loss map produced zero mapped targets while "
+            "--semantic-hard-negative-weight is > 0; check label map coverage or use targeted sampling"
+        )
     filtered_max_samples = 0 if args.semantic_hard_negative_sample_mode != "none" else args.max_samples
     samples = filter_samples(all_samples, set(label_to_id), max_samples=filtered_max_samples)
     samples = select_semantic_hard_negative_samples(
@@ -832,6 +874,7 @@ def main() -> None:
     print("semantic_hard_negative_loss_map:", args.semantic_hard_negative_loss_map)
     print("semantic_hard_negative_weight:", args.semantic_hard_negative_weight)
     print("semantic_hard_negative_targets:", len(args.semantic_hard_negatives))
+    print("semantic_hard_negative_mapping_stats:", json.dumps(semantic_mapping_stats, sort_keys=True))
     print(
         "train_semantic_hard_negative_oversample_factor:",
         args.train_semantic_hard_negative_oversample_factor,

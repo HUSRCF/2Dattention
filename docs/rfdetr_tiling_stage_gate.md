@@ -1399,6 +1399,12 @@ Full low-LR detector continuation:
   loss should not be scaled as the active repair route. If revisited, use a
   lower-interference schedule such as lower weight, late start, or an
   integrated RF-DETR class-head loss.
+- Semantic hard-negative loss-map loading is now stricter. The local runner
+  merges duplicate positive entries, deduplicates repeated negative pairs by
+  keeping the larger weight, prints mapping/drop statistics, and fails early
+  when a nonzero semantic loss weight is requested but no repair target maps
+  into the active compact label space. This prevents silent no-op repair runs
+  when target categories are absent from the current mini-det label map.
 - `scripts/summarize_semantic_repair_dataset_coverage.py` adds a RF-DETR split
   preflight for semantic repair configs. Current output
   `results/rfdetr_stratified_seed41_semantic_repair_dataset_coverage.csv`

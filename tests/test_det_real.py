@@ -22,6 +22,7 @@ from scripts.train_det_real import (
     filter_samples,
     fixed_quality_score_multiplier,
     load_semantic_hard_negative_loss_map,
+    load_semantic_hard_negative_loss_map_with_stats,
     load_real_det_samples,
     matcher_aware_quality_classification_loss,
     objectness_logits,
@@ -287,6 +288,54 @@ def test_real_det_load_semantic_hard_negative_loss_map_can_remap_by_name(tmp_pat
     )
 
     assert hard_negatives == {4: [(0, 1.5)]}
+
+
+def test_real_det_load_semantic_hard_negative_loss_map_merges_duplicate_positive_entries(
+    tmp_path: Path,
+) -> None:
+    loss_map_path = tmp_path / "loss_map.json"
+    loss_map_path.write_text(
+        """
+        {
+          "entries": [
+            {
+              "positive_category_name": "target",
+              "hard_negatives": [
+                {"negative_category_name": "wrong_a", "weight": 1.0},
+                {"negative_category_name": "wrong_b", "weight": 2.0}
+              ]
+            },
+            {
+              "positive_category_name": "target",
+              "hard_negatives": [
+                {"negative_category_name": "wrong_a", "weight": 3.0},
+                {"negative_category_name": "missing", "weight": 4.0}
+              ]
+            },
+            {
+              "positive_category_name": "missing_positive",
+              "hard_negatives": [
+                {"negative_category_name": "wrong_a", "weight": 5.0}
+              ]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    hard_negatives, stats = load_semantic_hard_negative_loss_map_with_stats(
+        loss_map_path,
+        class_name_to_index={"target": 2, "wrong_a": 0, "wrong_b": 1},
+    )
+
+    assert hard_negatives == {2: [(0, 3.0), (1, 2.0)]}
+    assert stats["entries"] == 3
+    assert stats["mapped_entries"] == 2
+    assert stats["dropped_positive"] == 1
+    assert stats["dropped_negative"] == 1
+    assert stats["duplicate_positive_entries"] == 1
+    assert stats["duplicate_negative_pairs"] == 1
 
 
 def test_real_det_semantic_hard_negative_dataset_coverage_counts_ranked_targets(tmp_path: Path) -> None:
