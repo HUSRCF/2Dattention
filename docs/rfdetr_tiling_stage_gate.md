@@ -1313,6 +1313,14 @@ Full low-LR detector continuation:
   14best row (`0.3242`). Treat this as a selector for planning next formal
   runs, not as a claim that the older offcenter split is the preferred future
   benchmark.
+- Slice-specific selector outputs were added:
+  `results/rfdetr_active_route_top_offcenter_ap50.csv` and
+  `results/rfdetr_active_route_top_small_ap50.csv`. The same seed41 20ep row
+  leads both hard slices (`offcenter=0.3241`, `small=0.3334`), while the random
+  train1000 continuation is now competitive on hard slices (`offcenter=0.3064`
+  to `0.3081`, `small=0.2980`). This supports using the larger train1000
+  protocol for the next formal run even though the historical long-resume row
+  remains the single best checked point.
 - `scripts/summarize_candidate_category_transitions.py` now produces
   `results/rfdetr_stratified_seed41_candidate_category_transitions.csv` for
   the seed41 base -> full_lr_2ep -> extra_low_lr chain. It identifies `7`
