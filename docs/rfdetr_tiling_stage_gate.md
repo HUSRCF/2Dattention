@@ -1393,6 +1393,15 @@ Full low-LR detector continuation:
   loss should not be scaled as the active repair route. If revisited, use a
   lower-interference schedule such as lower weight, late start, or an
   integrated RF-DETR class-head loss.
+- `scripts/summarize_semantic_repair_dataset_coverage.py` adds a RF-DETR split
+  preflight for semantic repair configs. Current output
+  `results/rfdetr_stratified_seed41_semantic_repair_dataset_coverage.csv`
+  confirms all configured target/negative category names are present in the
+  dataset category list, but the strongest repair positives are very low
+  support: `n03255030` has train/test boxes `21/14` and no valid boxes,
+  `n03676483` has `20/11` and no valid boxes, and `n07695742` has only `1`
+  train image with `20` boxes plus no valid boxes. This strengthens the current
+  decision not to scale an always-on local margin loss from this substrate.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1425,6 +1434,7 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_hard_pair_summary.csv`
   - `results/rfdetr_stratified_seed41_semantic_repair_config.json`
   - `results/rfdetr_stratified_seed41_semantic_repair_loss_map.json`
+  - `results/rfdetr_stratified_seed41_semantic_repair_dataset_coverage.csv`
   - `results/det_real_semantic_hard_negative_targeted_w0_smoke.csv`
   - `results/det_real_semantic_hard_negative_targeted_w01_smoke.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
