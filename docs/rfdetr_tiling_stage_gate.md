@@ -1381,6 +1381,18 @@ Full low-LR detector continuation:
   distribution benchmark. This remains a training-interface dry run for future
   class-head/semantic repair smoke tests, not evidence yet that the loss
   improves RF-DETR candidate coverage.
+- Targeted semantic hard-negative smoke comparison completed under the
+  prioritized sample mode (`top_classes=0`, `max_samples=160`, oversample
+  factor `20`, `50` steps, `2` seeds). The `weight=0.1` run keeps the loss
+  path active on target categories, but it does not improve detector metrics:
+  `weight=0.0` gives final/best IoU `0.312/0.326`, AP50 `0.198`, class AP50
+  `0.133`, and score-IoU correlation `0.530`; `weight=0.1` gives final/best
+  IoU `0.314/0.331`, AP50 `0.172`, class AP50 `0.109`, and score-IoU
+  correlation `0.158`. Treat this as a negative/weak local mini-det result:
+  the semantic hard-negative interface is usable, but the always-on margin
+  loss should not be scaled as the active repair route. If revisited, use a
+  lower-interference schedule such as lower weight, late start, or an
+  integrated RF-DETR class-head loss.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1413,6 +1425,8 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_hard_pair_summary.csv`
   - `results/rfdetr_stratified_seed41_semantic_repair_config.json`
   - `results/rfdetr_stratified_seed41_semantic_repair_loss_map.json`
+  - `results/det_real_semantic_hard_negative_targeted_w0_smoke.csv`
+  - `results/det_real_semantic_hard_negative_targeted_w01_smoke.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
