@@ -6,6 +6,8 @@ from pathlib import Path
 
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
+from scripts.summarize_coco_sample_prediction_chain import parse_entries
+from scripts.summarize_coco_sample_prediction_chain import summarize_label
 from scripts.select_coco_category_samples import select_category_samples
 from scripts.visualize_coco_sample_predictions import nearest_prediction_group
 from scripts.visualize_coco_sample_predictions import select_rows as select_prediction_rows
@@ -243,3 +245,33 @@ def test_visualize_coco_sample_predictions_nearest_group_and_limits() -> None:
     selected = select_prediction_rows(rows, max_samples=0, max_per_category=1)
 
     assert [row["image_id"] for row in selected] == ["1", "3"]
+
+
+def test_summarize_coco_sample_prediction_chain_entries_and_summary() -> None:
+    parsed = parse_entries(["base=/tmp/base.json", "next=/tmp/next.json"])
+
+    assert parsed[0][0] == "base"
+    assert str(parsed[1][1]) == "/tmp/next.json"
+
+    summary = summarize_label(
+        "base",
+        [
+            {
+                "nearest_iou": "0.8",
+                "iou_ge_05": 1,
+                "iou_ge_075": 1,
+                "gt_candidate_present": 1,
+            },
+            {
+                "nearest_iou": "0.4",
+                "iou_ge_05": 0,
+                "iou_ge_075": 0,
+                "gt_candidate_present": 0,
+            },
+        ],
+    )
+
+    assert summary["label"] == "base"
+    assert summary["samples"] == 2
+    assert summary["mean_nearest_iou"] == "0.6"
+    assert summary["gt_candidate_present_rate"] == "0.5"

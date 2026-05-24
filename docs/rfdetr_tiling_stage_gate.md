@@ -1316,6 +1316,15 @@ Full low-LR detector continuation:
   category among their displayed candidates. This is a qualitative/manifest
   check that the failure target set often has usable box support while the
   emitted semantic candidate set misses the correct category.
+- `scripts/summarize_coco_sample_prediction_chain.py` compares those fixed
+  failure samples across checkpoint prediction JSONs. Artifact:
+  `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary.csv`.
+  On all 52 target annotations, nearest-box support remains high across the
+  seed41 chain (`base/full_lr_2ep/extra_low_lr` mean nearest IoU
+  `0.811/0.810/0.822`), but GT-category candidate presence falls
+  `4/52 -> 3/52 -> 0/52`. This confirms the extra-low-LR continuation can
+  improve deployed class AP while still regressing the concrete fixed failure
+  categories' emitted candidate coverage.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1337,6 +1346,8 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_gt_overlays/manifest.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/contact_sheet.jpg`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/manifest.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
