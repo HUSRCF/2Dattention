@@ -1373,9 +1373,14 @@ Full low-LR detector continuation:
   target labels and supports `--train-semantic-hard-negative-oversample-factor`.
   A generic `top_classes=0, max_samples=160` MPS smoke covered only `1` train
   image / `1` train box; with oversample factor `20`, the semantic loss path
-  activates (`loss_semantic_hard_negative≈1.92` at step 5). This is a
-  training-interface dry run for future class-head/semantic repair smoke tests,
-  not evidence yet that the loss improves RF-DETR candidate coverage.
+  activates (`loss_semantic_hard_negative≈1.92` at step 5). The targeted
+  `--semantic-hard-negative-sample-mode prioritize` mode applies the sample
+  cap after moving target-class images forward; on the same max-sample budget
+  it raises train coverage to `128` images / `166` boxes. This is the right
+  smoke mode for the loss substrate but should not be read as a general
+  distribution benchmark. This remains a training-interface dry run for future
+  class-head/semantic repair smoke tests, not evidence yet that the loss
+  improves RF-DETR candidate coverage.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and

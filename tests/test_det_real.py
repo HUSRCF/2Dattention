@@ -39,6 +39,7 @@ from scripts.train_det_real import (
     sample_matches_slice,
     score_iou_calibration_loss,
     semantic_hard_negative_dataset_coverage,
+    select_semantic_hard_negative_samples,
     set_quality_head_only_trainable,
     summarize_slice_ap,
     summarize_slice_ranking_diagnostics,
@@ -311,6 +312,70 @@ def test_real_det_semantic_hard_negative_dataset_coverage_counts_ranked_targets(
 
     assert images == 1
     assert boxes == 1
+
+
+def test_real_det_select_semantic_hard_negative_samples_can_prioritize_targets(tmp_path: Path) -> None:
+    image_path = tmp_path / "img.JPEG"
+    Image.new("RGB", (64, 64), "white").save(image_path)
+    samples = [
+        RealDetSample(
+            image_id="other",
+            image_path=image_path,
+            width=64,
+            height=64,
+            boxes=(RealBox("other", 0, 0, 20, 20),),
+        ),
+        RealDetSample(
+            image_id="target",
+            image_path=image_path,
+            width=64,
+            height=64,
+            boxes=(RealBox("target", 0, 0, 20, 20),),
+        ),
+    ]
+
+    selected = select_semantic_hard_negative_samples(
+        samples,
+        {"other": 0, "target": 1},
+        hard_negatives={1: [(0, 1.0)]},
+        max_objects=1,
+        mode="prioritize",
+        max_samples=1,
+    )
+
+    assert [sample.image_id for sample in selected] == ["target"]
+
+
+def test_real_det_select_semantic_hard_negative_samples_can_keep_only_targets(tmp_path: Path) -> None:
+    image_path = tmp_path / "img.JPEG"
+    Image.new("RGB", (64, 64), "white").save(image_path)
+    samples = [
+        RealDetSample(
+            image_id="target",
+            image_path=image_path,
+            width=64,
+            height=64,
+            boxes=(RealBox("target", 0, 0, 20, 20),),
+        ),
+        RealDetSample(
+            image_id="other",
+            image_path=image_path,
+            width=64,
+            height=64,
+            boxes=(RealBox("other", 0, 0, 20, 20),),
+        ),
+    ]
+
+    selected = select_semantic_hard_negative_samples(
+        samples,
+        {"other": 0, "target": 1},
+        hard_negatives={1: [(0, 1.0)]},
+        max_objects=1,
+        mode="only",
+        max_samples=0,
+    )
+
+    assert [sample.image_id for sample in selected] == ["target"]
 
 
 def test_real_det_build_splits_can_use_train_calibration() -> None:

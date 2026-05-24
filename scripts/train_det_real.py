@@ -574,6 +574,15 @@ def parse_args() -> argparse.Namespace:
             "mapped semantic hard-negative target labels."
         ),
     )
+    parser.add_argument(
+        "--semantic-hard-negative-sample-mode",
+        choices=("none", "prioritize", "only"),
+        default="none",
+        help=(
+            "Optionally apply max-samples after prioritizing or keeping only images "
+            "with mapped semantic hard-negative target labels."
+        ),
+    )
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
     parser.add_argument(
         "--quality-head-slice",
@@ -715,6 +724,43 @@ def sample_semantic_hard_negative_hits(
     return hits
 
 
+def select_semantic_hard_negative_samples(
+    samples: list[RealDetSample],
+    label_to_id: dict[str, int],
+    *,
+    hard_negatives: dict[int, list[tuple[int, float]]],
+    max_objects: int,
+    mode: str,
+    max_samples: int,
+) -> list[RealDetSample]:
+    """Select or prioritize samples containing configured hard-negative targets."""
+
+    if mode == "none":
+        return samples[:max_samples] if max_samples > 0 else samples
+    if mode not in {"prioritize", "only"}:
+        raise ValueError("unknown semantic hard-negative sample mode")
+    if not hard_negatives:
+        raise ValueError("semantic hard-negative sample mode requires mapped hard-negative targets")
+    target_labels = set(hard_negatives)
+    target_samples = []
+    other_samples = []
+    for sample in samples:
+        hits = sample_semantic_hard_negative_hits(
+            sample,
+            label_to_id,
+            max_objects=max_objects,
+            target_labels=target_labels,
+        )
+        if hits:
+            target_samples.append(sample)
+        elif mode == "prioritize":
+            other_samples.append(sample)
+    if not target_samples:
+        raise ValueError("semantic hard-negative sample mode found no target samples")
+    selected = target_samples if mode == "only" else [*target_samples, *other_samples]
+    return selected[:max_samples] if max_samples > 0 else selected
+
+
 def main() -> None:
     args = parse_args()
     if args.max_objects < 1:
@@ -756,7 +802,16 @@ def main() -> None:
         args.semantic_hard_negative_loss_map,
         class_name_to_index=label_to_id,
     )
-    samples = filter_samples(all_samples, set(label_to_id), max_samples=args.max_samples)
+    filtered_max_samples = 0 if args.semantic_hard_negative_sample_mode != "none" else args.max_samples
+    samples = filter_samples(all_samples, set(label_to_id), max_samples=filtered_max_samples)
+    samples = select_semantic_hard_negative_samples(
+        samples,
+        label_to_id,
+        hard_negatives=args.semantic_hard_negatives,
+        max_objects=args.max_objects,
+        mode=args.semantic_hard_negative_sample_mode,
+        max_samples=args.max_samples,
+    )
     if len(samples) < 2:
         raise ValueError("not enough real DET samples after filtering")
     write_label_map(args.label_map_out, label_to_id)
@@ -781,6 +836,7 @@ def main() -> None:
         "train_semantic_hard_negative_oversample_factor:",
         args.train_semantic_hard_negative_oversample_factor,
     )
+    print("semantic_hard_negative_sample_mode:", args.semantic_hard_negative_sample_mode)
     print("quality_head_slice:", args.quality_head_slice)
     print("quality_head_slice_weight:", args.quality_head_slice_weight)
     print("eval_slice_filter:", args.eval_slice_filter)
