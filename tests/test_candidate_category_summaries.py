@@ -6,6 +6,7 @@ from pathlib import Path
 
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
+from scripts.build_rfdetr_candidate_repair_targets import build_targets
 from scripts.summarize_coco_sample_candidate_flows import summarize_categories
 from scripts.summarize_coco_sample_candidate_flows import summarize_flows
 from scripts.summarize_coco_sample_candidate_flows import top_candidate
@@ -331,3 +332,43 @@ def test_summarize_coco_sample_candidate_flows() -> None:
     base_summary = next(row for row in categories if row["label"] == "base")
     assert base_summary["dominant_top_candidate"] == "wrong"
     assert base_summary["gt_candidate_present_rate"] == "0.5"
+
+
+def test_build_rfdetr_candidate_repair_targets_merges_flow_columns() -> None:
+    failure_rows = [
+        {
+            "category_id": "1",
+            "category_name": "gt_one",
+            "transition": "persistent_zero_hit",
+            "train_gt_count": "10",
+            "valid_gt_count": "0",
+            "test_gt_count": "3",
+            "base_groups": "5",
+            "base_hit_rate": "0",
+            "base_mean_nearest_iou": "0.4",
+            "latest_groups": "6",
+            "latest_hit_rate": "0",
+            "latest_mean_nearest_iou": "0.7",
+            "top_wrong_pred_category_name": "wrong",
+            "top_wrong_pair_count": "2",
+            "top_wrong_mean_iou": "0.9",
+        }
+    ]
+    flow_rows = [
+        {
+            "label": "base",
+            "gt_category_id": "1",
+            "samples": "3",
+            "gt_candidate_present": "1",
+            "gt_candidate_present_rate": "0.333",
+            "mean_nearest_iou": "0.8",
+            "dominant_top_candidate": "wrong",
+            "dominant_top_candidate_count": "2",
+        }
+    ]
+
+    rows = build_targets(failure_rows=failure_rows, flow_rows=flow_rows)
+
+    assert rows[0]["category_id"] == "1"
+    assert rows[0]["base_fixed_samples"] == "3"
+    assert rows[0]["base_fixed_dominant_top_candidate"] == "wrong"

@@ -1339,6 +1339,12 @@ Full low-LR detector continuation:
   `n07695742 -> n01726692` plus `n04468005 -> n04530566`. These flows are now
   the concrete semantic-confusion targets for any future class-head or teacher
   repair.
+- `scripts/build_rfdetr_candidate_repair_targets.py` merges the failure-category
+  report with the fixed-sample flow table into
+  `results/rfdetr_stratified_seed41_candidate_repair_targets.csv`. This is the
+  current compact handoff table for repair work: it keeps train/valid/test
+  support, aggregate zero-hit stats, high-IoU wrong-flow evidence, and
+  checkpoint-specific dominant wrong candidates in one row per target category.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1366,6 +1372,7 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary_run_manifest.json`
   - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flows.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flow_by_category.csv`
+  - `results/rfdetr_stratified_seed41_candidate_repair_targets.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
