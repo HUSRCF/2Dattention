@@ -10,6 +10,7 @@ from scripts.build_rfdetr_candidate_repair_targets import build_targets
 from scripts.build_rfdetr_hard_confusion_pairs import build_instances
 from scripts.build_rfdetr_hard_confusion_pairs import summarize_pairs
 from scripts.build_rfdetr_semantic_repair_config import build_config
+from scripts.convert_semantic_repair_config_to_loss_map import build_loss_map
 from scripts.summarize_coco_sample_candidate_flows import summarize_categories
 from scripts.summarize_coco_sample_candidate_flows import summarize_flows
 from scripts.summarize_coco_sample_candidate_flows import top_candidate
@@ -483,3 +484,28 @@ def test_build_rfdetr_semantic_repair_config_merges_duplicate_negatives() -> Non
     assert negative["samples"] == 5
     assert negative["source_labels"] == ["base", "next"]
     assert negative["example_image_ids"] == [10, 11, 12]
+
+
+def test_convert_semantic_repair_config_to_loss_map_offsets_category_ids() -> None:
+    config = {
+        "targets": [
+            {
+                "category_id": 3,
+                "category_name": "gt",
+                "hard_negatives": [
+                    {
+                        "negative_category_id": 1,
+                        "negative_category_name": "wrong",
+                        "weight": 2.5,
+                        "samples": 4,
+                    }
+                ],
+            }
+        ]
+    }
+
+    loss_map = build_loss_map(config, category_id_offset=1)
+
+    assert loss_map["entry_count"] == 1
+    assert loss_map["entries"][0]["positive_class_index"] == 2
+    assert loss_map["entries"][0]["hard_negatives"][0]["negative_class_index"] == 0

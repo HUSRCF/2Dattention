@@ -2,7 +2,7 @@
 
 from .anchor_region_detr import TinyAnchorRegionDETR, anchor_queries_from_state
 from .heads import DetectionHead, MLP
-from .losses import DetectionCriterion, generalized_box_iou
+from .losses import DetectionCriterion, generalized_box_iou, semantic_hard_negative_loss
 from .matcher import HungarianMatcher, box_cxcywh_to_xyxy, box_iou
 
 __all__ = [
@@ -15,4 +15,5 @@ __all__ = [
     "box_cxcywh_to_xyxy",
     "box_iou",
     "generalized_box_iou",
+    "semantic_hard_negative_loss",
 ]

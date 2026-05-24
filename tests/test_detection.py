@@ -17,6 +17,7 @@ from attention2d.detection import (
     TinyAnchorRegionDETR,
     box_cxcywh_to_xyxy,
     box_iou,
+    semantic_hard_negative_loss,
 )
 from attention2d.detection.anchor_region_detr import (
     edge_grid_queries_from_state,
@@ -149,6 +150,57 @@ def test_detection_criterion_backward() -> None:
     losses["loss"].backward()
     assert torch.isfinite(losses["loss"])
     assert queries.grad is not None
+
+
+def test_semantic_hard_negative_loss_penalizes_matched_confusions() -> None:
+    logits = torch.tensor(
+        [
+            [
+                [0.2, 1.0, -0.5, 0.0],
+                [2.0, 0.0, -0.5, 0.0],
+            ]
+        ],
+        requires_grad=True,
+    )
+    target_classes = torch.tensor([[0, 3]])
+
+    loss = semantic_hard_negative_loss(
+        logits,
+        target_classes,
+        hard_negatives={0: [(1, 2.0)]},
+        no_object_index=3,
+        margin=0.5,
+    )
+
+    assert torch.isclose(loss, torch.tensor(2.6))
+    loss.backward()
+    assert logits.grad is not None
+
+
+def test_detection_criterion_can_include_semantic_hard_negative_loss() -> None:
+    outputs = {
+        "pred_logits": torch.tensor([[[0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], requires_grad=True),
+        "pred_boxes": torch.tensor([[[0.5, 0.5, 0.2, 0.2], [0.1, 0.1, 0.2, 0.2]]], requires_grad=True),
+    }
+    targets = [
+        {
+            "labels": torch.tensor([0]),
+            "boxes": torch.tensor([[0.5, 0.5, 0.2, 0.2]]),
+        }
+    ]
+    criterion = DetectionCriterion(
+        num_classes=2,
+        matcher=HungarianMatcher(class_cost=0.0, bbox_cost=1.0, giou_cost=0.0),
+        semantic_hard_negatives={0: [(1, 1.0)]},
+        semantic_hard_negative_weight=0.5,
+        semantic_hard_negative_margin=0.25,
+    )
+
+    losses = criterion(outputs, targets)
+
+    assert losses["loss_semantic_hard_negative"] > 0
+    losses["loss"].backward()
+    assert outputs["pred_logits"].grad is not None
 
 
 def test_tiny_anchor_region_detr_backward() -> None:

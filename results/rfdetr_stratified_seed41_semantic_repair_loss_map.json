@@ -1,0 +1,161 @@
+{
+  "category_id_offset": 1,
+  "entries": [
+    {
+      "hard_negatives": [
+        {
+          "negative_category_id": 3,
+          "negative_category_name": "n01495701",
+          "negative_class_index": 2,
+          "samples": 7,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 26,
+          "negative_category_name": "n02206856",
+          "negative_class_index": 25,
+          "samples": 5,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 8,
+          "negative_category_name": "n01726692",
+          "negative_class_index": 7,
+          "samples": 4,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 107,
+          "negative_category_name": "n03513137",
+          "negative_class_index": 106,
+          "samples": 4,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 19,
+          "negative_category_name": "n02084071",
+          "negative_class_index": 18,
+          "samples": 3,
+          "weight": 2.556432
+        }
+      ],
+      "positive_category_id": 92,
+      "positive_category_name": "n03255030",
+      "positive_class_index": 91
+    },
+    {
+      "hard_negatives": [
+        {
+          "negative_category_id": 1,
+          "negative_category_name": "n00007846",
+          "negative_class_index": 0,
+          "samples": 10,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 67,
+          "negative_category_name": "n02880940",
+          "negative_class_index": 66,
+          "samples": 8,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 128,
+          "negative_category_name": "n03916031",
+          "negative_class_index": 127,
+          "samples": 3,
+          "weight": 2.838547
+        },
+        {
+          "negative_category_id": 200,
+          "negative_category_name": "n07880968",
+          "negative_class_index": 199,
+          "samples": 2,
+          "weight": 1.823008
+        },
+        {
+          "negative_category_id": 122,
+          "negative_category_name": "n03797390",
+          "negative_class_index": 121,
+          "samples": 2,
+          "weight": 1.775937
+        }
+      ],
+      "positive_category_id": 113,
+      "positive_category_name": "n03676483",
+      "positive_class_index": 112
+    },
+    {
+      "hard_negatives": [
+        {
+          "negative_category_id": 8,
+          "negative_category_name": "n01726692",
+          "negative_class_index": 7,
+          "samples": 12,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 1,
+          "negative_category_name": "n00007846",
+          "negative_class_index": 0,
+          "samples": 6,
+          "weight": 3.0
+        },
+        {
+          "negative_category_id": 26,
+          "negative_category_name": "n02206856",
+          "negative_class_index": 25,
+          "samples": 2,
+          "weight": 1.708755
+        }
+      ],
+      "positive_category_id": 183,
+      "positive_category_name": "n07695742",
+      "positive_class_index": 182
+    },
+    {
+      "hard_negatives": [
+        {
+          "negative_category_id": 171,
+          "negative_category_name": "n04530566",
+          "negative_class_index": 170,
+          "samples": 4,
+          "weight": 3.0
+        }
+      ],
+      "positive_category_id": 167,
+      "positive_category_name": "n04468005",
+      "positive_class_index": 166
+    },
+    {
+      "hard_negatives": [
+        {
+          "negative_category_id": 1,
+          "negative_category_name": "n00007846",
+          "negative_class_index": 0,
+          "samples": 2,
+          "weight": 1.688918
+        }
+      ],
+      "positive_category_id": 180,
+      "positive_category_name": "n07583066",
+      "positive_class_index": 179
+    },
+    {
+      "hard_negatives": [
+        {
+          "negative_category_id": 157,
+          "negative_category_name": "n04330267",
+          "negative_class_index": 156,
+          "samples": 2,
+          "weight": 1.163287
+        }
+      ],
+      "positive_category_id": 98,
+      "positive_category_name": "n03400231",
+      "positive_class_index": 97
+    }
+  ],
+  "entry_count": 6,
+  "task": "semantic_hard_negative_loss_map"
+}

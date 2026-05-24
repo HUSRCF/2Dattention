@@ -1360,6 +1360,16 @@ Full low-LR detector continuation:
   pairs across checkpoint labels, caps per-pair weights, and keeps example
   image/annotation ids. With `min_samples=2`, it yields `6` target categories;
   the strongest repair targets are `n03255030`, `n03676483`, and `n07695742`.
+- Semantic hard-negative loss substrate added for the local detector criterion.
+  `DetectionCriterion` can now add a logits-indexed margin penalty that pushes
+  configured hard-negative class logits below the matched GT class. Because
+  COCO/RF-DETR category ids are 1-based in this handoff, the conversion is
+  explicit rather than implicit:
+  `scripts/convert_semantic_repair_config_to_loss_map.py --category-id-offset 1`
+  writes `results/rfdetr_stratified_seed41_semantic_repair_loss_map.json`.
+  This is a training-interface dry run for future class-head/semantic repair
+  smoke tests, not evidence yet that the loss improves RF-DETR candidate
+  coverage.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1391,6 +1401,7 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_hard_pairs.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_hard_pair_summary.csv`
   - `results/rfdetr_stratified_seed41_semantic_repair_config.json`
+  - `results/rfdetr_stratified_seed41_semantic_repair_loss_map.json`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
