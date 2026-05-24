@@ -1197,7 +1197,10 @@ Hard-category oversampling hook:
   per-image repeat at `5`. The generated dataset
   `/private/tmp/rfdetr_stratified_seed41_train1000_hardcat_oversample60_abs` passes
   `scripts/train_rfdetr_coco.py --check-only --num-classes 200`. Train images /
-  annotations change from `1000/4409` to `1087/5221`.
+  annotations change from `1000/4409` to `1087/5221`. Engineering caveat:
+  this early smoke was built before duplicate train image ids were reserved
+  against valid/test ids, so future hard-category oversampled datasets should be
+  regenerated with the fixed builder and audited with `check_rfdetr_handoff.py`.
 - A 1ep class-head continuation from the stratified 2best checkpoint gives only
   a weak AP gain: class `AP/AP50/AP75 = 0.1624/0.1961/0.1729`. It is slightly
   above the base checkpoint and comparable to decoder+class +1ep, but it does
@@ -1271,9 +1274,12 @@ Full low-LR detector continuation:
   becomes the current main route; if not, the 2ep gain should be treated as a
   seed-specific continuation result.
 - Forced-head second-seed 2ep sanity on
-  `rfdetr_stratified_seed43_train1000_val200_test200_min3` confirms the RF-DETR
-  head-size fix is active in the export path (`model_num_classes=200`). Regular
-  checkpoint independent test metrics are class AP/AP50/AP75
+  `rfdetr_stratified_seed43_train1000_val200_test200_min3` was run after the
+  training-side head-size fix. The export path now also force-checks the class
+  head and prints `actual_class_head_out_features`; treat older
+  `model_num_classes=200` messages as argument echoes rather than proof of the
+  actual head shape. Regular checkpoint independent test metrics are class
+  AP/AP50/AP75
   `0.1474/0.1888/0.1608`, loc AP/AP50/AP75 `0.3635/0.5068/0.3868`, candidate
   hit rate `37.8%`, and candidate-oracle AP/AP50/AP75 `0.3729/0.4849/0.4079`.
   This is a repaired-head baseline sanity row, not a new long-train result.

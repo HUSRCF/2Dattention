@@ -76,19 +76,21 @@ def package_report() -> dict[str, dict[str, Any]]:
 def dataset_report(dataset_dir: Path) -> dict[str, Any]:
     splits = {}
     split_image_ids = {}
+    split_file_names = {}
     for split in SPLITS:
         annotation_path = dataset_dir / split / "_annotations.coco.json"
         split_report: dict[str, Any] = {"annotation_path": str(annotation_path), "exists": annotation_path.exists()}
         if annotation_path.exists():
             data = json.loads(annotation_path.read_text(encoding="utf-8"))
             split_image_ids[split] = {int(image["id"]) for image in data.get("images", [])}
+            split_file_names[split] = {str(image["file_name"]) for image in data.get("images", [])}
             split_report.update(coco_split_report(data, dataset_dir / split))
             split_report["annotation_sha256"] = file_sha256(annotation_path)
         splits[split] = split_report
     return {
         "dataset_dir": str(dataset_dir),
         "splits": splits,
-        "split_consistency": split_consistency_report(splits, split_image_ids),
+        "split_consistency": split_consistency_report(splits, split_image_ids, split_file_names),
     }
 
 
@@ -161,6 +163,7 @@ def coco_split_report(data: dict[str, Any], split_dir: Path) -> dict[str, Any]:
 def split_consistency_report(
     splits: dict[str, dict[str, Any]],
     split_image_ids: dict[str, set[int]],
+    split_file_names: dict[str, set[str]] | None = None,
 ) -> dict[str, Any]:
     category_ranges = {
         split: (report.get("min_category_id"), report.get("max_category_id"), report.get("categories"))
@@ -191,11 +194,17 @@ def split_consistency_report(
         if split != "train" and report.get("exists")
     }
     image_id_overlap_counts = {}
+    file_name_overlap_counts = {}
+    split_file_names = split_file_names or {}
     for left_index, left in enumerate(SPLITS):
         for right in SPLITS[left_index + 1 :]:
             if left in split_image_ids and right in split_image_ids:
                 image_id_overlap_counts[f"{left}_{right}"] = len(
                     split_image_ids[left].intersection(split_image_ids[right])
+                )
+            if left in split_file_names and right in split_file_names:
+                file_name_overlap_counts[f"{left}_{right}"] = len(
+                    split_file_names[left].intersection(split_file_names[right])
                 )
     return {
         "category_ranges": {
@@ -215,6 +224,10 @@ def split_consistency_report(
         "image_id_overlap_counts": image_id_overlap_counts,
         "image_ids_disjoint": all(count == 0 for count in image_id_overlap_counts.values())
         if image_id_overlap_counts
+        else None,
+        "file_name_overlap_counts": file_name_overlap_counts,
+        "file_names_disjoint": all(count == 0 for count in file_name_overlap_counts.values())
+        if file_name_overlap_counts
         else None,
     }
 

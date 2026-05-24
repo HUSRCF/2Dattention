@@ -48,11 +48,13 @@ def main() -> None:
     )
     source_train = args.source_dataset_dir / "train" / "_annotations.coco.json"
     train_data = json.loads(source_train.read_text(encoding="utf-8"))
+    reserved_image_ids = collect_dataset_image_ids(args.source_dataset_dir)
     oversampled, summary_rows = build_oversampled_train(
         train_data,
         hard_categories=hard_categories,
         target_hard_boxes=args.target_hard_boxes,
         max_repeat=args.max_repeat,
+        reserved_image_ids=reserved_image_ids,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_split(
@@ -103,6 +105,7 @@ def build_oversampled_train(
     hard_categories: set[int],
     target_hard_boxes: int,
     max_repeat: int,
+    reserved_image_ids: set[int] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     annotations_by_image: dict[int, list[dict[str, Any]]] = {}
     counts: dict[int, int] = {}
@@ -112,7 +115,9 @@ def build_oversampled_train(
         annotations_by_image.setdefault(image_id, []).append(annotation)
         counts[category_id] = counts.get(category_id, 0) + 1
 
-    next_image_id = max((int(image["id"]) for image in data.get("images", [])), default=0) + 1
+    all_reserved_image_ids = set(reserved_image_ids or set())
+    all_reserved_image_ids.update(int(image["id"]) for image in data.get("images", []))
+    next_image_id = max(all_reserved_image_ids, default=0) + 1
     next_annotation_id = max((int(row.get("id", 0)) for row in data.get("annotations", [])), default=0) + 1
     images_out: list[dict[str, Any]] = []
     annotations_out: list[dict[str, Any]] = []
@@ -199,6 +204,17 @@ def build_oversampled_train(
         },
         summary_rows,
     )
+
+
+def collect_dataset_image_ids(dataset_dir: Path) -> set[int]:
+    image_ids: set[int] = set()
+    for split in ("train", "valid", "test"):
+        annotation_path = dataset_dir / split / "_annotations.coco.json"
+        if not annotation_path.exists():
+            continue
+        data = json.loads(annotation_path.read_text(encoding="utf-8"))
+        image_ids.update(int(image["id"]) for image in data.get("images", []))
+    return image_ids
 
 
 def write_split(

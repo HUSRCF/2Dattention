@@ -168,6 +168,48 @@ def test_split_consistency_checks_full_category_ids_and_table() -> None:
     assert report["image_ids_disjoint"] is False
 
 
+def test_split_consistency_reports_file_name_overlap_separately_from_numeric_ids() -> None:
+    report = split_consistency_report(
+        {
+            "train": {
+                "exists": True,
+                "min_category_id": 1,
+                "max_category_id": 1,
+                "categories": 1,
+                "category_ids": [1],
+                "category_table_sha256": "sha",
+                "annotation_sha256": "train",
+            },
+            "valid": {
+                "exists": True,
+                "min_category_id": 1,
+                "max_category_id": 1,
+                "categories": 1,
+                "category_ids": [1],
+                "category_table_sha256": "sha",
+                "annotation_sha256": "valid",
+            },
+            "test": {
+                "exists": True,
+                "min_category_id": 1,
+                "max_category_id": 1,
+                "categories": 1,
+                "category_ids": [1],
+                "category_table_sha256": "sha",
+                "annotation_sha256": "test",
+            },
+        },
+        {"train": {1}, "valid": {1}, "test": {3}},
+        {"train": {"a.jpg"}, "valid": {"b.jpg"}, "test": {"a.jpg"}},
+    )
+
+    assert report["image_id_overlap_counts"]["train_valid"] == 1
+    assert report["file_name_overlap_counts"]["train_valid"] == 0
+    assert report["file_name_overlap_counts"]["train_test"] == 1
+    assert report["image_ids_disjoint"] is False
+    assert report["file_names_disjoint"] is False
+
+
 def test_package_report_exposes_import_failure(monkeypatch) -> None:
     import importlib.machinery
 

@@ -3,7 +3,13 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image
 
-from scripts.predict_rfdetr_coco import detections_to_coco_records, infer_model_num_classes, load_rgb_image, xyxy_to_xywh
+from scripts.predict_rfdetr_coco import (
+    detections_to_coco_records,
+    infer_detection_head_out_features,
+    infer_model_num_classes,
+    load_rgb_image,
+    xyxy_to_xywh,
+)
 
 
 class FakeDetections:
@@ -52,6 +58,26 @@ def test_infer_model_num_classes_reads_nested_model_args() -> None:
         model = ModelContext()
 
     assert infer_model_num_classes(Model(), default=200) == 123
+
+
+def test_infer_model_num_classes_prefers_actual_detection_head() -> None:
+    class ClassEmbed:
+        out_features = 201
+
+    class Inner:
+        class_embed = ClassEmbed()
+
+        def named_parameters(self):
+            return iter(())
+
+    class ModelContext:
+        model = Inner()
+
+    class Model:
+        model = ModelContext()
+
+    assert infer_detection_head_out_features(Model()) == 201
+    assert infer_model_num_classes(Model(), default=90) == 200
 
 
 def test_load_rgb_image_converts_grayscale(tmp_path) -> None:

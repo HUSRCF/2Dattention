@@ -16,6 +16,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.train_rfdetr_coco import build_rfdetr_model
+from scripts.train_rfdetr_coco import force_detection_head_num_classes
+from scripts.train_rfdetr_coco import locate_torch_module
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +47,9 @@ def main() -> None:
         num_classes=args.num_classes,
         device=None if args.device == "auto" else args.device,
     )
+    class_report = None
+    if args.num_classes is not None:
+        class_report = force_detection_head_num_classes(model, args.num_classes)
     model_num_classes = infer_model_num_classes(model, default=len(category_ids))
     if model_num_classes > len(category_ids):
         raise ValueError(
@@ -75,12 +80,37 @@ def main() -> None:
     print(f"images: {len(image_records)}")
     print(f"predictions: {len(predictions)}")
     print(f"model_num_classes: {model_num_classes}")
+    actual_out_features = infer_detection_head_out_features(model)
+    print(f"actual_class_head_out_features: {actual_out_features}")
+    if class_report is not None:
+        print(
+            "forced_class_head_out_features: "
+            f"{class_report['before_out_features']} -> {class_report['after_out_features']}"
+        )
 
 
 def infer_model_num_classes(model: Any, default: int) -> int:
+    actual_out_features = infer_detection_head_out_features(model)
+    if actual_out_features > 0:
+        return actual_out_features - 1
     model_context = getattr(model, "model", None)
     model_args = getattr(model_context, "args", None)
     return int(getattr(model_args, "num_classes", default))
+
+
+def infer_detection_head_out_features(model: Any) -> int:
+    inner = locate_torch_module(model)
+    class_embed = getattr(inner, "class_embed", None) if inner is not None else None
+    if class_embed is None:
+        return -1
+    out_features = getattr(class_embed, "out_features", None)
+    if out_features is not None:
+        return int(out_features)
+    weight = getattr(class_embed, "weight", None)
+    shape = getattr(weight, "shape", None)
+    if shape:
+        return int(shape[0])
+    return -1
 
 
 def load_rgb_image(image_path: Path) -> Image.Image:
