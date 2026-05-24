@@ -1325,6 +1325,16 @@ Full low-LR detector continuation:
   `4/52 -> 3/52 -> 0/52`. This confirms the extra-low-LR continuation can
   improve deployed class AP while still regressing the concrete fixed failure
   categories' emitted candidate coverage.
+- `scripts/summarize_coco_sample_candidate_flows.py` aggregates the nearest-box
+  top-candidate flows from the same chain into
+  `results/rfdetr_stratified_seed41_candidate_failure_candidate_flows.csv` and
+  `..._candidate_flow_by_category.csv`. Stable wrong-flow examples on the fixed
+  failure set include `n03676483 -> n00007846` in the base checkpoint
+  (`10` samples, mean nearest IoU `0.888`, no GT candidate), `n07695742 ->
+  n00007846` in base (`6`, IoU `0.969`), and after continuation
+  `n07695742 -> n01726692` plus `n04468005 -> n04530566`. These flows are now
+  the concrete semantic-confusion targets for any future class-head or teacher
+  repair.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1348,6 +1358,8 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/manifest.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flows.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flow_by_category.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`

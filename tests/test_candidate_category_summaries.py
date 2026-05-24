@@ -6,6 +6,9 @@ from pathlib import Path
 
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
+from scripts.summarize_coco_sample_candidate_flows import summarize_categories
+from scripts.summarize_coco_sample_candidate_flows import summarize_flows
+from scripts.summarize_coco_sample_candidate_flows import top_candidate
 from scripts.summarize_coco_sample_prediction_chain import parse_entries
 from scripts.summarize_coco_sample_prediction_chain import summarize_label
 from scripts.select_coco_category_samples import select_category_samples
@@ -275,3 +278,47 @@ def test_summarize_coco_sample_prediction_chain_entries_and_summary() -> None:
     assert summary["samples"] == 2
     assert summary["mean_nearest_iou"] == "0.6"
     assert summary["gt_candidate_present_rate"] == "0.5"
+
+
+def test_summarize_coco_sample_candidate_flows() -> None:
+    rows = [
+        {
+            "label": "base",
+            "category_id": "1",
+            "category_name": "gt_one",
+            "nearest_iou": "0.8",
+            "gt_candidate_present": "0",
+            "image_id": "10",
+            "top_candidates": "wrong:0.7\ngt_one:0.1",
+        },
+        {
+            "label": "base",
+            "category_id": "1",
+            "category_name": "gt_one",
+            "nearest_iou": "0.6",
+            "gt_candidate_present": "1",
+            "image_id": "11",
+            "top_candidates": "wrong:0.5",
+        },
+        {
+            "label": "next",
+            "category_id": "1",
+            "category_name": "gt_one",
+            "nearest_iou": "0.4",
+            "gt_candidate_present": "0",
+            "image_id": "12",
+            "top_candidates": "other:0.2",
+        },
+    ]
+
+    flows = summarize_flows(rows, min_iou=0.5)
+    categories = summarize_categories(rows, min_iou=0.5)
+
+    assert top_candidate("wrong:0.7\ngt_one:0.1") == {"category": "wrong", "score": 0.7}
+    assert flows[0]["top_candidate"] == "wrong"
+    assert flows[0]["samples"] == 2
+    assert flows[0]["gt_candidate_present"] == 1
+    assert flows[0]["iou_ge_min"] == 2
+    base_summary = next(row for row in categories if row["label"] == "base")
+    assert base_summary["dominant_top_candidate"] == "wrong"
+    assert base_summary["gt_candidate_present_rate"] == "0.5"
