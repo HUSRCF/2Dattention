@@ -1307,6 +1307,15 @@ Full low-LR detector continuation:
   visualizes the fixed failure target set before any new prediction export, and
   shows that the candidate failures include both clear large objects and
   difficult small/multi-instance cases.
+- `scripts/visualize_coco_sample_predictions.py` now overlays GT boxes with the
+  nearest grouped RF-DETR prediction for that same fixed failure set. Artifact:
+  `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/`.
+  The current contact sheet samples 30 annotations from persistent/regressed
+  zero-hit categories; mean nearest IoU is `0.784`, `24/30` samples have nearest
+  IoU >= `0.5`, but only `2/30` nearest prediction groups contain the GT
+  category among their displayed candidates. This is a qualitative/manifest
+  check that the failure target set often has usable box support while the
+  emitted semantic candidate set misses the correct category.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1321,6 +1330,13 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_candidate_oracle_per_category.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_candidate_oracle_per_category_with_split_counts.csv`
   - `results/rfdetr_stratified_seed41_candidate_high_support_summary.csv`
+  - `results/rfdetr_stratified_seed41_candidate_category_transitions.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_categories.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_test_samples.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_gt_overlays/contact_sheet.jpg`
+  - `results/rfdetr_stratified_seed41_candidate_failure_gt_overlays/manifest.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/contact_sheet.jpg`
+  - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/manifest.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`

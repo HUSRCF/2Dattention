@@ -7,6 +7,9 @@ from pathlib import Path
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
 from scripts.select_coco_category_samples import select_category_samples
+from scripts.visualize_coco_sample_predictions import nearest_prediction_group
+from scripts.visualize_coco_sample_predictions import select_rows as select_prediction_rows
+from scripts.visualize_coco_sample_predictions import xyxy_iou
 from scripts.visualize_coco_category_samples import select_rows as select_visual_rows
 from scripts.visualize_coco_category_samples import xywh_to_xyxy
 
@@ -191,3 +194,52 @@ def test_visualize_coco_category_samples_orders_and_limits() -> None:
 
     assert [row["image_id"] for row in selected] == ["1", "3"]
     assert xywh_to_xyxy([1.0, 2.0, 3.0, 4.0]) == [1.0, 2.0, 4.0, 6.0]
+
+
+def test_visualize_coco_sample_predictions_nearest_group_and_limits() -> None:
+    sample = {
+        "image_id": "1",
+        "category_id": "7",
+        "bbox_x": "10",
+        "bbox_y": "10",
+        "bbox_w": "20",
+        "bbox_h": "20",
+    }
+    predictions = [
+        {"image_id": 1, "category_id": 3, "bbox": [0, 0, 10, 10], "score": 0.99},
+        {"image_id": 1, "category_id": 4, "bbox": [9, 9, 20, 20], "score": 0.30},
+        {"image_id": 1, "category_id": 7, "bbox": [9, 9, 20, 20], "score": 0.10},
+    ]
+
+    nearest = nearest_prediction_group(sample, predictions, bbox_decimals=3)
+
+    assert nearest is not None
+    assert nearest.gt_candidate_present is True
+    assert nearest.candidates[0]["category_id"] == 4
+    assert nearest.iou > 0.8
+    assert xyxy_iou([0, 0, 10, 10], [5, 5, 15, 15]) == 25 / 175
+
+    rows = [
+        {
+            "image_id": "2",
+            "category_id": "1",
+            "transition": "persistent_zero_hit",
+            "area_ratio": "0.1",
+        },
+        {
+            "image_id": "1",
+            "category_id": "1",
+            "transition": "persistent_zero_hit",
+            "area_ratio": "0.2",
+        },
+        {
+            "image_id": "3",
+            "category_id": "2",
+            "transition": "regressed_to_zero_hit",
+            "area_ratio": "0.9",
+        },
+    ]
+
+    selected = select_prediction_rows(rows, max_samples=0, max_per_category=1)
+
+    assert [row["image_id"] for row in selected] == ["1", "3"]
