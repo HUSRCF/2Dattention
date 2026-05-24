@@ -949,6 +949,8 @@ present in the test split.
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Small 384, 2ep | stratified train1000 | 0.0949 | 0.1122 | 0.1001 | 0.4111 | 0.5426 | 0.4504 | 0.0871 | 0.0646 |
 | Small 384, 2best + 4ep fresh lr1e-4 | stratified train1000 | 0.1543 | 0.1869 | 0.1645 | 0.4206 | 0.5584 | 0.4484 | 0.1675 | 0.1544 |
+| Small 384, full lr5e-5 +2ep | stratified train1000 | 0.1930 | 0.2558 | 0.2154 | 0.4277 | 0.5754 | 0.4622 | 0.2252 | 0.1772 |
+| Small 384, extra lr3e-5 +2ep | stratified train1000 | 0.2016 | 0.2625 | 0.2252 | 0.4131 | 0.5640 | 0.4450 | 0.2455 | 0.1952 |
 
 Stratified long-run artifacts:
 
@@ -962,6 +964,7 @@ Stratified long-run artifacts:
 - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_score_iou_classaware.csv`
 - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_category_coverage_gap.csv`
 - `results/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_per_category_coverage_gap_with_split_counts.csv`
+- `results/rfdetr_stratified_active_route_multi_metric_rank.csv`
 
 Stratified interpretation:
 
@@ -970,6 +973,11 @@ Stratified interpretation:
 - The detector-side class head still remains the limiting factor. At top-100 /
   IoU 0.5, localization recall is `0.8427`, global class-aware recall is
   `0.6424`, and per-category class recall is `0.7119`.
+- Within the stratified benchmark only, `scripts/rank_rfdetr_stage_gate_rows.py`
+  ranks `seed41_fulllr5e5_then3e5_2ep` first by mean rank over class AP50,
+  offcenter AP50, small AP50, and loc AP50 (`1.25`), followed by
+  `seed41_fulllr5e5_2ep` (`1.75`). This is the cleaner active guardrail for the
+  next serious RF-DETR continuation than the mixed random/indtest route table.
 - Score-IoU alignment remains weak despite improved AP: loc Spearman is
   `-0.0036`, class-aware Spearman is `0.0862`, while top-100 boxes have high
   nearest IoU (`0.9053` loc, `0.8891` class-aware).
