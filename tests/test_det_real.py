@@ -542,6 +542,41 @@ def test_real_det_build_train_slice_sampler_oversamples_slice() -> None:
     assert sampler.num_samples == len(samples)
 
 
+def test_real_det_build_train_slice_sampler_oversamples_semantic_targets() -> None:
+    image_root = Path("/unused")
+    samples = [
+        RealDetSample(
+            image_id="target",
+            image_path=image_root / "target.JPEG",
+            width=100,
+            height=100,
+            boxes=(RealBox("target", 25, 25, 75, 75),),
+        ),
+        RealDetSample(
+            image_id="other",
+            image_path=image_root / "other.JPEG",
+            width=100,
+            height=100,
+            boxes=(RealBox("other", 25, 25, 75, 75),),
+        ),
+    ]
+    dataset = RealDetDataset(samples, {"other": 0, "target": 1}, image_size=64, max_objects=1)
+    train_set = torch.utils.data.Subset(dataset, [0, 1])
+
+    sampler = build_train_slice_sampler(
+        train_set,
+        slice_name="none",
+        factor=1.0,
+        max_objects=1,
+        seed=123,
+        semantic_hard_negatives={1: [(0, 1.0)]},
+        semantic_factor=5.0,
+    )
+
+    assert sampler is not None
+    assert sampler.weights.tolist() == [5.0, 1.0]
+
+
 def test_real_det_ranking_diagnostics_capture_high_score_false_positive() -> None:
     pred_logits = torch.tensor(
         [

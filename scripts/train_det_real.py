@@ -565,6 +565,15 @@ def parse_args() -> argparse.Namespace:
         default=0.5,
         help="Margin used by the semantic hard-negative class-logit penalty.",
     )
+    parser.add_argument(
+        "--train-semantic-hard-negative-oversample-factor",
+        type=float,
+        default=1.0,
+        help=(
+            "Optional sampling weight multiplier for train images containing "
+            "mapped semantic hard-negative target labels."
+        ),
+    )
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
     parser.add_argument(
         "--quality-head-slice",
@@ -677,18 +686,33 @@ def semantic_hard_negative_dataset_coverage(
     box_count = 0
     for index in dataset.indices:
         sample = dataset.dataset.samples[int(index)]
-        ranked_boxes = sorted(sample.boxes, key=lambda box: box_area(box), reverse=True)[
-            : dataset.dataset.max_objects
-        ]
-        sample_hits = 0
-        for box in ranked_boxes:
-            label = dataset.dataset.label_to_id[box.label]
-            if label in target_labels:
-                sample_hits += 1
+        sample_hits = sample_semantic_hard_negative_hits(
+            sample,
+            dataset.dataset.label_to_id,
+            max_objects=dataset.dataset.max_objects,
+            target_labels=target_labels,
+        )
         if sample_hits:
             image_count += 1
             box_count += sample_hits
     return image_count, box_count
+
+
+def sample_semantic_hard_negative_hits(
+    sample: RealDetSample,
+    label_to_id: dict[str, int],
+    *,
+    max_objects: int,
+    target_labels: set[int],
+) -> int:
+    """Count ranked boxes in a sample whose labels can activate semantic loss."""
+
+    hits = 0
+    ranked_boxes = sorted(sample.boxes, key=lambda box: box_area(box), reverse=True)[:max_objects]
+    for box in ranked_boxes:
+        label = label_to_id[box.label]
+        hits += int(label in target_labels)
+    return hits
 
 
 def main() -> None:
@@ -715,6 +739,8 @@ def main() -> None:
         raise ValueError("--calibration-frac must be in [0, 1)")
     if args.train_slice_oversample_factor <= 0:
         raise ValueError("--train-slice-oversample-factor must be > 0")
+    if args.train_semantic_hard_negative_oversample_factor <= 0:
+        raise ValueError("--train-semantic-hard-negative-oversample-factor must be > 0")
     device = get_best_device()
     all_samples = load_real_det_samples(args.anno_root, args.image_root)
     label_source_samples = all_samples
@@ -751,6 +777,10 @@ def main() -> None:
     print("semantic_hard_negative_loss_map:", args.semantic_hard_negative_loss_map)
     print("semantic_hard_negative_weight:", args.semantic_hard_negative_weight)
     print("semantic_hard_negative_targets:", len(args.semantic_hard_negatives))
+    print(
+        "train_semantic_hard_negative_oversample_factor:",
+        args.train_semantic_hard_negative_oversample_factor,
+    )
     print("quality_head_slice:", args.quality_head_slice)
     print("quality_head_slice_weight:", args.quality_head_slice_weight)
     print("eval_slice_filter:", args.eval_slice_filter)
@@ -871,6 +901,8 @@ def train_one_model(
         factor=args.train_slice_oversample_factor,
         max_objects=args.max_objects,
         seed=20_000_000 + run_seed,
+        semantic_hard_negatives=args.semantic_hard_negatives,
+        semantic_factor=args.train_semantic_hard_negative_oversample_factor,
     )
     train_loader = DataLoader(
         train_set,
@@ -2661,27 +2693,51 @@ def build_train_slice_sampler(
     factor: float,
     max_objects: int,
     seed: int,
+    semantic_hard_negatives: dict[int, list[tuple[int, float]]] | None = None,
+    semantic_factor: float = 1.0,
 ) -> WeightedRandomSampler | None:
-    """Return a deterministic weighted sampler that oversamples one robustness slice."""
+    """Return a deterministic weighted sampler for slice or semantic target oversampling."""
 
-    if slice_name == "none":
+    semantic_hard_negatives = semantic_hard_negatives or {}
+    use_semantic = bool(semantic_hard_negatives) and semantic_factor != 1.0
+    if slice_name == "none" and not use_semantic:
         return None
-    if slice_name not in {"small", "medium", "large", "center", "offcenter", "offcenter_only"}:
+    if slice_name not in {"none", "small", "medium", "large", "center", "offcenter", "offcenter_only"}:
         raise ValueError("unknown train slice oversample")
     if factor <= 0:
         raise ValueError("oversample factor must be > 0")
+    if semantic_factor <= 0:
+        raise ValueError("semantic oversample factor must be > 0")
     dataset = train_set.dataset
     if not isinstance(dataset, RealDetDataset):
         raise TypeError("train_set must wrap RealDetDataset")
     weights = []
-    selected = 0
+    slice_selected = 0
+    semantic_selected = 0
+    target_labels = set(semantic_hard_negatives)
     for raw_index in train_set.indices:
         sample = dataset.samples[int(raw_index)]
-        matches = sample_matches_slice(sample, max_objects=max_objects, slice_name=slice_name)
-        selected += int(matches)
-        weights.append(float(factor if matches else 1.0))
-    if selected == 0:
+        weight = 1.0
+        if slice_name != "none":
+            matches = sample_matches_slice(sample, max_objects=max_objects, slice_name=slice_name)
+            slice_selected += int(matches)
+            if matches:
+                weight *= factor
+        if use_semantic:
+            semantic_hits = sample_semantic_hard_negative_hits(
+                sample,
+                dataset.label_to_id,
+                max_objects=max_objects,
+                target_labels=target_labels,
+            )
+            semantic_selected += int(semantic_hits > 0)
+            if semantic_hits:
+                weight *= semantic_factor
+        weights.append(float(weight))
+    if slice_name != "none" and slice_selected == 0:
         raise ValueError(f"train slice oversample produced no selected samples: {slice_name}")
+    if use_semantic and semantic_selected == 0:
+        raise ValueError("semantic hard-negative oversample produced no selected samples")
     weight_tensor = torch.tensor(weights, dtype=torch.double)
     return WeightedRandomSampler(
         weights=weight_tensor,
