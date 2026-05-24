@@ -1201,6 +1201,16 @@ Hard-category oversampling hook:
   this early smoke was built before duplicate train image ids were reserved
   against valid/test ids, so future hard-category oversampled datasets should be
   regenerated with the fixed builder and audited with `check_rfdetr_handoff.py`.
+- Regenerated fixed hard-category oversample dataset:
+  `/private/tmp/rfdetr_stratified_seed41_train1000_hardcat_oversample60_fixed`.
+  It keeps the same train images / annotations change (`1000/4409` ->
+  `1087/5221`) but now reserves duplicate train ids against train/valid/test.
+  `scripts/check_rfdetr_handoff.py` reports
+  `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
+  `file_name_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}`.
+  RF-DETR `train_rfdetr_coco.py --check-only --num-classes 200` also accepts
+  the fixed dataset. Use this fixed path for any future hardcat smoke; do not
+  reuse the older `_abs` dataset for new training.
 - A 1ep class-head continuation from the stratified 2best checkpoint gives only
   a weak AP gain: class `AP/AP50/AP75 = 0.1624/0.1961/0.1729`. It is slightly
   above the base checkpoint and comparable to decoder+class +1ep, but it does
@@ -1215,6 +1225,8 @@ Hard-category oversampling hook:
 - Artifact:
   - `results/rfdetr_stratified_seed41_category_intervention_summary.csv`
   - `results/rfdetr_stratified_seed41_hardcat_oversample60_abs_summary.csv`
+  - `results/rfdetr_stratified_seed41_hardcat_oversample60_fixed_summary.csv`
+  - `results/rfdetr_stratified_seed41_hardcat_oversample60_fixed_handoff.json`
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_loc_cocoeval.csv`
   - `results/rfdetr_stratified_seed41_hardcat60_classhead_1ep_test_slices.csv`
