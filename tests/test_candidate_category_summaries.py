@@ -7,6 +7,8 @@ from pathlib import Path
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
 from scripts.build_rfdetr_candidate_repair_targets import build_targets
+from scripts.build_rfdetr_hard_confusion_pairs import build_instances
+from scripts.build_rfdetr_hard_confusion_pairs import summarize_pairs
 from scripts.summarize_coco_sample_candidate_flows import summarize_categories
 from scripts.summarize_coco_sample_candidate_flows import summarize_flows
 from scripts.summarize_coco_sample_candidate_flows import top_candidate
@@ -372,3 +374,57 @@ def test_build_rfdetr_candidate_repair_targets_merges_flow_columns() -> None:
     assert rows[0]["category_id"] == "1"
     assert rows[0]["base_fixed_samples"] == "3"
     assert rows[0]["base_fixed_dominant_top_candidate"] == "wrong"
+
+
+def test_build_rfdetr_hard_confusion_pairs_filters_missing_gt() -> None:
+    rows = [
+        {
+            "label": "base",
+            "image_id": "10",
+            "annotation_id": "100",
+            "category_id": "1",
+            "category_name": "gt_one",
+            "transition": "persistent_zero_hit",
+            "top_candidates": "wrong:0.7\ngt_one:0.1",
+            "nearest_iou": "0.8",
+            "nearest_group_rank": "2",
+            "nearest_group_top_score": "0.7",
+            "nearest_group_size": "4",
+            "gt_candidate_present": "0",
+            "gt_candidate_rank_in_group": "0",
+            "gt_candidate_present_displayed": "0",
+        },
+        {
+            "label": "base",
+            "image_id": "11",
+            "annotation_id": "101",
+            "category_id": "1",
+            "category_name": "gt_one",
+            "transition": "persistent_zero_hit",
+            "top_candidates": "wrong:0.6",
+            "nearest_iou": "0.4",
+            "gt_candidate_present": "0",
+            "gt_candidate_present_displayed": "0",
+        },
+        {
+            "label": "base",
+            "image_id": "12",
+            "annotation_id": "102",
+            "category_id": "1",
+            "category_name": "gt_one",
+            "transition": "persistent_zero_hit",
+            "top_candidates": "wrong:0.5",
+            "nearest_iou": "0.9",
+            "gt_candidate_present": "1",
+            "gt_candidate_present_displayed": "0",
+        },
+    ]
+
+    instances = build_instances(rows, min_iou=0.5, missing_mode="group")
+    summary = summarize_pairs(instances)
+
+    assert len(instances) == 1
+    assert instances[0]["top_wrong_candidate"] == "wrong"
+    assert instances[0]["top_wrong_score"] == "0.7"
+    assert summary[0]["samples"] == 1
+    assert summary[0]["mean_nearest_group_rank"] == "2"

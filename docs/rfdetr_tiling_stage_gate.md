@@ -1345,6 +1345,14 @@ Full low-LR detector continuation:
   current compact handoff table for repair work: it keeps train/valid/test
   support, aggregate zero-hit stats, high-IoU wrong-flow evidence, and
   checkpoint-specific dominant wrong candidates in one row per target category.
+- `scripts/build_rfdetr_hard_confusion_pairs.py` extracts high-IoU fixed-sample
+  instances where the GT category is absent from the nearest bbox group's
+  candidate set. Artifacts:
+  `results/rfdetr_stratified_seed41_candidate_failure_hard_pairs.csv` and
+  `..._hard_pair_summary.csv`. With `min_iou=0.5`, it produces `132`
+  hard-confusion instances across the three checkpoint labels and `73` aggregate
+  pairs. These rows are the candidate-level hard negatives for any future
+  class-head contrastive loss or teacher-side semantic repair.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and
@@ -1373,6 +1381,8 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flows.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flow_by_category.csv`
   - `results/rfdetr_stratified_seed41_candidate_repair_targets.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_hard_pairs.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_hard_pair_summary.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_classaware.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_category_coverage_gap.csv`
