@@ -1305,6 +1305,14 @@ Full low-LR detector continuation:
   table for class AP, loc AP, slice AP50, candidate hit/oracle AP, top-k
   coverage, score-IoU correlation, and high-support candidate zero-hit
   diagnostics across stratified RF-DETR runs.
+- `scripts/select_rfdetr_stage_gate_rows.py` ranks rows across protocol summary
+  files by a selected metric. Current active-route class AP50 table:
+  `results/rfdetr_active_route_top_class_ap50.csv`. It shows the strongest
+  checked class-AP50 rows are still the independent-test Small long-resume
+  seed41 checkpoints (`0.3625` and `0.3546`), followed by the random train1000
+  14best row (`0.3242`). Treat this as a selector for planning next formal
+  runs, not as a claim that the older offcenter split is the preferred future
+  benchmark.
 - `scripts/summarize_candidate_category_transitions.py` now produces
   `results/rfdetr_stratified_seed41_candidate_category_transitions.csv` for
   the seed41 base -> full_lr_2ep -> extra_low_lr chain. It identifies `7`
