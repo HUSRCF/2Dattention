@@ -662,6 +662,35 @@ def load_semantic_hard_negative_loss_map(
     return hard_negatives
 
 
+def semantic_hard_negative_dataset_coverage(
+    dataset: Subset,
+    hard_negatives: dict[int, list[tuple[int, float]]],
+) -> tuple[int, int]:
+    """Count train images/boxes that can activate semantic hard-negative loss."""
+
+    if not hard_negatives:
+        return 0, 0
+    if not isinstance(dataset.dataset, RealDetDataset):
+        raise TypeError("semantic hard-negative coverage expects a RealDetDataset subset")
+    target_labels = set(hard_negatives)
+    image_count = 0
+    box_count = 0
+    for index in dataset.indices:
+        sample = dataset.dataset.samples[int(index)]
+        ranked_boxes = sorted(sample.boxes, key=lambda box: box_area(box), reverse=True)[
+            : dataset.dataset.max_objects
+        ]
+        sample_hits = 0
+        for box in ranked_boxes:
+            label = dataset.dataset.label_to_id[box.label]
+            if label in target_labels:
+                sample_hits += 1
+        if sample_hits:
+            image_count += 1
+            box_count += sample_hits
+    return image_count, box_count
+
+
 def main() -> None:
     args = parse_args()
     if args.max_objects < 1:
@@ -753,6 +782,14 @@ def main() -> None:
             seed=run_seed,
         )
         split_rows.extend(seed_split_rows)
+        semantic_target_images, semantic_target_boxes = semantic_hard_negative_dataset_coverage(
+            train_set,
+            args.semantic_hard_negatives,
+        )
+        print(
+            "semantic_hard_negative_coverage,"
+            f"run_seed={run_seed},train_images={semantic_target_images},train_boxes={semantic_target_boxes}"
+        )
         calibration_loader = None
         if calibration_set is not None:
             calibration_loader = DataLoader(

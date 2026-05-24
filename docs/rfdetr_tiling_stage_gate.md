@@ -1369,9 +1369,12 @@ Full low-LR detector continuation:
   `scripts/train_det_real.py --semantic-hard-negative-loss-map` then remaps
   entries by category name onto the active runtime `label_to_id` when names are
   present, avoiding silent RF-DETR category-id vs compact-logit-index mismatch.
-  This is a training-interface dry run for future class-head/semantic repair
-  smoke tests, not evidence yet that the loss improves RF-DETR candidate
-  coverage.
+  The runner also prints train image/box coverage for the mapped hard-negative
+  target labels. A generic `top_classes=0, max_samples=160` MPS smoke covered
+  only `1` train image / `1` train box, so a meaningful experiment needs
+  targeted hard-category sampling or oversampling first. This is a
+  training-interface dry run for future class-head/semantic repair smoke tests,
+  not evidence yet that the loss improves RF-DETR candidate coverage.
 - `scripts/check_rfdetr_handoff.py` now writes explicit image-id split
   overlap diagnostics. The refreshed stratified seed41 handoff check reports
   `image_id_overlap_counts={train_valid: 0, train_test: 0, valid_test: 0}` and

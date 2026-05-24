@@ -38,6 +38,7 @@ from scripts.train_det_real import (
     ranking_gap_closure,
     sample_matches_slice,
     score_iou_calibration_loss,
+    semantic_hard_negative_dataset_coverage,
     set_quality_head_only_trainable,
     summarize_slice_ap,
     summarize_slice_ranking_diagnostics,
@@ -285,6 +286,31 @@ def test_real_det_load_semantic_hard_negative_loss_map_can_remap_by_name(tmp_pat
     )
 
     assert hard_negatives == {4: [(0, 1.5)]}
+
+
+def test_real_det_semantic_hard_negative_dataset_coverage_counts_ranked_targets(tmp_path: Path) -> None:
+    image_path = tmp_path / "img.JPEG"
+    Image.new("RGB", (64, 64), "white").save(image_path)
+    samples = [
+        RealDetSample(
+            image_id="sample",
+            image_path=image_path,
+            width=64,
+            height=64,
+            boxes=(
+                RealBox("target", 0, 0, 32, 32),
+                RealBox("other", 0, 0, 8, 8),
+                RealBox("target", 0, 0, 4, 4),
+            ),
+        )
+    ]
+    dataset = RealDetDataset(samples, {"other": 0, "target": 1}, image_size=32, max_objects=2)
+    subset = torch.utils.data.Subset(dataset, [0])
+
+    images, boxes = semantic_hard_negative_dataset_coverage(subset, {1: [(0, 1.0)]})
+
+    assert images == 1
+    assert boxes == 1
 
 
 def test_real_det_build_splits_can_use_train_calibration() -> None:
