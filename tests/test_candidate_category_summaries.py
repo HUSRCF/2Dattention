@@ -7,6 +7,8 @@ from pathlib import Path
 from scripts import summarize_candidate_category_transitions
 from scripts import summarize_candidate_failure_categories
 from scripts.select_coco_category_samples import select_category_samples
+from scripts.visualize_coco_category_samples import select_rows as select_visual_rows
+from scripts.visualize_coco_category_samples import xywh_to_xyxy
 
 
 def test_candidate_category_transitions_label_zero_hit_changes(
@@ -161,3 +163,31 @@ def test_select_coco_category_samples_filters_transition_and_limits() -> None:
     assert rows[0]["category_name"] == "cat_one"
     assert rows[0]["area"] == "200"
     assert rows[0]["area_ratio"] == "0.04"
+
+
+def test_visualize_coco_category_samples_orders_and_limits() -> None:
+    rows = [
+        {
+            "image_id": "2",
+            "category_id": "1",
+            "transition": "persistent_zero_hit",
+            "area_ratio": "0.1",
+        },
+        {
+            "image_id": "1",
+            "category_id": "1",
+            "transition": "persistent_zero_hit",
+            "area_ratio": "0.2",
+        },
+        {
+            "image_id": "3",
+            "category_id": "2",
+            "transition": "regressed_to_zero_hit",
+            "area_ratio": "0.9",
+        },
+    ]
+
+    selected = select_visual_rows(rows, max_samples=0, max_per_category=1)
+
+    assert [row["image_id"] for row in selected] == ["1", "3"]
+    assert xywh_to_xyxy([1.0, 2.0, 3.0, 4.0]) == [1.0, 2.0, 4.0, 6.0]
