@@ -1,0 +1,396 @@
+{
+  "parameters": {
+    "max_negatives_per_class": 5,
+    "max_weight": 3.0,
+    "min_iou": 0.5,
+    "min_samples": 2
+  },
+  "source": "hard_confusion_pairs",
+  "target_count": 6,
+  "targets": [
+    {
+      "category_id": 92,
+      "category_name": "n03255030",
+      "hard_negative_count": 5,
+      "hard_negatives": [
+        {
+          "example_annotation_ids": [
+            10530,
+            10531,
+            10527,
+            10533,
+            10525
+          ],
+          "example_image_ids": [
+            3741
+          ],
+          "mean_nearest_group_rank": 13.0,
+          "mean_nearest_iou": 0.80153,
+          "mean_top_wrong_score": 0.21,
+          "negative_category_id": 3,
+          "negative_category_name": "n01495701",
+          "samples": 7,
+          "source_labels": [
+            "extra_low_lr"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            10524,
+            10529,
+            10530,
+            10526,
+            10534
+          ],
+          "example_image_ids": [
+            3741
+          ],
+          "mean_nearest_group_rank": 11.6,
+          "mean_nearest_iou": 0.743698,
+          "mean_top_wrong_score": 0.184,
+          "negative_category_id": 26,
+          "negative_category_name": "n02206856",
+          "samples": 5,
+          "source_labels": [
+            "full_lr_2ep"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            10524,
+            10530,
+            10529,
+            10528
+          ],
+          "example_image_ids": [
+            3741
+          ],
+          "mean_nearest_group_rank": 9.25,
+          "mean_nearest_iou": 0.86034,
+          "mean_top_wrong_score": 0.145,
+          "negative_category_id": 8,
+          "negative_category_name": "n01726692",
+          "samples": 4,
+          "source_labels": [
+            "base"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            10527,
+            10531
+          ],
+          "example_image_ids": [
+            3741
+          ],
+          "mean_nearest_group_rank": 23.5,
+          "mean_nearest_iou": 0.841423,
+          "mean_top_wrong_score": 0.1,
+          "negative_category_id": 107,
+          "negative_category_name": "n03513137",
+          "samples": 4,
+          "source_labels": [
+            "base",
+            "full_lr_2ep"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            10526,
+            10525,
+            10533
+          ],
+          "example_image_ids": [
+            3741
+          ],
+          "mean_nearest_group_rank": 10.333333,
+          "mean_nearest_iou": 0.852144,
+          "mean_top_wrong_score": 0.13,
+          "negative_category_id": 19,
+          "negative_category_name": "n02084071",
+          "samples": 3,
+          "source_labels": [
+            "base"
+          ],
+          "weight": 2.556432
+        }
+      ],
+      "total_weight": 14.556432
+    },
+    {
+      "category_id": 113,
+      "category_name": "n03676483",
+      "hard_negative_count": 5,
+      "hard_negatives": [
+        {
+          "example_annotation_ids": [
+            35597,
+            35593,
+            35599,
+            35591,
+            35596
+          ],
+          "example_image_ids": [
+            12672
+          ],
+          "mean_nearest_group_rank": 4.8,
+          "mean_nearest_iou": 0.888444,
+          "mean_top_wrong_score": 0.237,
+          "negative_category_id": 1,
+          "negative_category_name": "n00007846",
+          "samples": 10,
+          "source_labels": [
+            "base"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            35593,
+            35597,
+            35599,
+            35596,
+            35594
+          ],
+          "example_image_ids": [
+            12672
+          ],
+          "mean_nearest_group_rank": 7.625,
+          "mean_nearest_iou": 0.890234,
+          "mean_top_wrong_score": 0.19125,
+          "negative_category_id": 67,
+          "negative_category_name": "n02880940",
+          "samples": 8,
+          "source_labels": [
+            "full_lr_2ep"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            35593,
+            35591,
+            35592
+          ],
+          "example_image_ids": [
+            12672
+          ],
+          "mean_nearest_group_rank": 16.666667,
+          "mean_nearest_iou": 0.946182,
+          "mean_top_wrong_score": 0.096667,
+          "negative_category_id": 128,
+          "negative_category_name": "n03916031",
+          "samples": 3,
+          "source_labels": [
+            "extra_low_lr"
+          ],
+          "weight": 2.838547
+        },
+        {
+          "example_annotation_ids": [
+            35597,
+            35599
+          ],
+          "example_image_ids": [
+            12672
+          ],
+          "mean_nearest_group_rank": 8.0,
+          "mean_nearest_iou": 0.911504,
+          "mean_top_wrong_score": 0.155,
+          "negative_category_id": 200,
+          "negative_category_name": "n07880968",
+          "samples": 2,
+          "source_labels": [
+            "extra_low_lr"
+          ],
+          "weight": 1.823008
+        },
+        {
+          "example_annotation_ids": [
+            35594,
+            35590
+          ],
+          "example_image_ids": [
+            12672
+          ],
+          "mean_nearest_group_rank": 6.0,
+          "mean_nearest_iou": 0.887968,
+          "mean_top_wrong_score": 0.18,
+          "negative_category_id": 122,
+          "negative_category_name": "n03797390",
+          "samples": 2,
+          "source_labels": [
+            "extra_low_lr"
+          ],
+          "weight": 1.775937
+        }
+      ],
+      "total_weight": 12.437492
+    },
+    {
+      "category_id": 183,
+      "category_name": "n07695742",
+      "hard_negative_count": 3,
+      "hard_negatives": [
+        {
+          "example_annotation_ids": [
+            33696,
+            39439,
+            39434,
+            39435,
+            39438
+          ],
+          "example_image_ids": [
+            11995,
+            14025
+          ],
+          "mean_nearest_group_rank": 3.25,
+          "mean_nearest_iou": 0.958416,
+          "mean_top_wrong_score": 0.375,
+          "negative_category_id": 8,
+          "negative_category_name": "n01726692",
+          "samples": 12,
+          "source_labels": [
+            "base",
+            "extra_low_lr",
+            "full_lr_2ep"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            33695,
+            39436,
+            39434,
+            39435,
+            39438
+          ],
+          "example_image_ids": [
+            11995,
+            14025
+          ],
+          "mean_nearest_group_rank": 2.666667,
+          "mean_nearest_iou": 0.96912,
+          "mean_top_wrong_score": 0.251667,
+          "negative_category_id": 1,
+          "negative_category_name": "n00007846",
+          "samples": 6,
+          "source_labels": [
+            "base"
+          ],
+          "weight": 3.0
+        },
+        {
+          "example_annotation_ids": [
+            39438,
+            33697
+          ],
+          "example_image_ids": [
+            14025,
+            11995
+          ],
+          "mean_nearest_group_rank": 10.5,
+          "mean_nearest_iou": 0.854377,
+          "mean_top_wrong_score": 0.115,
+          "negative_category_id": 26,
+          "negative_category_name": "n02206856",
+          "samples": 2,
+          "source_labels": [
+            "full_lr_2ep"
+          ],
+          "weight": 1.708755
+        }
+      ],
+      "total_weight": 7.708755
+    },
+    {
+      "category_id": 167,
+      "category_name": "n04468005",
+      "hard_negative_count": 1,
+      "hard_negatives": [
+        {
+          "example_annotation_ids": [
+            54661,
+            54662
+          ],
+          "example_image_ids": [
+            18462
+          ],
+          "mean_nearest_group_rank": 8.25,
+          "mean_nearest_iou": 0.948746,
+          "mean_top_wrong_score": 0.18,
+          "negative_category_id": 171,
+          "negative_category_name": "n04530566",
+          "samples": 4,
+          "source_labels": [
+            "extra_low_lr",
+            "full_lr_2ep"
+          ],
+          "weight": 3.0
+        }
+      ],
+      "total_weight": 3.0
+    },
+    {
+      "category_id": 180,
+      "category_name": "n07583066",
+      "hard_negative_count": 1,
+      "hard_negatives": [
+        {
+          "example_annotation_ids": [
+            43767,
+            19325
+          ],
+          "example_image_ids": [
+            15535,
+            6868
+          ],
+          "mean_nearest_group_rank": 12.5,
+          "mean_nearest_iou": 0.844459,
+          "mean_top_wrong_score": 0.08,
+          "negative_category_id": 1,
+          "negative_category_name": "n00007846",
+          "samples": 2,
+          "source_labels": [
+            "base"
+          ],
+          "weight": 1.688918
+        }
+      ],
+      "total_weight": 1.688918
+    },
+    {
+      "category_id": 98,
+      "category_name": "n03400231",
+      "hard_negative_count": 1,
+      "hard_negatives": [
+        {
+          "example_annotation_ids": [
+            55045,
+            40913
+          ],
+          "example_image_ids": [
+            18560,
+            14530
+          ],
+          "mean_nearest_group_rank": 10.5,
+          "mean_nearest_iou": 0.581643,
+          "mean_top_wrong_score": 0.31,
+          "negative_category_id": 157,
+          "negative_category_name": "n04330267",
+          "samples": 2,
+          "source_labels": [
+            "extra_low_lr"
+          ],
+          "weight": 1.163287
+        }
+      ],
+      "total_weight": 1.163287
+    }
+  ],
+  "task": "rfdetr_semantic_candidate_repair"
+}

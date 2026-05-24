@@ -9,6 +9,7 @@ from scripts import summarize_candidate_failure_categories
 from scripts.build_rfdetr_candidate_repair_targets import build_targets
 from scripts.build_rfdetr_hard_confusion_pairs import build_instances
 from scripts.build_rfdetr_hard_confusion_pairs import summarize_pairs
+from scripts.build_rfdetr_semantic_repair_config import build_config
 from scripts.summarize_coco_sample_candidate_flows import summarize_categories
 from scripts.summarize_coco_sample_candidate_flows import summarize_flows
 from scripts.summarize_coco_sample_candidate_flows import top_candidate
@@ -428,3 +429,57 @@ def test_build_rfdetr_hard_confusion_pairs_filters_missing_gt() -> None:
     assert instances[0]["top_wrong_score"] == "0.7"
     assert summary[0]["samples"] == 1
     assert summary[0]["mean_nearest_group_rank"] == "2"
+
+
+def test_build_rfdetr_semantic_repair_config_merges_duplicate_negatives() -> None:
+    annotations = {
+        "categories": [
+            {"id": 1, "name": "gt_one"},
+            {"id": 2, "name": "wrong"},
+        ]
+    }
+    rows = [
+        {
+            "label": "base",
+            "gt_category_id": "1",
+            "gt_category_name": "gt_one",
+            "top_wrong_candidate": "wrong",
+            "samples": "2",
+            "mean_nearest_iou": "0.8",
+            "mean_nearest_group_rank": "2",
+            "mean_top_wrong_score": "0.2",
+            "example_image_ids": "10;11",
+            "example_annotation_ids": "100;101",
+        },
+        {
+            "label": "next",
+            "gt_category_id": "1",
+            "gt_category_name": "gt_one",
+            "top_wrong_candidate": "wrong",
+            "samples": "3",
+            "mean_nearest_iou": "0.6",
+            "mean_nearest_group_rank": "4",
+            "mean_top_wrong_score": "0.4",
+            "example_image_ids": "11;12",
+            "example_annotation_ids": "101;102",
+        },
+    ]
+
+    config = build_config(
+        hard_pair_rows=rows,
+        annotations=annotations,
+        min_samples=1,
+        min_iou=0.5,
+        max_negatives_per_class=5,
+        max_weight=3.0,
+    )
+
+    target = config["targets"][0]
+    negative = target["hard_negatives"][0]
+    assert config["target_count"] == 1
+    assert target["category_id"] == 1
+    assert target["hard_negative_count"] == 1
+    assert negative["negative_category_id"] == 2
+    assert negative["samples"] == 5
+    assert negative["source_labels"] == ["base", "next"]
+    assert negative["example_image_ids"] == [10, 11, 12]
