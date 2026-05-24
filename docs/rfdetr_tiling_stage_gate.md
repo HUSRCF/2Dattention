@@ -1321,6 +1321,16 @@ Full low-LR detector continuation:
   to `0.3081`, `small=0.2980`). This supports using the larger train1000
   protocol for the next formal run even though the historical long-resume row
   remains the single best checked point.
+- `scripts/rank_rfdetr_stage_gate_rows.py` now adds a multi-metric active-route
+  table, `results/rfdetr_active_route_multi_metric_rank.csv`, ranking rows by
+  mean rank over `class_ap50`, `offcenter_ap50`, `small_ap50`, and `loc_ap50`.
+  The seed41 20ep, seed41 20best fresh-LR, and seed41 16ep historical
+  independent-test rows tie at mean rank `3.75`, while the random train1000
+  10best continuation is next at `4.25` and the train1000 14best row is `6.25`.
+  This supports planning the next practical formal continuation on train1000,
+  while treating the table as a guardrail across accuracy, hard-slice, and
+  localization axes rather than a claim that different split protocols are
+  directly interchangeable.
 - `scripts/summarize_candidate_category_transitions.py` now produces
   `results/rfdetr_stratified_seed41_candidate_category_transitions.csv` for
   the seed41 base -> full_lr_2ep -> extra_low_lr chain. It identifies `7`
