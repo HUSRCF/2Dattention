@@ -21,6 +21,7 @@ from scripts.train_det_real import (
     duplicate_predictions_per_gt,
     filter_samples,
     fixed_quality_score_multiplier,
+    load_semantic_hard_negative_loss_map,
     load_real_det_samples,
     matcher_aware_quality_classification_loss,
     objectness_logits,
@@ -219,6 +220,71 @@ def test_real_det_build_splits_can_hold_out_calibration() -> None:
     assert len(calibration_set) == 2
     assert len(eval_set) == 2
     assert {str(row["split"]) for row in split_rows} == {"train", "calibration", "eval"}
+
+
+def test_real_det_load_semantic_hard_negative_loss_map_uses_class_indices(tmp_path: Path) -> None:
+    loss_map_path = tmp_path / "loss_map.json"
+    loss_map_path.write_text(
+        """
+        {
+          "task": "semantic_hard_negative_loss_map",
+          "entries": [
+            {
+              "positive_category_id": 3,
+              "positive_class_index": 2,
+              "hard_negatives": [
+                {
+                  "negative_category_id": 1,
+                  "negative_class_index": 0,
+                  "weight": 2.5
+                }
+              ]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    hard_negatives = load_semantic_hard_negative_loss_map(loss_map_path)
+
+    assert hard_negatives == {2: [(0, 2.5)]}
+
+
+def test_real_det_load_semantic_hard_negative_loss_map_can_remap_by_name(tmp_path: Path) -> None:
+    loss_map_path = tmp_path / "loss_map.json"
+    loss_map_path.write_text(
+        """
+        {
+          "entries": [
+            {
+              "positive_category_name": "target",
+              "positive_class_index": 99,
+              "hard_negatives": [
+                {
+                  "negative_category_name": "wrong",
+                  "negative_class_index": 98,
+                  "weight": 1.5
+                },
+                {
+                  "negative_category_name": "missing",
+                  "negative_class_index": 97,
+                  "weight": 3.0
+                }
+              ]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    hard_negatives = load_semantic_hard_negative_loss_map(
+        loss_map_path,
+        class_name_to_index={"wrong": 0, "target": 4},
+    )
+
+    assert hard_negatives == {4: [(0, 1.5)]}
 
 
 def test_real_det_build_splits_can_use_train_calibration() -> None:

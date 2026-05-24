@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import json
 import random
 import sys
 import time
@@ -543,6 +544,27 @@ def parse_args() -> argparse.Namespace:
         help="Cross-entropy weight for the DETR background/no-object class.",
     )
     parser.add_argument("--quality-cls-weight", type=float, default=1.0)
+    parser.add_argument(
+        "--semantic-hard-negative-loss-map",
+        type=Path,
+        default=None,
+        help=(
+            "Optional JSON from convert_semantic_repair_config_to_loss_map.py. "
+            "The entries must already use logits class indices for this run."
+        ),
+    )
+    parser.add_argument(
+        "--semantic-hard-negative-weight",
+        type=float,
+        default=0.0,
+        help="Loss weight for configured semantic hard-negative margin penalties.",
+    )
+    parser.add_argument(
+        "--semantic-hard-negative-margin",
+        type=float,
+        default=0.5,
+        help="Margin used by the semantic hard-negative class-logit penalty.",
+    )
     parser.add_argument("--quality-head-weight", type=float, default=1.0)
     parser.add_argument(
         "--quality-head-slice",
@@ -606,6 +628,40 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def load_semantic_hard_negative_loss_map(
+    path: Path | None,
+    class_name_to_index: dict[str, int] | None = None,
+) -> dict[int, list[tuple[int, float]]]:
+    """Load semantic hard negatives and adapt them to the active logits indices."""
+
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    entries = payload.get("entries", [])
+    hard_negatives: dict[int, list[tuple[int, float]]] = {}
+    for entry in entries:
+        if class_name_to_index is not None and "positive_category_name" in entry:
+            positive_name = str(entry["positive_category_name"])
+            if positive_name not in class_name_to_index:
+                continue
+            positive = class_name_to_index[positive_name]
+        else:
+            positive = int(entry["positive_class_index"])
+        negatives = []
+        for negative in entry.get("hard_negatives", []):
+            if class_name_to_index is not None and "negative_category_name" in negative:
+                negative_name = str(negative["negative_category_name"])
+                if negative_name not in class_name_to_index:
+                    continue
+                negative_index = class_name_to_index[negative_name]
+            else:
+                negative_index = int(negative["negative_class_index"])
+            negatives.append((negative_index, float(negative["weight"])))
+        if negatives:
+            hard_negatives[positive] = negatives
+    return hard_negatives
+
+
 def main() -> None:
     args = parse_args()
     if args.max_objects < 1:
@@ -620,6 +676,10 @@ def main() -> None:
         raise ValueError("--quality-score-temperature must be > 0")
     if args.no_object_weight <= 0:
         raise ValueError("--no-object-weight must be > 0")
+    if args.semantic_hard_negative_weight < 0:
+        raise ValueError("--semantic-hard-negative-weight must be >= 0")
+    if args.semantic_hard_negative_margin < 0:
+        raise ValueError("--semantic-hard-negative-margin must be >= 0")
     if args.quality_head_slice_weight <= 0:
         raise ValueError("--quality-head-slice-weight must be > 0")
     if not 0.0 <= args.calibration_frac < 1.0:
@@ -637,6 +697,10 @@ def main() -> None:
         train_size = max(1, min(len(indices), int(len(indices) * args.train_frac)))
         label_source_samples = [all_samples[idx] for idx in indices[:train_size]]
     label_to_id = build_label_map(label_source_samples, top_classes=args.top_classes)
+    args.semantic_hard_negatives = load_semantic_hard_negative_loss_map(
+        args.semantic_hard_negative_loss_map,
+        class_name_to_index=label_to_id,
+    )
     samples = filter_samples(all_samples, set(label_to_id), max_samples=args.max_samples)
     if len(samples) < 2:
         raise ValueError("not enough real DET samples after filtering")
@@ -655,12 +719,16 @@ def main() -> None:
     print("train_slice_oversample:", args.train_slice_oversample)
     print("train_slice_oversample_factor:", args.train_slice_oversample_factor)
     print("no_object_weight:", args.no_object_weight)
+    print("semantic_hard_negative_loss_map:", args.semantic_hard_negative_loss_map)
+    print("semantic_hard_negative_weight:", args.semantic_hard_negative_weight)
+    print("semantic_hard_negative_targets:", len(args.semantic_hard_negatives))
     print("quality_head_slice:", args.quality_head_slice)
     print("quality_head_slice_weight:", args.quality_head_slice_weight)
     print("eval_slice_filter:", args.eval_slice_filter)
     print("label_map:", args.label_map_out)
     print(
-        "model,run_seed,step,loss,eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
+        "model,run_seed,step,loss,loss_semantic_hard_negative,"
+        "eval_iou,eval_recall50,eval_ap50,eval_ap50_class,"
         "eval_ap50_q_best,eval_ap50_q_best_alpha,eval_ap50_oracle_iou,"
         "eval_ap50_q_best_oracle_closure,"
         "matched_assignment_class_acc,tp50_class_acc,score_iou_corr,objectness_auc,"
@@ -755,6 +823,9 @@ def train_one_model(
         num_classes=num_classes,
         matcher=matcher,
         no_object_weight=args.no_object_weight,
+        semantic_hard_negatives=args.semantic_hard_negatives,
+        semantic_hard_negative_weight=args.semantic_hard_negative_weight,
+        semantic_hard_negative_margin=args.semantic_hard_negative_margin,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
     train_sampler = build_train_slice_sampler(
@@ -801,6 +872,7 @@ def train_one_model(
         model.set_query_mask_gate_scale(mask_gate_scale(gate_schedule, step, args.steps))
         outputs = forward_real_detector(model, images, targets)
         losses = criterion(outputs, targets)
+        loss_semantic_hard_negative = losses["loss_semantic_hard_negative"]
         loss_score_iou = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_cls = outputs["pred_logits"].new_tensor(0.0)
         loss_quality_head = outputs["pred_logits"].new_tensor(0.0)
@@ -907,6 +979,7 @@ def train_one_model(
                 "run_seed": run_seed,
                 "step": step,
                 "loss": last_loss,
+                "loss_semantic_hard_negative": float(loss_semantic_hard_negative.detach().item()),
                 "loss_score_iou": float(loss_score_iou.detach().item()),
                 "loss_quality_cls": float(loss_quality_cls.detach().item()),
                 "loss_quality_head": float(loss_quality_head.detach().item()),
@@ -1046,6 +1119,7 @@ def train_one_model(
             rows.append(row)
             print(
                 f"{model_name},{run_seed},{step},{last_loss:.4f},"
+                f"{float(loss_semantic_hard_negative.detach().item()):.4f},"
                 f"{metrics['iou']:.3f},{metrics['recall50']:.3f},"
                 f"{metrics['ap50']:.3f},{metrics['ap50_class']:.3f},"
                 f"{metrics['ap50_q_best']:.3f},{metrics['ap50_q_best_alpha']:.2f},"
@@ -2634,6 +2708,7 @@ def write_rows(path: Path, rows: list[dict[str, float | int | str]]) -> None:
         "run_seed",
         "step",
         "loss",
+        "loss_semantic_hard_negative",
         "loss_score_iou",
         "loss_quality_cls",
         "loss_quality_head",

@@ -1361,12 +1361,14 @@ Full low-LR detector continuation:
   image/annotation ids. With `min_samples=2`, it yields `6` target categories;
   the strongest repair targets are `n03255030`, `n03676483`, and `n07695742`.
 - Semantic hard-negative loss substrate added for the local detector criterion.
-  `DetectionCriterion` can now add a logits-indexed margin penalty that pushes
-  configured hard-negative class logits below the matched GT class. Because
-  COCO/RF-DETR category ids are 1-based in this handoff, the conversion is
-  explicit rather than implicit:
+  `DetectionCriterion` can now add a margin penalty that pushes configured
+  hard-negative class logits below the matched GT class. Because COCO/RF-DETR
+  category ids are 1-based in this handoff, the conversion artifact is explicit:
   `scripts/convert_semantic_repair_config_to_loss_map.py --category-id-offset 1`
   writes `results/rfdetr_stratified_seed41_semantic_repair_loss_map.json`.
+  `scripts/train_det_real.py --semantic-hard-negative-loss-map` then remaps
+  entries by category name onto the active runtime `label_to_id` when names are
+  present, avoiding silent RF-DETR category-id vs compact-logit-index mismatch.
   This is a training-interface dry run for future class-head/semantic repair
   smoke tests, not evidence yet that the loss improves RF-DETR candidate
   coverage.
