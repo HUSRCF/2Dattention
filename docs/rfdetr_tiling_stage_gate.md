@@ -1313,18 +1313,22 @@ Full low-LR detector continuation:
   The current contact sheet samples 30 annotations from persistent/regressed
   zero-hit categories; mean nearest IoU is `0.784`, `24/30` samples have nearest
   IoU >= `0.5`, but only `2/30` nearest prediction groups contain the GT
-  category among their displayed candidates. This is a qualitative/manifest
-  check that the failure target set often has usable box support while the
-  emitted semantic candidate set misses the correct category.
+  category anywhere in the grouped candidate set, and none contain it within
+  the displayed top-5. The manifest now records nearest group rank, top score,
+  group size, GT-category rank, and input SHA256s in `run_manifest.json`. This
+  is a top-k nearest-box diagnostic: it shows local box support exists for many
+  fixed failures, while emitted semantic candidates miss the correct category.
 - `scripts/summarize_coco_sample_prediction_chain.py` compares those fixed
   failure samples across checkpoint prediction JSONs. Artifact:
   `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary.csv`.
   On all 52 target annotations, nearest-box support remains high across the
   seed41 chain (`base/full_lr_2ep/extra_low_lr` mean nearest IoU
   `0.811/0.810/0.822`), but GT-category candidate presence falls
-  `4/52 -> 3/52 -> 0/52`. This confirms the extra-low-LR continuation can
-  improve deployed class AP while still regressing the concrete fixed failure
-  categories' emitted candidate coverage.
+  `4/52 -> 3/52 -> 0/52`; displayed-top-5 presence is `0` for all three.
+  Mean nearest-group rank drifts from `10.2 -> 12.8 -> 13.8`, so these are not
+  necessarily top-scored detections, but the nearest-box diagnostic still
+  confirms that extra-low-LR continuation can improve deployed class AP while
+  regressing concrete fixed failure categories' emitted candidate coverage.
 - `scripts/summarize_coco_sample_candidate_flows.py` aggregates the nearest-box
   top-candidate flows from the same chain into
   `results/rfdetr_stratified_seed41_candidate_failure_candidate_flows.csv` and
@@ -1356,8 +1360,10 @@ Full low-LR detector continuation:
   - `results/rfdetr_stratified_seed41_candidate_failure_gt_overlays/manifest.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/contact_sheet.jpg`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/manifest.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays/run_manifest.json`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary.csv`
+  - `results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary_run_manifest.json`
   - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flows.csv`
   - `results/rfdetr_stratified_seed41_candidate_failure_candidate_flow_by_category.csv`
   - `results/rfdetr_stratified_seed41_fulllr5e5_2ep_score_iou_loc.csv`

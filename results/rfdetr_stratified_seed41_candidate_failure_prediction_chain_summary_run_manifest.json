@@ -1,0 +1,33 @@
+{
+  "args": {
+    "annotations": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test/_annotations.coco.json",
+    "bbox_decimals": "3",
+    "max_per_category": "0",
+    "max_samples": "0",
+    "out": "results/rfdetr_stratified_seed41_candidate_failure_prediction_chain.csv",
+    "prediction_entry": "['base=/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_2ep/regular_test_predictions.json', 'full_lr_2ep=/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_fulllr5e5_2ep/regular_test_predictions.json', 'extra_low_lr=/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_fulllr5e5_then3e5_2ep/regular_test_predictions.json']",
+    "samples": "results/rfdetr_stratified_seed41_candidate_failure_test_samples.csv",
+    "summary_out": "results/rfdetr_stratified_seed41_candidate_failure_prediction_chain_summary.csv",
+    "top_candidates": "5",
+    "top_k": "300"
+  },
+  "git_commit": "70e6ebab4fcfe4d1a5d297d0c7b796dce0e5ae34",
+  "input_sha256": {
+    "annotations": "a86c62a619f0f5dec41545546bc9989c448b7c1e922c9da3bb5478ac5650151f",
+    "prediction:base": "fe19f1cd104f65944ceaefd78be60ba3a2bf7ceacdf099e5454af0ec83bda436",
+    "prediction:extra_low_lr": "fdfc81cad0f807ce2d13aaf58c1667e67179e14d9e2e5830ecfb0c2613d5e73b",
+    "prediction:full_lr_2ep": "4dff2ae72b77769d7fac00da5a8d90e33ca1107ea942b23295037fe562f48be8",
+    "samples": "76734424681836e349faad18970b0e28605da42d3b64f8bfdb9c6c5425239a60"
+  },
+  "notes": {
+    "gt_candidate_present": "Whether GT category appears anywhere in the nearest bbox group, not only displayed top candidates.",
+    "gt_candidate_present_displayed": "Whether GT category rank is within --top-candidates.",
+    "nearest_group_rank": "1-indexed rank among bbox groups sorted by top score within top-k predictions."
+  },
+  "prediction_entries": {
+    "base": "/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_2ep/regular_test_predictions.json",
+    "extra_low_lr": "/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_fulllr5e5_then3e5_2ep/regular_test_predictions.json",
+    "full_lr_2ep": "/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_fulllr5e5_2ep/regular_test_predictions.json"
+  },
+  "script": "summarize_coco_sample_prediction_chain.py"
+}

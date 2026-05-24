@@ -263,13 +263,19 @@ def test_summarize_coco_sample_prediction_chain_entries_and_summary() -> None:
                 "nearest_iou": "0.8",
                 "iou_ge_05": 1,
                 "iou_ge_075": 1,
+                "nearest_group_rank": 1,
+                "nearest_group_top_score": 0.9,
                 "gt_candidate_present": 1,
+                "gt_candidate_present_displayed": 1,
             },
             {
                 "nearest_iou": "0.4",
                 "iou_ge_05": 0,
                 "iou_ge_075": 0,
+                "nearest_group_rank": 3,
+                "nearest_group_top_score": 0.5,
                 "gt_candidate_present": 0,
+                "gt_candidate_present_displayed": 0,
             },
         ],
     )
@@ -277,7 +283,10 @@ def test_summarize_coco_sample_prediction_chain_entries_and_summary() -> None:
     assert summary["label"] == "base"
     assert summary["samples"] == 2
     assert summary["mean_nearest_iou"] == "0.6"
+    assert summary["mean_nearest_group_rank"] == "2"
+    assert summary["mean_nearest_group_top_score"] == "0.7"
     assert summary["gt_candidate_present_rate"] == "0.5"
+    assert summary["gt_candidate_present_displayed"] == 1
 
 
 def test_summarize_coco_sample_candidate_flows() -> None:

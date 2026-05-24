@@ -1,4 +1,4 @@
-label,samples,mean_nearest_iou,iou_ge_05,iou_ge_075,gt_candidate_present,gt_candidate_present_rate
-base,52,0.811361753319,45,42,4,0.0769230769231
-full_lr_2ep,52,0.809658040089,47,40,3,0.0576923076923
-extra_low_lr,52,0.821607657218,47,41,0,0
+label,samples,mean_nearest_iou,iou_ge_05,iou_ge_075,mean_nearest_group_rank,mean_nearest_group_top_score,gt_candidate_present,gt_candidate_present_rate,gt_candidate_present_displayed
+base,52,0.811361753319,45,42,10.2115384615,0.174840626378,4,0.0769230769231,0
+full_lr_2ep,52,0.809658040089,47,40,12.8269230769,0.195159907524,3,0.0576923076923,0
+extra_low_lr,52,0.821607657218,47,41,13.8461538462,0.187876305758,0,0,0

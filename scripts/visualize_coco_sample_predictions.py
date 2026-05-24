@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -70,8 +72,15 @@ def main() -> None:
                 **sample,
                 "rank": index,
                 "nearest_iou": format_float(nearest.iou if nearest else 0.0),
-                "nearest_box": json.dumps(nearest.box if nearest else []),
+                "nearest_box_xyxy": json.dumps(nearest.box if nearest else []),
+                "nearest_group_rank": nearest.group_rank if nearest else 0,
+                "nearest_group_top_score": format_float(nearest.top_score if nearest else 0.0),
+                "nearest_group_size": nearest.group_size if nearest else 0,
                 "gt_candidate_present": int(nearest.gt_candidate_present if nearest else False),
+                "gt_candidate_rank_in_group": nearest.gt_candidate_rank if nearest else 0,
+                "gt_candidate_present_displayed": int(
+                    bool(nearest and 0 < nearest.gt_candidate_rank <= args.top_candidates)
+                ),
                 "top_candidates": format_candidates(nearest.candidates[: args.top_candidates], categories)
                 if nearest
                 else "",
@@ -81,6 +90,7 @@ def main() -> None:
         print(f"saved_sample_prediction_overlay: {out_path}")
     if manifest:
         write_manifest(manifest, args.out_dir / "manifest.csv")
+        write_run_manifest(args, args.out_dir / "run_manifest.json")
     if panels:
         save_contact_sheet(panels, args.out_dir / "contact_sheet.jpg", cols=args.contact_cols)
         print(f"saved_contact_sheet: {args.out_dir / 'contact_sheet.jpg'}")
@@ -93,12 +103,18 @@ class PredictionGroup:
         box: list[float],
         candidates: list[dict[str, Any]],
         iou: float,
+        group_rank: int,
         gt_candidate_present: bool,
+        gt_candidate_rank: int,
     ) -> None:
         self.box = box
         self.candidates = candidates
         self.iou = iou
+        self.group_rank = group_rank
         self.gt_candidate_present = gt_candidate_present
+        self.gt_candidate_rank = gt_candidate_rank
+        self.group_size = len(candidates)
+        self.top_score = float(candidates[0].get("score", 0.0)) if candidates else 0.0
 
 
 def nearest_prediction_group(
@@ -117,16 +133,21 @@ def nearest_prediction_group(
         ]
     )
     best: PredictionGroup | None = None
-    for group in group_by_bbox(predictions, bbox_decimals=bbox_decimals):
+    for group_rank, group in enumerate(group_by_bbox(predictions, bbox_decimals=bbox_decimals), start=1):
         box = xywh_to_xyxy([float(value) for value in group[0]["bbox"]])
         iou = xyxy_iou(gt_box, box)
         candidates = sorted(group, key=lambda row: float(row.get("score", 0.0)), reverse=True)
-        candidate_present = any(parse_int(row["category_id"]) == gt_category for row in candidates)
+        candidate_ranks = [
+            index for index, row in enumerate(candidates, start=1) if parse_int(row["category_id"]) == gt_category
+        ]
+        candidate_present = bool(candidate_ranks)
         current = PredictionGroup(
             box=box,
             candidates=candidates,
             iou=iou,
+            group_rank=group_rank,
             gt_candidate_present=candidate_present,
+            gt_candidate_rank=candidate_ranks[0] if candidate_ranks else 0,
         )
         if best is None or current.iou > best.iou:
             best = current
@@ -147,7 +168,9 @@ def group_by_bbox(predictions: list[dict[str, Any]], *, bbox_decimals: int) -> l
     for row in predictions:
         key = tuple(round(float(value), bbox_decimals) for value in row["bbox"])
         grouped.setdefault(key, []).append(row)
-    return list(grouped.values())
+    groups = list(grouped.values())
+    groups.sort(key=lambda rows: max(float(row.get("score", 0.0)) for row in rows), reverse=True)
+    return groups
 
 
 def draw_sample(
@@ -284,6 +307,27 @@ def write_manifest(rows: list[dict[str, object]], path: Path) -> None:
     print(f"saved_manifest: {path}")
 
 
+def write_run_manifest(args: argparse.Namespace, path: Path) -> None:
+    payload = {
+        "script": Path(__file__).name,
+        "git_commit": git_commit(),
+        "args": {key: str(value) for key, value in vars(args).items()},
+        "input_sha256": {
+            "samples": file_sha256(args.samples),
+            "predictions": file_sha256(args.predictions),
+            "annotations": file_sha256(args.annotations),
+        },
+        "notes": {
+            "nearest_group_rank": "1-indexed rank among bbox groups sorted by top score within top-k predictions.",
+            "nearest_box_xyxy": "Nearest bbox group box in xyxy image coordinates.",
+            "gt_candidate_present": "Whether GT category appears anywhere in the nearest bbox group, not only displayed top candidates.",
+            "gt_candidate_present_displayed": "Whether GT category rank is within --top-candidates.",
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"saved_run_manifest: {path}")
+
+
 def xywh_to_xyxy(box: list[float]) -> list[float]:
     x, y, width, height = box
     return [x, y, x + width, y + height]
@@ -318,6 +362,27 @@ def parse_float(value: Any) -> float:
 
 def format_float(value: float) -> str:
     return f"{value:.12g}"
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return ""
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":

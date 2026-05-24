@@ -1,0 +1,29 @@
+{
+  "args": {
+    "annotations": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test/_annotations.coco.json",
+    "bbox_decimals": "3",
+    "contact_cols": "3",
+    "image_dir": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test",
+    "max_per_category": "4",
+    "max_samples": "40",
+    "out_dir": "results/rfdetr_stratified_seed41_candidate_failure_prediction_overlays",
+    "predictions": "/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_2best_freshlr1e4_4ep/regular_valid_test_predictions.json",
+    "samples": "results/rfdetr_stratified_seed41_candidate_failure_test_samples.csv",
+    "thumb_width": "420",
+    "top_candidates": "5",
+    "top_k": "300"
+  },
+  "git_commit": "70e6ebab4fcfe4d1a5d297d0c7b796dce0e5ae34",
+  "input_sha256": {
+    "annotations": "a86c62a619f0f5dec41545546bc9989c448b7c1e922c9da3bb5478ac5650151f",
+    "predictions": "f210775c0c42c3bfdd6127a8eb452876de6a59f7bc9b989a488e1d076563f7fd",
+    "samples": "76734424681836e349faad18970b0e28605da42d3b64f8bfdb9c6c5425239a60"
+  },
+  "notes": {
+    "gt_candidate_present": "Whether GT category appears anywhere in the nearest bbox group, not only displayed top candidates.",
+    "gt_candidate_present_displayed": "Whether GT category rank is within --top-candidates.",
+    "nearest_box_xyxy": "Nearest bbox group box in xyxy image coordinates.",
+    "nearest_group_rank": "1-indexed rank among bbox groups sorted by top score within top-k predictions."
+  },
+  "script": "visualize_coco_sample_predictions.py"
+}
