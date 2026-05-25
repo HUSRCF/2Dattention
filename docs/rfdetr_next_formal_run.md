@@ -86,7 +86,8 @@ After training, report only independent `checkpoint_best_regular.pth` exports:
 6. Updated stratified mainline summary and stratified active-route rank.
 
 Use this concrete post-run template, replacing only `RUN_DIR` / `RUN_NAME` if
-the train output directory changes:
+the train output directory changes. The preferred path is: export predictions
+once, then run the artifact-bundle evaluator.
 
 ```bash
 RUN_DIR=/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_extra_low_lr_plus2ep_lr2e5
@@ -105,38 +106,11 @@ env MPLCONFIGDIR=/private/tmp/matplotlib-cache NO_ALBUMENTATIONS_UPDATE=1 \
   --resolution 384 \
   --out "$RUN_DIR/regular_test_predictions.json"
 
-/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_coco_predictions.py \
+/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_rfdetr_run_artifacts.py \
   --annotations "$ANN" \
   --predictions "$RUN_DIR/regular_test_predictions.json" \
-  --out "results/${RUN_NAME}_test_cocoeval.csv"
-
-/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_coco_predictions.py \
-  --annotations "$ANN" \
-  --predictions "$RUN_DIR/regular_test_predictions.json" \
-  --class-agnostic \
-  --out "results/${RUN_NAME}_test_loc_cocoeval.csv"
-
-/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_coco_slices.py \
-  --annotations "$ANN" \
-  --predictions "$RUN_DIR/regular_test_predictions.json" \
-  --out "results/${RUN_NAME}_test_slices.csv"
-
-/opt/anaconda3/envs/AIAA/bin/python scripts/analyze_coco_score_iou_correlation.py \
-  --annotations "$ANN" \
-  --predictions "$RUN_DIR/regular_test_predictions.json" \
-  --out "results/${RUN_NAME}_score_iou_loc.csv"
-
-/opt/anaconda3/envs/AIAA/bin/python scripts/analyze_coco_score_iou_correlation.py \
-  --annotations "$ANN" \
-  --predictions "$RUN_DIR/regular_test_predictions.json" \
-  --class-aware \
-  --out "results/${RUN_NAME}_score_iou_classaware.csv"
-
-/opt/anaconda3/envs/AIAA/bin/python scripts/analyze_coco_category_coverage_gap.py \
-  --annotations "$ANN" \
-  --predictions "$RUN_DIR/regular_test_predictions.json" \
-  --out "results/${RUN_NAME}_category_coverage_gap.csv" \
-  --per-category-out "results/${RUN_NAME}_per_category_coverage_gap.csv"
+  --out-prefix "results/${RUN_NAME}" \
+  --candidate-score-mode group_max
 ```
 
 Then update `results/rfdetr_stratified_mainline_summary.csv` with
