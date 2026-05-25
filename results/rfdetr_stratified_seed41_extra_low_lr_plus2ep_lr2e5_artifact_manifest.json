@@ -1,0 +1,9 @@
+{
+  "annotations": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test/_annotations.coco.json",
+  "annotations_sha256": "a86c62a619f0f5dec41545546bc9989c448b7c1e922c9da3bb5478ac5650151f",
+  "predictions": "/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_extra_low_lr_plus2ep_lr2e5/regular_test_predictions.json",
+  "predictions_sha256": "f0c2a5116eb6c4c9a6f96efe9e48f66449ffc8f00cbb2bb2c6c965cb4c283806",
+  "out_prefix": "results/rfdetr_stratified_seed41_extra_low_lr_plus2ep_lr2e5",
+  "candidate_score_mode": "group_max",
+  "bbox_decimals": 3
+}

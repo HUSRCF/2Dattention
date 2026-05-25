@@ -156,3 +156,9 @@ def test_evaluate_run_artifacts_writes_standard_bundle(monkeypatch: Any, tmp_pat
     assert read_one_row(outputs["score_iou_classaware"])["spearman_score_iou"] == "0.3"
     assert read_one_row(outputs["candidate_oracle_summary"])["candidate_hit_rate"] == "1.0"
     assert json.loads(outputs["candidate_oracle_predictions"].read_text(encoding="utf-8"))[0]["score"] == 0.9
+    manifest = json.loads(outputs["manifest"].read_text(encoding="utf-8"))
+    assert manifest["annotations"] == str(annotations)
+    assert manifest["predictions"] == str(predictions)
+    assert manifest["candidate_score_mode"] == "group_max"
+    assert len(manifest["annotations_sha256"]) == 64
+    assert len(manifest["predictions_sha256"]) == 64

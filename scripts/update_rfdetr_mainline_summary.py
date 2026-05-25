@@ -132,6 +132,12 @@ def update_summary_rows(
     replaced = False
     for row in existing_rows:
         if row.get("setting") == new_row["setting"]:
+            if row.get("protocol", "") != new_row.get("protocol", ""):
+                raise ValueError(
+                    "refusing to replace row with matching setting but different protocol: "
+                    f"{new_row['setting']!r} existing={row.get('protocol', '')!r} "
+                    f"new={new_row.get('protocol', '')!r}; use --append-only or a unique setting"
+                )
             rows.append(new_row)
             replaced = True
         else:

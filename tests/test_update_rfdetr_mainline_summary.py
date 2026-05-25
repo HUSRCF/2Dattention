@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from scripts.rank_rfdetr_stage_gate_rows import read_rows
 from scripts.update_rfdetr_mainline_summary import build_standard_entry
 from scripts.update_rfdetr_mainline_summary import summarize_standard_artifacts
@@ -167,6 +169,14 @@ def test_update_summary_rows_replaces_by_setting() -> None:
     rows = update_summary_rows(existing, new, replace=True)
 
     assert rows == [{"setting": "old", "class_ap50": "0.3"}, {"setting": "keep", "class_ap50": "0.2"}]
+
+
+def test_update_summary_rows_rejects_setting_protocol_collision() -> None:
+    existing = [{"setting": "run", "protocol": "old_proto", "class_ap50": "0.1"}]
+    new = {"setting": "run", "protocol": "new_proto", "class_ap50": "0.3"}
+
+    with pytest.raises(ValueError, match="different protocol"):
+        update_summary_rows(existing, new, replace=True)
 
 
 def test_write_summary_uses_mainline_field_order(tmp_path: Path) -> None:

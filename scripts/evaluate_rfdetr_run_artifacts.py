@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -74,6 +75,14 @@ def evaluate_run_artifacts(
 ) -> dict[str, Path]:
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
     outputs = output_paths(out_prefix, candidate_score_mode=candidate_score_mode)
+    write_manifest(
+        outputs["manifest"],
+        annotation_json=annotation_json,
+        prediction_json=prediction_json,
+        out_prefix=out_prefix,
+        candidate_score_mode=candidate_score_mode,
+        bbox_decimals=bbox_decimals,
+    )
 
     write_single_row(
         outputs["class_cocoeval"],
@@ -149,6 +158,7 @@ def output_paths(out_prefix: Path, candidate_score_mode: str = "group_max") -> d
         "candidate_oracle_summary": Path(f"{stem}_candidate_oracle_summary.csv"),
         "candidate_oracle_per_category": Path(f"{stem}_candidate_oracle_per_category.csv"),
         "candidate_oracle_cocoeval": Path(f"{stem}_candidate_oracle_{score_suffix}_cocoeval.csv"),
+        "manifest": Path(f"{stem}_artifact_manifest.json"),
     }
 
 
@@ -162,6 +172,35 @@ def write_rows(path: Path, fieldnames: tuple[str, ...], rows: list[dict[str, Any
         writer = csv.DictWriter(handle, fieldnames=list(fieldnames), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_manifest(
+    path: Path,
+    *,
+    annotation_json: Path,
+    prediction_json: Path,
+    out_prefix: Path,
+    candidate_score_mode: str,
+    bbox_decimals: int,
+) -> None:
+    manifest = {
+        "annotations": str(annotation_json),
+        "annotations_sha256": sha256_file(annotation_json),
+        "predictions": str(prediction_json),
+        "predictions_sha256": sha256_file(prediction_json),
+        "out_prefix": str(out_prefix),
+        "candidate_score_mode": candidate_score_mode,
+        "bbox_decimals": bbox_decimals,
+    }
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 if __name__ == "__main__":
