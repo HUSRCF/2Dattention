@@ -114,9 +114,21 @@ env MPLCONFIGDIR=/private/tmp/matplotlib-cache NO_ALBUMENTATIONS_UPDATE=1 \
 ```
 
 Then update `results/rfdetr_stratified_mainline_summary.csv` with
-`scripts/summarize_rfdetr_mainline.py`, regenerate
-`results/rfdetr_stratified_active_route_multi_metric_rank.csv`, and record the
-result in `docs/TODO.md`.
+`scripts/update_rfdetr_mainline_summary.py`, which also regenerates
+`results/rfdetr_stratified_active_route_multi_metric_rank.csv`:
+
+```bash
+/opt/anaconda3/envs/AIAA/bin/python scripts/update_rfdetr_mainline_summary.py \
+  --base-summary results/rfdetr_stratified_mainline_summary.csv \
+  --artifact-prefix "results/${RUN_NAME}" \
+  --setting seed41_extra_low_lr_plus2ep_lr2e5 \
+  --protocol stratified_seed41_extra_low_lr_plus2ep_lr2e5 \
+  --notes next_formal_continuation \
+  --out results/rfdetr_stratified_mainline_summary.csv \
+  --rank-out results/rfdetr_stratified_active_route_multi_metric_rank.csv
+```
+
+Then record the result in `docs/TODO.md`.
 
 Go/no-go:
 

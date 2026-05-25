@@ -73,7 +73,7 @@ def evaluate_run_artifacts(
     bbox_decimals: int = 3,
 ) -> dict[str, Path]:
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
-    outputs = output_paths(out_prefix)
+    outputs = output_paths(out_prefix, candidate_score_mode=candidate_score_mode)
 
     write_single_row(
         outputs["class_cocoeval"],
@@ -134,8 +134,9 @@ def evaluate_run_artifacts(
     return outputs
 
 
-def output_paths(out_prefix: Path) -> dict[str, Path]:
+def output_paths(out_prefix: Path, candidate_score_mode: str = "group_max") -> dict[str, Path]:
     stem = str(out_prefix)
+    score_suffix = candidate_score_mode.replace("_", "")
     return {
         "class_cocoeval": Path(f"{stem}_test_cocoeval.csv"),
         "loc_cocoeval": Path(f"{stem}_test_loc_cocoeval.csv"),
@@ -147,7 +148,7 @@ def output_paths(out_prefix: Path) -> dict[str, Path]:
         "candidate_oracle_predictions": Path(f"{stem}_candidate_oracle_predictions.json"),
         "candidate_oracle_summary": Path(f"{stem}_candidate_oracle_summary.csv"),
         "candidate_oracle_per_category": Path(f"{stem}_candidate_oracle_per_category.csv"),
-        "candidate_oracle_cocoeval": Path(f"{stem}_candidate_oracle_groupmax_cocoeval.csv"),
+        "candidate_oracle_cocoeval": Path(f"{stem}_candidate_oracle_{score_suffix}_cocoeval.csv"),
     }
 
 

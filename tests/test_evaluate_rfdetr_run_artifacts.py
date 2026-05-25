@@ -23,6 +23,12 @@ def test_output_paths_use_standard_suffixes(tmp_path: Path) -> None:
     assert paths["candidate_oracle_cocoeval"] == tmp_path / "run_candidate_oracle_groupmax_cocoeval.csv"
 
 
+def test_output_paths_reflect_candidate_score_mode(tmp_path: Path) -> None:
+    paths = module.output_paths(tmp_path / "run", candidate_score_mode="oracle_iou")
+
+    assert paths["candidate_oracle_cocoeval"] == tmp_path / "run_candidate_oracle_oracleiou_cocoeval.csv"
+
+
 def test_evaluate_run_artifacts_writes_standard_bundle(monkeypatch: Any, tmp_path: Path) -> None:
     annotations = tmp_path / "annotations.json"
     predictions = tmp_path / "predictions.json"
