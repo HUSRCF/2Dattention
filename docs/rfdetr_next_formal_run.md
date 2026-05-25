@@ -85,6 +85,65 @@ After training, report only independent `checkpoint_best_regular.pth` exports:
 5. Candidate coverage / candidate-oracle diagnostics.
 6. Updated stratified mainline summary and stratified active-route rank.
 
+Use this concrete post-run template, replacing only `RUN_DIR` / `RUN_NAME` if
+the train output directory changes:
+
+```bash
+RUN_DIR=/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_extra_low_lr_plus2ep_lr2e5
+RUN_NAME=rfdetr_stratified_seed41_extra_low_lr_plus2ep_lr2e5
+ANN=data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test/_annotations.coco.json
+IMG=data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3/test
+
+env MPLCONFIGDIR=/private/tmp/matplotlib-cache NO_ALBUMENTATIONS_UPDATE=1 \
+  /opt/anaconda3/envs/AIAA/bin/python scripts/predict_rfdetr_coco.py \
+  --annotation-json "$ANN" \
+  --image-root "$IMG" \
+  --weights "$RUN_DIR/checkpoint_best_regular.pth" \
+  --model-size small \
+  --num-classes 200 \
+  --device mps \
+  --resolution 384 \
+  --out "$RUN_DIR/regular_test_predictions.json"
+
+/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_coco_predictions.py \
+  --annotations "$ANN" \
+  --predictions "$RUN_DIR/regular_test_predictions.json" \
+  --out "results/${RUN_NAME}_test_cocoeval.csv"
+
+/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_coco_predictions.py \
+  --annotations "$ANN" \
+  --predictions "$RUN_DIR/regular_test_predictions.json" \
+  --class-agnostic \
+  --out "results/${RUN_NAME}_test_loc_cocoeval.csv"
+
+/opt/anaconda3/envs/AIAA/bin/python scripts/evaluate_coco_slices.py \
+  --annotations "$ANN" \
+  --predictions "$RUN_DIR/regular_test_predictions.json" \
+  --out "results/${RUN_NAME}_test_slices.csv"
+
+/opt/anaconda3/envs/AIAA/bin/python scripts/analyze_coco_score_iou_correlation.py \
+  --annotations "$ANN" \
+  --predictions "$RUN_DIR/regular_test_predictions.json" \
+  --out "results/${RUN_NAME}_score_iou_loc.csv"
+
+/opt/anaconda3/envs/AIAA/bin/python scripts/analyze_coco_score_iou_correlation.py \
+  --annotations "$ANN" \
+  --predictions "$RUN_DIR/regular_test_predictions.json" \
+  --class-aware \
+  --out "results/${RUN_NAME}_score_iou_classaware.csv"
+
+/opt/anaconda3/envs/AIAA/bin/python scripts/analyze_coco_category_coverage_gap.py \
+  --annotations "$ANN" \
+  --predictions "$RUN_DIR/regular_test_predictions.json" \
+  --out "results/${RUN_NAME}_category_coverage_gap.csv" \
+  --per-category-out "results/${RUN_NAME}_per_category_coverage_gap.csv"
+```
+
+Then update `results/rfdetr_stratified_mainline_summary.csv` with
+`scripts/summarize_rfdetr_mainline.py`, regenerate
+`results/rfdetr_stratified_active_route_multi_metric_rank.csv`, and record the
+result in `docs/TODO.md`.
+
 Go/no-go:
 
 - Continue this route only if class AP50 or hard-slice AP50 improves without a
