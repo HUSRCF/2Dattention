@@ -27,6 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--setting", required=True)
     parser.add_argument("--protocol", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument(
+        "--candidate-score-mode",
+        choices=("candidate", "group_max", "oracle_iou"),
+        default="group_max",
+        help="Candidate-oracle COCO suffix used by the artifact bundle.",
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
         "--append-only",
@@ -46,6 +52,7 @@ def main() -> None:
         protocol=args.protocol,
         artifact_prefix=args.artifact_prefix,
         notes=args.notes,
+        candidate_score_mode=args.candidate_score_mode,
         high_support_min_groups=args.high_support_min_groups,
     )
     rows = update_summary_rows(read_rows(args.base_summary), row, replace=not args.append_only)
@@ -70,6 +77,7 @@ def summarize_standard_artifacts(
     protocol: str,
     artifact_prefix: Path,
     notes: str = "",
+    candidate_score_mode: str = "group_max",
     high_support_min_groups: int = 20,
 ) -> dict[str, str]:
     return summarize_entry(
@@ -78,13 +86,22 @@ def summarize_standard_artifacts(
             protocol=protocol,
             artifact_prefix=artifact_prefix,
             notes=notes,
+            candidate_score_mode=candidate_score_mode,
         ),
         high_support_min_groups=high_support_min_groups,
     )
 
 
-def build_standard_entry(*, setting: str, protocol: str, artifact_prefix: Path, notes: str = "") -> str:
+def build_standard_entry(
+    *,
+    setting: str,
+    protocol: str,
+    artifact_prefix: Path,
+    notes: str = "",
+    candidate_score_mode: str = "group_max",
+) -> str:
     prefix = str(artifact_prefix)
+    candidate_score_suffix = candidate_score_mode.replace("_", "")
     fields = [
         setting,
         f"protocol={protocol}",
@@ -93,7 +110,7 @@ def build_standard_entry(*, setting: str, protocol: str, artifact_prefix: Path, 
         f"slices={prefix}_test_slices.csv",
         f"candidate={prefix}_candidate_oracle_summary.csv",
         f"candidate_per_category={prefix}_candidate_oracle_per_category.csv",
-        f"candidate_oracle={prefix}_candidate_oracle_groupmax_cocoeval.csv",
+        f"candidate_oracle={prefix}_candidate_oracle_{candidate_score_suffix}_cocoeval.csv",
         f"coverage={prefix}_category_coverage_gap.csv",
         f"score_loc={prefix}_score_iou_loc.csv",
         f"score_class={prefix}_score_iou_classaware.csv",

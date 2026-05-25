@@ -126,6 +126,17 @@ def test_build_standard_entry_uses_artifact_prefix() -> None:
     assert entry.endswith(",notes=note")
 
 
+def test_build_standard_entry_uses_candidate_score_mode_suffix() -> None:
+    entry = build_standard_entry(
+        setting="run",
+        protocol="proto",
+        artifact_prefix=Path("results/run"),
+        candidate_score_mode="oracle_iou",
+    )
+
+    assert "candidate_oracle=results/run_candidate_oracle_oracleiou_cocoeval.csv" in entry
+
+
 def test_summarize_standard_artifacts_reads_bundle(tmp_path: Path) -> None:
     prefix = tmp_path / "run"
     write_standard_artifacts(prefix)
