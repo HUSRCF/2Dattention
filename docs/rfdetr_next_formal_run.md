@@ -1,7 +1,8 @@
 # RF-DETR Next Formal Run Plan
 
 This note freezes the current practical next step after the stratified
-multi-metric route ranking. It is a run plan, not a completed training result.
+multi-metric route ranking. The planned run has now completed; this file keeps
+the exact command plus the post-run interpretation for reproducibility.
 
 ## Current Selected Checkpoint
 
@@ -73,6 +74,34 @@ env MPLCONFIGDIR=/private/tmp/matplotlib-cache NO_ALBUMENTATIONS_UPDATE=1 \
   --no-tensorboard \
   --no-wandb
 ```
+
+## Completed Outcome
+
+The run completed on MPS and saved:
+
+- Run directory:
+  `/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_extra_low_lr_plus2ep_lr2e5`
+- Official checkpoint for independent conclusions:
+  `checkpoint_best_regular.pth`
+- Prediction export:
+  `regular_test_predictions.json`
+
+Independent test metrics from the standard artifact bundle:
+
+- Class AP/AP50/AP75: `0.2100 / 0.2700 / 0.2288`
+- Loc AP/AP50/AP75: `0.4280 / 0.5837 / 0.4561`
+- Slice AP50: `offcenter=0.2387`, `center=0.2842`, `small=0.2057`,
+  `medium=0.2940`, `large=0.3731`
+- Candidate hit rate: `0.3828`
+- Candidate-oracle AP/AP50/AP75: `0.4070 / 0.5468 / 0.4279`
+- Score-IoU Spearman: `class=0.1155`, `loc=-0.0907`
+- High-support candidate diagnostics: `61` high-support categories,
+  `8` zero-hit categories, weighted hit `0.3855`
+
+Interpretation: this is the best stratified active-route row by the current
+multi-metric rank and improves deployed class/small/loc metrics, but candidate
+hit rate regresses relative to earlier seed41 continuations. Treat it as a
+detector-side AP continuation, not a candidate-generation breakthrough.
 
 ## Required Post-Run Checks
 
