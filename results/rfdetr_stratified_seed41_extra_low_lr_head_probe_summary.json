@@ -1,0 +1,17 @@
+{
+  "kind": "rfdetr_head_probe",
+  "dataset_dir": "data/ILSVRC2013_DET_val_supervised/rfdetr_stratified_seed41_train1000_val200_test200_min3",
+  "weights": "/private/tmp/rfdetr_stratified_seed41_train1000_small_384_seed41_fulllr5e5_then3e5_2ep/checkpoint_best_regular.pth",
+  "model_size": "small",
+  "num_classes": 200,
+  "device": "mps",
+  "resolution": 384,
+  "max_images": 1,
+  "output_predictions": "results/rfdetr_stratified_seed41_extra_low_lr_head_probe_predictions.json",
+  "images": 1,
+  "predictions": 300,
+  "model_num_classes": 200,
+  "actual_class_head_out_features": 201,
+  "forced_class_head_out_features": "201 -> 201",
+  "status": "passed"
+}
