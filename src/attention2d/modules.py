@@ -237,6 +237,58 @@ class GroupedLatticeMemoryRead(nn.Module):
         return torch.cat(outputs, dim=1), torch.stack(routings, dim=1), torch.stack(outputs, dim=1)
 
 
+class BlockDiagonalLatticeMemoryRead(nn.Module):
+    """Shared candidate routing with block-diagonal value projections."""
+
+    def __init__(self, dim: int, groups: int = 2, offsets: Iterable[Offset2D] | None = None) -> None:
+        super().__init__()
+        if groups < 2:
+            raise ValueError("groups must be >= 2")
+        if dim % groups:
+            raise ValueError(f"dim={dim} must be divisible by groups={groups}")
+        self.dim = dim
+        self.groups = groups
+        self.offsets = tuple(offsets or default_offsets())
+        self.key_norm = nn.GroupNorm(1, dim)
+        self.query = nn.Parameter(torch.zeros(dim))
+        self.offset_bias = nn.Parameter(torch.zeros(len(self.offsets)))
+        group_dim = dim // groups
+        self.value_projs = nn.ModuleList(
+            nn.Conv2d(group_dim, group_dim, kernel_size=1) for _ in range(groups)
+        )
+
+    def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+        if not memories:
+            raise ValueError("memories must contain at least one feature map")
+        reference_shape = memories[0].shape
+        if len(reference_shape) != 4:
+            raise ValueError("memory tensors must have shape [B, C, H, W]")
+        for idx, memory in enumerate(memories):
+            if memory.shape != reference_shape:
+                raise ValueError(f"all memory tensors must share shape {tuple(reference_shape)}, got {tuple(memory.shape)} at {idx}")
+        query = self.query.view(1, self.dim, 1, 1)
+        candidates: list[Tensor] = []
+        logits: list[Tensor] = []
+        for memory in memories:
+            for offset_idx, offset in enumerate(self.offsets):
+                shifted = shift_2d(memory, offset)
+                logit = (self.key_norm(shifted) * query).sum(dim=1) + self.offset_bias[offset_idx]
+                candidates.append(shifted)
+                logits.append(logit)
+        candidate_tensor = torch.stack(candidates, dim=1)
+        routing = F.softmax(torch.stack(logits, dim=1), dim=1)
+        fused = (candidate_tensor * routing.unsqueeze(2)).sum(dim=1)
+        outputs = []
+        private = []
+        group_dim = self.dim // self.groups
+        for group_idx, value_proj in enumerate(self.value_projs):
+            start = group_idx * group_dim
+            output = value_proj(fused[:, start : start + group_dim])
+            outputs.append(output)
+            private.append(output)
+        return torch.cat(outputs, dim=1), routing, torch.stack(private, dim=1)
+
+
 def cross_group_decorrelation_loss(expert_outputs: Tensor, eps: float = 1e-6) -> Tensor:
     """Penalize linear redundancy between private expert outputs.
 

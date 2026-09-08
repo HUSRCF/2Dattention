@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from attention2d import (  # noqa: E402
+    BlockDiagonalLatticeMemoryRead,
     GroupedLatticeMemoryRead,
     TinyPrefillLatticeAttnRes,
     cross_group_decorrelation_loss,
@@ -29,6 +30,18 @@ def test_grouped_read_has_private_routing_and_preserves_shape() -> None:
     assert private.shape == (3, 2, 4, 4, 4)
     assert routing.shape[:2] == (3, 2)
     assert torch.allclose(routing.sum(dim=2), torch.ones(3, 2, 4, 4), atol=1e-5)
+
+
+def test_block_diagonal_read_keeps_shared_routing() -> None:
+    reader = BlockDiagonalLatticeMemoryRead(dim=8, groups=2)
+    memories = [torch.randn(2, 8, 4, 4)]
+
+    output, routing, private = reader(memories)
+
+    assert output.shape == (2, 8, 4, 4)
+    assert routing.shape == (2, 13, 4, 4)
+    assert private.shape == (2, 2, 4, 4, 4)
+    assert torch.allclose(routing.sum(dim=1), torch.ones(2, 4, 4), atol=1e-5)
 
 
 def test_grouped_losses_are_finite_and_backpropagate() -> None:

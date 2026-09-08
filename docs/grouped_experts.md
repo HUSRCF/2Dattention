@@ -77,3 +77,36 @@ a binary synthetic relation task. A valid detector comparison requires adding
 the grouped adapter to the same RF-DETR checkpoint and reporting paired
 class-aware AP, class-agnostic localization AP, slice AP, parameter count, and
 latency under the existing stratified split.
+
+## Matched Controls
+
+Run the reproducible structural controls with:
+
+```bash
+PYTHONPATH=src python scripts/compare_grouped_controls.py \
+  --steps 200 --seeds 3 --out results/grouped_controls.csv
+```
+
+The runner resets the training generator for each mode, uses a separately
+fixed evaluation set per seed, initializes each mode from the same seed, and
+reports accuracy with the learned read gate and with that gate set to zero.
+The three modes are `shared`, `blockdiag` (shared routing, block-diagonal
+value), and `grouped` (grouped routing and value).
+
+The matched 200-step CPU run (`aligned_pair`, seeds 41/42/43, fixed evaluation
+sets) produced:
+
+| Mode | Mean eval accuracy | Mean accuracy with read gate zero |
+| --- | ---: | ---: |
+| `shared` | 0.696 | 0.689 |
+| `blockdiag` | 0.690 | 0.627 |
+| `grouped` | 0.667 | 0.593 |
+
+The block-diagonal value control is nearly tied with the dense baseline, while
+independent routing is lower by 2.9 points. This isolates the current loss to
+the routing change more than to removing cross-group value weights. The gate
+zero ablation also shows that the blockdiag/grouped read paths are used by the
+task (mean drops of 6.3 and 7.4 points), whereas the shared path's drop is only
+0.7 points. These are still toy-task results, but they define the next repair
+target more precisely: preserve useful cross-group interaction while testing
+less restrictive or softly regularized routing.

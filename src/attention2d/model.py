@@ -10,6 +10,7 @@ import torch.nn.functional as F
 
 from .modules import (
     AxisAnchorMemoryRead,
+    BlockDiagonalLatticeMemoryRead,
     Coordinate2DEncoding,
     GroupedLatticeMemoryRead,
     LatticeMemoryRead,
@@ -23,15 +24,19 @@ from .modules import (
 class MemoryReadBlock(nn.Module):
     """A small refinement block that appends its output to the memory pool."""
 
-    def __init__(self, dim: int, gate_init: float = 1e-3, expert_groups: int = 1) -> None:
+    def __init__(self, dim: int, gate_init: float = 1e-3, expert_groups: int = 1, expert_mode: str | None = None) -> None:
         super().__init__()
         self.norm = nn.GroupNorm(1, dim)
         self.expert_groups = expert_groups
-        self.read = (
-            LatticeMemoryRead(dim=dim, offsets=default_offsets())
-            if expert_groups == 1
-            else GroupedLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets())
-        )
+        self.expert_mode = expert_mode or ("grouped" if expert_groups > 1 else "shared")
+        if self.expert_mode == "shared":
+            self.read = LatticeMemoryRead(dim=dim, offsets=default_offsets())
+        elif self.expert_mode == "grouped":
+            self.read = GroupedLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets())
+        elif self.expert_mode == "blockdiag":
+            self.read = BlockDiagonalLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets())
+        else:
+            raise ValueError("expert_mode must be shared, blockdiag, or grouped")
         self.read_gate = nn.Parameter(torch.tensor(float(gate_init)))
         self.mix = nn.Sequential(
             nn.GroupNorm(1, dim),
@@ -42,7 +47,7 @@ class MemoryReadBlock(nn.Module):
 
     def forward(self, memories: list[Tensor]) -> tuple[Tensor, Tensor]:
         read_result = self.read(memories)
-        if self.expert_groups == 1:
+        if self.expert_mode == "shared":
             readout, routing = read_result
             self.last_expert_readout = None
         else:
@@ -192,6 +197,7 @@ class TinyPrefillLatticeAttnRes(nn.Module):
         read_blocks: int = 2,
         gate_init: float = 1e-3,
         expert_groups: int = 1,
+        expert_mode: str | None = None,
     ) -> None:
         super().__init__()
         self.patch_embed = PatchEmbed2D(
@@ -202,7 +208,7 @@ class TinyPrefillLatticeAttnRes(nn.Module):
         self.coord_encoding = Coordinate2DEncoding(embed_dim)
         self.prefill = SpatialPrefill2D(dim=embed_dim, rounds=prefill_rounds)
         self.read_blocks = nn.ModuleList(
-            MemoryReadBlock(embed_dim, gate_init=gate_init, expert_groups=expert_groups)
+            MemoryReadBlock(embed_dim, gate_init=gate_init, expert_groups=expert_groups, expert_mode=expert_mode)
             for _ in range(read_blocks)
         )
         self.head = nn.Sequential(
