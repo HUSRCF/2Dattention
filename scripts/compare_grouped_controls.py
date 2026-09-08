@@ -40,7 +40,7 @@ def main() -> None:
         eval_images, eval_labels = sample_aligned_pair_batch(
             args.eval_size, generator=eval_generator, device="cpu"
         )
-        for mode in ("shared", "blockdiag", "grouped"):
+        for mode in ("shared", "blockdiag", "grouped", "grouped_globalnorm", "grouped_fullcontext"):
             torch.manual_seed(seed)
             groups = 1 if mode == "shared" else 2
             model = TinyPrefillLatticeAttnRes(
@@ -67,6 +67,10 @@ def main() -> None:
                 eval_loss = F.cross_entropy(output["logits"], eval_labels).item()
                 eval_acc = (output["logits"].argmax(1) == eval_labels).float().mean().item()
             gate = model.read_blocks[0].read_gate
+            set_uniform_routing(model, True)
+            with torch.no_grad():
+                uniform_acc = (model(eval_images)["logits"].argmax(1) == eval_labels).float().mean().item()
+            set_uniform_routing(model, False)
             original_gate = gate.detach().clone()
             gate.data.zero_()
             with torch.no_grad():
@@ -81,6 +85,7 @@ def main() -> None:
                 "eval_acc": eval_acc,
                 "gate": float(original_gate),
                 "gate_zero_acc": gate_zero_acc,
+                "uniform_acc": uniform_acc,
             }
             rows.append(row)
             print(",".join(str(row[key]) for key in row), flush=True)
@@ -90,6 +95,12 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
     print(f"saved_csv: {args.out}")
+
+
+def set_uniform_routing(model: torch.nn.Module, enabled: bool) -> None:
+    for module in model.modules():
+        if hasattr(module, "uniform_routing"):
+            module.uniform_routing = enabled
 
 
 if __name__ == "__main__":

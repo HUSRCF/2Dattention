@@ -44,6 +44,15 @@ def test_block_diagonal_read_keeps_shared_routing() -> None:
     assert torch.allclose(routing.sum(dim=1), torch.ones(2, 4, 4), atol=1e-5)
 
 
+def test_full_context_grouped_read_uses_per_group_routing() -> None:
+    reader = GroupedLatticeMemoryRead(dim=8, groups=2, full_context=True)
+    output, routing, private = reader([torch.randn(2, 8, 4, 4)])
+    assert output.shape == (2, 8, 4, 4)
+    assert routing.shape == (2, 2, 13, 4, 4)
+    assert private.shape == (2, 2, 4, 4, 4)
+    assert torch.allclose(routing.sum(dim=2), torch.ones(2, 2, 4, 4), atol=1e-5)
+
+
 def test_grouped_losses_are_finite_and_backpropagate() -> None:
     outputs = torch.randn(4, 2, 3, 4, 4, requires_grad=True)
 

@@ -33,10 +33,14 @@ class MemoryReadBlock(nn.Module):
             self.read = LatticeMemoryRead(dim=dim, offsets=default_offsets())
         elif self.expert_mode == "grouped":
             self.read = GroupedLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets())
+        elif self.expert_mode == "grouped_globalnorm":
+            self.read = GroupedLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets(), global_norm=True)
+        elif self.expert_mode == "grouped_fullcontext":
+            self.read = GroupedLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets(), full_context=True)
         elif self.expert_mode == "blockdiag":
             self.read = BlockDiagonalLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets())
         else:
-            raise ValueError("expert_mode must be shared, blockdiag, or grouped")
+            raise ValueError("expert_mode must be shared, blockdiag, grouped, grouped_globalnorm, or grouped_fullcontext")
         self.read_gate = nn.Parameter(torch.tensor(float(gate_init)))
         self.mix = nn.Sequential(
             nn.GroupNorm(1, dim),

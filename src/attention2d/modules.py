@@ -159,6 +159,7 @@ class LatticeMemoryRead(nn.Module):
         self.query = nn.Parameter(torch.zeros(dim))
         self.offset_bias = nn.Parameter(torch.zeros(len(self.offsets)))
         self.value_proj = nn.Conv2d(dim, dim, kernel_size=1)
+        self.uniform_routing = False
 
     def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor]:
         if not memories:
@@ -189,7 +190,11 @@ class LatticeMemoryRead(nn.Module):
 
         candidate_tensor = torch.stack(candidates, dim=1)
         logit_tensor = torch.stack(logits, dim=1)
-        routing = F.softmax(logit_tensor, dim=1)
+        routing = (
+            torch.full_like(logit_tensor, 1.0 / logit_tensor.shape[1])
+            if self.uniform_routing
+            else F.softmax(logit_tensor, dim=1)
+        )
         fused = (candidate_tensor * routing.unsqueeze(2)).sum(dim=1)
         return self.value_proj(fused), routing
 
@@ -208,6 +213,8 @@ class GroupedLatticeMemoryRead(nn.Module):
         dim: int,
         groups: int = 2,
         offsets: Iterable[Offset2D] | None = None,
+        global_norm: bool = False,
+        full_context: bool = False,
     ) -> None:
         super().__init__()
         if groups < 2:
@@ -216,26 +223,70 @@ class GroupedLatticeMemoryRead(nn.Module):
             raise ValueError(f"dim={dim} must be divisible by groups={groups}")
         self.dim = dim
         self.groups = groups
+        self.global_norm = global_norm
+        self.full_context = full_context
         group_dim = dim // groups
-        self.reads = nn.ModuleList(
-            LatticeMemoryRead(dim=group_dim, offsets=offsets)
-            for _ in range(groups)
-        )
+        self.offsets = tuple(offsets or default_offsets())
+        if full_context:
+            self.key_norm = nn.GroupNorm(1, dim)
+            self.queries = nn.Parameter(torch.zeros(groups, dim))
+            self.offset_bias = nn.Parameter(torch.zeros(groups, len(self.offsets)))
+            self.value_projs = nn.ModuleList(nn.Conv2d(group_dim, group_dim, 1) for _ in range(groups))
+        else:
+            self.reads = nn.ModuleList(
+                LatticeMemoryRead(dim=group_dim, offsets=self.offsets)
+                for _ in range(groups)
+            )
+            if global_norm:
+                for reader in self.reads:
+                    reader.key_norm = nn.Identity()
+
+    @property
+    def uniform_routing(self) -> bool:
+        return bool(getattr(self, "_uniform_routing", False))
+
+    @uniform_routing.setter
+    def uniform_routing(self, value: bool) -> None:
+        self._uniform_routing = bool(value)
+        for reader in getattr(self, "reads", []):
+            reader.uniform_routing = bool(value)
 
     def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor, Tensor]:
         if not memories:
             raise ValueError("memories must contain at least one feature map")
         outputs: list[Tensor] = []
         routings: list[Tensor] = []
+        if self.full_context:
+            reference_shape = memories[0].shape
+            candidates = []
+            for memory in memories:
+                for offset in self.offsets:
+                    candidates.append(shift_2d(memory, offset))
+            candidate_tensor = torch.stack(candidates, dim=1)
+            keys = self.key_norm(candidate_tensor.flatten(0, 1)).reshape_as(candidate_tensor)
+            logits = torch.einsum("bkchw,ec->bekhw", keys, self.queries)
+            bias = self.offset_bias.repeat(1, len(memories))
+            logits = logits + bias.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            if self.uniform_routing:
+                routing = torch.full_like(logits, 1.0 / logits.shape[2])
+            else:
+                routing = F.softmax(logits, dim=2)
+            group_dim = self.dim // self.groups
+            for group_idx, value_proj in enumerate(self.value_projs):
+                start = group_idx * group_dim
+                fused = (candidate_tensor[:, :, start : start + group_dim] * routing[:, group_idx].unsqueeze(2)).sum(dim=1)
+                outputs.append(value_proj(fused))
+                routings.append(routing[:, group_idx])
+            return torch.cat(outputs, dim=1), torch.stack(routings, dim=1), torch.stack(outputs, dim=1)
+        normalized_memories = [F.group_norm(memory, 1) for memory in memories] if self.global_norm else list(memories)
         for group_idx, reader in enumerate(self.reads):
             start = group_idx * reader.dim
             stop = start + reader.dim
-            group_memories = [memory[:, start:stop] for memory in memories]
+            group_memories = [memory[:, start:stop] for memory in normalized_memories]
             output, routing = reader(group_memories)
             outputs.append(output)
             routings.append(routing)
         return torch.cat(outputs, dim=1), torch.stack(routings, dim=1), torch.stack(outputs, dim=1)
-
 
 class BlockDiagonalLatticeMemoryRead(nn.Module):
     """Shared candidate routing with block-diagonal value projections."""
@@ -256,6 +307,7 @@ class BlockDiagonalLatticeMemoryRead(nn.Module):
         self.value_projs = nn.ModuleList(
             nn.Conv2d(group_dim, group_dim, kernel_size=1) for _ in range(groups)
         )
+        self.uniform_routing = False
 
     def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor, Tensor]:
         if not memories:
@@ -276,7 +328,8 @@ class BlockDiagonalLatticeMemoryRead(nn.Module):
                 candidates.append(shifted)
                 logits.append(logit)
         candidate_tensor = torch.stack(candidates, dim=1)
-        routing = F.softmax(torch.stack(logits, dim=1), dim=1)
+        logit_tensor = torch.stack(logits, dim=1)
+        routing = torch.full_like(logit_tensor, 1.0 / logit_tensor.shape[1]) if self.uniform_routing else F.softmax(logit_tensor, dim=1)
         fused = (candidate_tensor * routing.unsqueeze(2)).sum(dim=1)
         outputs = []
         private = []
