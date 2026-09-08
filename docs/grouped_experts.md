@@ -110,3 +110,22 @@ task (mean drops of 6.3 and 7.4 points), whereas the shared path's drop is only
 0.7 points. These are still toy-task results, but they define the next repair
 target more precisely: preserve useful cross-group interaction while testing
 less restrictive or softly regularized routing.
+
+## Routing-Visibility Controls
+
+The runner also evaluates uniform routing after training. A 100-step, 3-seed
+CPU run with fixed evaluation sets gave:
+
+| Mode | Mean eval accuracy | Mean uniform-routing accuracy |
+| --- | ---: | ---: |
+| `shared` | 0.627 | 0.620 |
+| `blockdiag` | 0.607 | 0.606 |
+| `grouped` | 0.608 | 0.608 |
+| `grouped_globalnorm` | 0.606 | 0.606 |
+| `grouped_fullcontext` | 0.607 | 0.606 |
+
+At this budget, global normalization and full-context group queries do not
+restore the shared baseline. Uniform-routing ablation is nearly unchanged for
+the grouped modes, so this run does not establish that adaptive candidate
+selection is driving the task result. The next experiment should match
+initialization and capacity more strictly, then use longer learning curves.
