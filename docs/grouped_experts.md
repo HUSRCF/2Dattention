@@ -34,3 +34,18 @@ in a separate experiment.
 
 This implementation targets the repository's tiny prototype. The external
 RF-DETR training scripts do not automatically use it.
+
+## CPU Smoke Result (2026-09-08)
+
+On `aligned_pair`, using CPU, `embed_dim=16`, one prefill round, one read
+block, 120 AdamW steps, batch size 32, and seeds 21/22/23:
+
+| Variant | Eval accuracy (per seed) | Mean |
+| --- | --- | ---: |
+| `expert_groups=1` | 0.672, 0.613, 0.486 | 0.590 |
+| `expert_groups=2` | 0.637, 0.652, 0.637 | 0.642 |
+
+This is an encouraging preliminary `+5.1` percentage-point signal, but the
+short synthetic run has high seed variance and remains near a toy-task
+ceiling. A longer multi-seed run and controlled intervention/ablation are
+required before treating the mechanism as an effective specialization method.
