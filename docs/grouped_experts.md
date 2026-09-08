@@ -49,3 +49,31 @@ This is an encouraging preliminary `+5.1` percentage-point signal, but the
 short synthetic run has high seed variance and remains near a toy-task
 ceiling. A longer multi-seed run and controlled intervention/ablation are
 required before treating the mechanism as an effective specialization method.
+
+## Larger CPU Check (2026-09-08)
+
+A follow-up used the same `aligned_pair` task with 200 steps, 1024 evaluation
+examples, and seeds 41/42/43:
+
+| Variant | Eval accuracy (per seed) | Mean |
+| --- | --- | ---: |
+| `expert_groups=1` | 0.730, 0.714, 0.667 | 0.704 |
+| `expert_groups=2` | 0.683, 0.675, 0.646 | 0.668 |
+| `expert_groups=2` + regularizers | 0.711, 0.692, 0.688 | 0.697 |
+
+The longer run does not confirm a gain. Grouping alone is `-3.6` percentage
+points versus the baseline; regularization recovers most of the gap but remains
+`-0.7` points below it. The earlier 120-step improvement should therefore be
+treated as optimization/seed variance rather than evidence of a stable benefit.
+
+For `embed_dim=16`, one prefill round, and one read block, the parameter counts
+were 3,664 for the baseline and 3,549 for two groups. Batch-32 CPU forward
+latency was approximately 5.97 ms and 4.98 ms respectively in one local run.
+This is not yet an equal-parameter comparison.
+
+These classification accuracies are not comparable to RF-DETR AP. The local
+RF-DETR protocol is a 200-class detection task with COCO metrics, while this is
+a binary synthetic relation task. A valid detector comparison requires adding
+the grouped adapter to the same RF-DETR checkpoint and reporting paired
+class-aware AP, class-agnostic localization AP, slice AP, parameter count, and
+latency under the existing stratified split.
