@@ -194,6 +194,86 @@ class LatticeMemoryRead(nn.Module):
         return self.value_proj(fused), routing
 
 
+class GroupedLatticeMemoryRead(nn.Module):
+    """Read independent channel subspaces from the same memory candidates.
+
+    Each group owns its query, routing distribution, and value projection. The
+    groups therefore cannot select different sources through a shared channel
+    scalar, while the concatenated output keeps the original ``[B, C, H, W]``
+    interface.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        groups: int = 2,
+        offsets: Iterable[Offset2D] | None = None,
+    ) -> None:
+        super().__init__()
+        if groups < 2:
+            raise ValueError("groups must be >= 2")
+        if dim % groups:
+            raise ValueError(f"dim={dim} must be divisible by groups={groups}")
+        self.dim = dim
+        self.groups = groups
+        group_dim = dim // groups
+        self.reads = nn.ModuleList(
+            LatticeMemoryRead(dim=group_dim, offsets=offsets)
+            for _ in range(groups)
+        )
+
+    def forward(self, memories: Sequence[Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+        if not memories:
+            raise ValueError("memories must contain at least one feature map")
+        outputs: list[Tensor] = []
+        routings: list[Tensor] = []
+        for group_idx, reader in enumerate(self.reads):
+            start = group_idx * reader.dim
+            stop = start + reader.dim
+            group_memories = [memory[:, start:stop] for memory in memories]
+            output, routing = reader(group_memories)
+            outputs.append(output)
+            routings.append(routing)
+        return torch.cat(outputs, dim=1), torch.stack(routings, dim=1), torch.stack(outputs, dim=1)
+
+
+def cross_group_decorrelation_loss(expert_outputs: Tensor, eps: float = 1e-6) -> Tensor:
+    """Penalize linear redundancy between private expert outputs.
+
+    ``expert_outputs`` must have shape ``[B, E, D, H, W]``. Statistics are
+    computed over corresponding batch/spatial samples and do not constrain
+    channels within one expert.
+    """
+
+    if expert_outputs.ndim != 5:
+        raise ValueError("expert_outputs must have shape [B, E, D, H, W]")
+    _, groups, _, _, _ = expert_outputs.shape
+    if groups < 2:
+        return expert_outputs.new_zeros(())
+    flattened = expert_outputs.permute(1, 0, 3, 4, 2).reshape(groups, -1, expert_outputs.shape[2])
+    normalized = flattened - flattened.mean(dim=1, keepdim=True)
+    normalized = normalized / normalized.std(dim=1, keepdim=True, unbiased=False).clamp_min(eps)
+    losses = []
+    for left in range(groups):
+        for right in range(left + 1, groups):
+            covariance = normalized[left].transpose(0, 1) @ normalized[right]
+            covariance = covariance / max(normalized.shape[1] - 1, 1)
+            losses.append(covariance.square().mean())
+    return torch.stack(losses).mean()
+
+
+def variance_floor_loss(expert_outputs: Tensor, floor: float = 1.0, eps: float = 1e-6) -> Tensor:
+    """Keep private expert dimensions from collapsing to constants."""
+
+    if expert_outputs.ndim != 5:
+        raise ValueError("expert_outputs must have shape [B, E, D, H, W]")
+    flattened = expert_outputs.permute(1, 0, 3, 4, 2).reshape(
+        expert_outputs.shape[1], -1, expert_outputs.shape[2]
+    )
+    std = flattened.std(dim=1, unbiased=False)
+    return F.relu(float(floor) - torch.sqrt(std.square() + eps)).mean()
+
+
 class AxisAnchorMemoryRead(nn.Module):
     """Read row, column, and global anchor summaries from the memory pool."""
 

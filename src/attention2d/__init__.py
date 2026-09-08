@@ -9,10 +9,13 @@ from .baselines import (
 from .modules import (
     AxisAnchorMemoryRead,
     Coordinate2DEncoding,
+    GroupedLatticeMemoryRead,
     LatticeMemoryRead,
     PatchEmbed2D,
     SemanticGraphMemoryRead,
     SpatialPrefill2D,
+    cross_group_decorrelation_loss,
+    variance_floor_loss,
 )
 from .model import (
     TinyAnchorOnlyAttnResClassifier,
@@ -38,6 +41,7 @@ __all__ = [
     "AxisAnchorMemoryRead",
     "get_best_device",
     "Coordinate2DEncoding",
+    "GroupedLatticeMemoryRead",
     "LatticeMemoryRead",
     "MultiCLSViTClassifier",
     "PatchEmbed2D",
@@ -47,6 +51,8 @@ __all__ = [
     "SemanticGraphMemoryRead",
     "SequenceTransformerClassifier",
     "SpatialPrefill2D",
+    "cross_group_decorrelation_loss",
+    "variance_floor_loss",
     "TinyAnchorOnlyAttnResClassifier",
     "TinyAnchorPrefillLatticeAttnRes",
     "TinyDelayedXAttnResClassifier",

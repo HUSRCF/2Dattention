@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from .modules import (
     AxisAnchorMemoryRead,
     Coordinate2DEncoding,
+    GroupedLatticeMemoryRead,
     LatticeMemoryRead,
     PatchEmbed2D,
     SemanticGraphMemoryRead,
@@ -22,10 +23,15 @@ from .modules import (
 class MemoryReadBlock(nn.Module):
     """A small refinement block that appends its output to the memory pool."""
 
-    def __init__(self, dim: int, gate_init: float = 1e-3) -> None:
+    def __init__(self, dim: int, gate_init: float = 1e-3, expert_groups: int = 1) -> None:
         super().__init__()
         self.norm = nn.GroupNorm(1, dim)
-        self.read = LatticeMemoryRead(dim=dim, offsets=default_offsets())
+        self.expert_groups = expert_groups
+        self.read = (
+            LatticeMemoryRead(dim=dim, offsets=default_offsets())
+            if expert_groups == 1
+            else GroupedLatticeMemoryRead(dim=dim, groups=expert_groups, offsets=default_offsets())
+        )
         self.read_gate = nn.Parameter(torch.tensor(float(gate_init)))
         self.mix = nn.Sequential(
             nn.GroupNorm(1, dim),
@@ -35,7 +41,12 @@ class MemoryReadBlock(nn.Module):
         )
 
     def forward(self, memories: list[Tensor]) -> tuple[Tensor, Tensor]:
-        readout, routing = self.read(memories)
+        read_result = self.read(memories)
+        if self.expert_groups == 1:
+            readout, routing = read_result
+            self.last_expert_readout = None
+        else:
+            readout, routing, self.last_expert_readout = read_result
         self._record_memory_stats(readout=readout, state=memories[-1])
         state = memories[-1] + self.read_gate * readout
         state = state + self.mix(self.norm(state))
@@ -180,6 +191,7 @@ class TinyPrefillLatticeAttnRes(nn.Module):
         prefill_rounds: int = 2,
         read_blocks: int = 2,
         gate_init: float = 1e-3,
+        expert_groups: int = 1,
     ) -> None:
         super().__init__()
         self.patch_embed = PatchEmbed2D(
@@ -190,7 +202,8 @@ class TinyPrefillLatticeAttnRes(nn.Module):
         self.coord_encoding = Coordinate2DEncoding(embed_dim)
         self.prefill = SpatialPrefill2D(dim=embed_dim, rounds=prefill_rounds)
         self.read_blocks = nn.ModuleList(
-            MemoryReadBlock(embed_dim, gate_init=gate_init) for _ in range(read_blocks)
+            MemoryReadBlock(embed_dim, gate_init=gate_init, expert_groups=expert_groups)
+            for _ in range(read_blocks)
         )
         self.head = nn.Sequential(
             nn.GroupNorm(1, embed_dim),
@@ -202,17 +215,21 @@ class TinyPrefillLatticeAttnRes(nn.Module):
     def forward(self, x: Tensor) -> dict[str, Tensor | list[Tensor]]:
         memories = self.prefill(self.coord_encoding(self.patch_embed(x)))
         routing_maps: list[Tensor] = []
+        expert_readouts: list[Tensor] = []
 
         for block in self.read_blocks:
             state, routing = block(memories)
             memories.append(state)
             routing_maps.append(routing)
+            if block.last_expert_readout is not None:
+                expert_readouts.append(block.last_expert_readout)
 
         logits = self.head(memories[-1])
         return {
             "logits": logits,
             "memories": memories,
             "routing_maps": routing_maps,
+            "expert_readouts": expert_readouts,
         }
 
 
